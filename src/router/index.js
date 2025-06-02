@@ -14,6 +14,10 @@ const routes = [
         path: '/setting',
         component: () => import(/* webpackChunkName: "about" */ '../views/Setting.vue')
     },
+    {
+        path: '/new',
+        component: () => import(/* webpackChunkName: "about" */ '../views/Homeview2.vue')
+    },
 ]
 
 const router = new VueRouter({

@@ -65,6 +65,7 @@ import MyTimer from "@/components/MyTimer.vue";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
 import OpenAI from "openai";
 import config_util from "../utils/config_util";
+import { resumeStore } from '../store/resumeStore';
 
 export default {
   name: "HomeView",
@@ -235,9 +236,14 @@ export default {
         const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
         const stream = await openai.chat.completions.create({
           model: model,
-          messages: [{role: "user", content: text}],
+          messages: [    {
+        role: 'system',
+        content: `You are simulating a job candidate for an interview. Use the following resume details to answer the interview questions as if you are the candidate:\n\n${resumeStore.resumeText}`
+      },{role: "user", content: text}],
           stream: true,
         });
+
+
 
         let responseText = "";
         for await (const chunk of stream) {
@@ -245,6 +251,17 @@ export default {
           responseText += delta;
           this.ai_result = responseText;
         }
+
+
+              //   const myAssistant = await openai.beta.assistants.create({
+              //       name: "InterviewCopilot",
+              //       tools: [{ type: "code_interpreter" }],
+              //       model: "gpt-4o",
+              //     });
+
+              // console.log(myAssistant);
+
+
       } catch (e) {
         this.ai_result = "" + e;
       } finally {
