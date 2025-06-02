@@ -75,13 +75,34 @@ export default {
       copilot_stopping: false,
       show_ai_thinking_effect: false,
       popStyle: {},
+      openai_key: "",
+      gpt_model: "gpt-3.5-turbo",
+      gpt_system_prompt: "",
+      azure_token: "",
+      azure_region: "",
+      azure_language: "",
+      open_ai_api_url: "https://platform.openai.com/api-keys",
+      github_url: "https://github.com/interview-copilot/Interview-Copilot",
+      azure_application_url: "https://github.com/interview-copilot/Interview-Copilot/blob/main/docs/azure_speech_service_tutorial.md",
+      full_language_codec_url: "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt#speech-to-text"
     }
   },
   async mounted() {
-    console.log("mounted")
+    console.log("mounted");
+
+
     if (this.isDevMode) {
       // this.currentText = demo_text
     }
+
+    this.openai_key = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
+    this.gpt_system_prompt = config_util.gpt_system_prompt()
+    this.gpt_model = config_util.gpt_model()
+    this.azure_token = process.env.VUE_APP_AZURE_TOKEN_KEY;
+    this.azure_region = process.env.VUE_APP_AZURE_REGION;
+    this.azure_language = config_util.azure_language()
+
+    console.log(`Base API: ${this.openai_key}`);
   },
   beforeDestroy() {
   },

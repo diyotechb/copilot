@@ -27,7 +27,7 @@ export default {
   beforeMount() {
   },
   mounted() {
-
+    console.log(process.env.VUE_APP_OPENAPI_TOKEN_KEY);
   },
   data() {
     return {
