@@ -98,9 +98,6 @@ export default {
     this.azure_region = process.env.VUE_APP_AZURE_REGION;
     this.azure_language = config_util.azure_language()
 
-
-    console.log(`Base API: ${this.openai_key}`);
-
   },
   methods: {
     onKeyChange(key_name) {

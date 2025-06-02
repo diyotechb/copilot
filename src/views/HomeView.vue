@@ -98,17 +98,17 @@ export default {
     this.openai_key = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
     this.gpt_system_prompt = config_util.gpt_system_prompt()
     this.gpt_model = config_util.gpt_model()
-    this.azure_token = process.env.VUE_APP_AZURE_TOKEN_KEY;
+    this.azure_token = process.env.VUE_APP_AZURE_TOKEN;
     this.azure_region = process.env.VUE_APP_AZURE_REGION;
-    this.azure_language = config_util.azure_language()
+    this.azure_language = config_util.azure_language();
 
-    console.log(`Base API: ${this.openai_key}`);
   },
   beforeDestroy() {
   },
   methods: {
     async askCurrentText() {
-     const apiKey = localStorage.getItem("openai_key")
+     //const apiKey = localStorage.getItem("openai_key")
+      const apiKey = this.openai_key
       let content = this.currentText
       this.ai_result = ""
       this.show_ai_thinking_effect = true
@@ -143,11 +143,12 @@ export default {
     },
     async startCopilot() {
       this.copilot_starting = true
-      const token = localStorage.getItem("azure_token")
-      const region = config_util.azure_region()
+      //const token = localStorage.getItem("azure_token")
+      const token = this.azure_token;
+     // const region = config_util.azure_region()
+      const region = this.azure_region;
       const language = config_util.azure_language()
-      const openai_key = localStorage.getItem("openai_key")
-      console.log({region, language})
+      const openai_key = this.openai_key;
       try {
         if (!openai_key) {
           throw new Error("You should setup Open AI API Token")
@@ -158,7 +159,7 @@ export default {
         if (!region) {
           throw new Error("You should setup Azure region")
         }
-
+        console.log("start copilot with token:", token, "region:", region, "language:", language)
         const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(token, region);
         speechConfig.speechRecognitionLanguage = language;
         const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
