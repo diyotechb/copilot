@@ -1,10 +1,10 @@
-<template>
-  <div>
+ <template>
+  <!-- <div>
 
-    <!-- <div class="desc_text">
+     <div class="desc_text">
       The following settings are only retained locally in your browser.
       See <a :href="github_url" target="_blank">Github</a> for setup instructions.
-    </div> -->
+    </div> 
 
     <h1>Open AI</h1>
     <div class="desc_text">To use GPT, you need an API Key from the <a :href="open_ai_api_url" target="_blank">Open
@@ -56,11 +56,11 @@
       other language codes
     </div>
 
-<!--    <div>-->
-<!--      <el-button @click="toDef">set all setting to default</el-button>-->
-<!--    </div>-->
-
+   <div>
+    <el-button @click="toDef">set all setting to default</el-button>
   </div>
+
+  </div> -->
 </template>
 
 <script>
@@ -84,11 +84,18 @@ export default {
     }
   },
   mounted() {
-    this.openai_key = localStorage.getItem("openai_key")
+    // this.openai_key = localStorage.getItem("openai_key")
+    // this.gpt_system_prompt = config_util.gpt_system_prompt()
+    // this.gpt_model = config_util.gpt_model()
+    // this.azure_token = localStorage.getItem("azure_token")
+    // this.azure_region = config_util.azure_region()
+    // this.azure_language = config_util.azure_language()
+
+    this.openai_key = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
     this.gpt_system_prompt = config_util.gpt_system_prompt()
     this.gpt_model = config_util.gpt_model()
-    this.azure_token = localStorage.getItem("azure_token")
-    this.azure_region = config_util.azure_region()
+    this.azure_token = process.env.VUE_APP_AZURE_TOKEN_KEY;
+    this.azure_region = process.env.VUE_APP_AZURE_REGION;
     this.azure_language = config_util.azure_language()
 
   },
