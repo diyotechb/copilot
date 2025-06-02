@@ -159,7 +159,6 @@ export default {
         if (!region) {
           throw new Error("You should setup Azure region")
         }
-        console.log("start copilot with token:", token, "region:", region, "language:", language)
         const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(token, region);
         speechConfig.speechRecognitionLanguage = language;
         const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
