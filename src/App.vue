@@ -3,6 +3,7 @@
     <el-menu :default-active="$router.currentRoute.path" mode="horizontal" :router="true">
       <el-menu-item index="/">Interview Copilot</el-menu-item>
       <el-menu-item index="/setting">Setting</el-menu-item>
+       <el-menu-item index="/view3">Beta</el-menu-item>
     </el-menu>
     <router-view class="router_view"/>
   </div>

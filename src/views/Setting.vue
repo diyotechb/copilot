@@ -37,10 +37,9 @@ import { resumeStore } from '../store/resumeStore';
 
 function handleSave() {
   // Optional: Save or give feedback
-  ElMessage({
-    message: 'Resume saved successfully!',
-    type: 'success'
-  });
+ resumeStore.setResume(resumeStore.resumeText);
+  // You can add a notification or alert here to confirm saving
+  console.log("Resume summary saved:", resumeStore.resumeText);
 }
 </script>
 
