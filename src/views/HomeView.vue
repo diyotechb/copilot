@@ -253,15 +253,6 @@ export default {
         }
 
 
-        //   const myAssistant = await openai.beta.assistants.create({
-        //       name: "InterviewCopilot",
-        //       tools: [{ type: "code_interpreter" }],
-        //       model: "gpt-4o",
-        //     });
-
-        // console.log(myAssistant);
-
-
       } catch (e) {
         this.ai_result = "" + e;
       } finally {
