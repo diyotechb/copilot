@@ -1,6 +1,8 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
 import HomeView from '../views/HomeView.vue'
+import BedrockView from '@/views/BedrockView.vue'
+import OtterAssistant from '@/views/OtterAssistant.vue'
 
 Vue.use(VueRouter)
 
@@ -8,7 +10,12 @@ const routes = [
     {
         path: '/',
         name: 'home',
-        component: HomeView
+        component: OtterAssistant
+    },
+      {
+        path: '/assistant',
+        name: 'bedrock',
+        component: BedrockView
     },
     {
         path: '/setting',
