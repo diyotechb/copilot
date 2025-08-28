@@ -1,26 +1,43 @@
 <template>
   <div class="app-container">
+    <!-- Video Recorder Preview -->
+    <div class="video-recorder" style="margin-bottom:1rem;">
+      <video ref="videoPreview" autoplay playsinline muted width="320" height="240" style="border-radius:8px;" v-show="interviewing"></video>
+      <div v-if="recordedVideoUrl && !interviewing" style="margin-top:0.5rem;">
+        <video :src="recordedVideoUrl" controls width="320" height="240" style="border-radius:8px;"></video>
+        <a :href="recordedVideoUrl" download="interview.mp4" class="btn" style="margin-top:0.5rem;">Download Recording</a>
+      </div>
+    </div>
     <div class="main-card">
       <!-- Question area -->
       <div class="section">
         <h2 class="subtitle">Question</h2>
         <p>{{ currentQuestion }}</p>
       </div>
-
       <!-- Answer area -->
       <div class="section answer">
         <h2 class="subtitle">Answer</h2>
-        <div class="answer-body">{{ currentAnswer }}</div>
+        <div class="answer-body" v-if="showAnswer">{{ currentAnswer }}</div>
+        <div v-else-if="interviewing && isThinking" class="answer-body thinking-effect">
+          <span>Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span></span>
+        </div>
+        <div v-else class="answer-body" style="color:#aaa;font-style:italic;">(Answer will appear after question is read)</div>
+        <div v-if="answerTranscripts.length">
+          <h3 style="margin-top:1rem;">Transcripts:</h3>
+          <ul>
+            <li v-for="(t, idx) in answerTranscripts" :key="idx" style="margin-bottom:0.5rem;">
+              <strong>Answer {{ idx+1 }}:</strong> {{ t }}
+            </li>
+          </ul>
+        </div>
       </div>
-
       <!-- Start/Next/Stop buttons -->
       <div class="actions">
-        <button class="btn start" :disabled="!resumeReady || interviewing" @click="startInterview">Start Interview</button>
+        <button v-if="resumeReady && !interviewing" class="btn start" @click="startInterview">Start Interview</button>
         <button class="btn next" :disabled="!interviewing" @click="nextQuestion">Next Question</button>
-        <button class="btn stop" :disabled="!interviewing" @click="stopInterview">Stop Interview</button>
+  <button v-if="interviewing" class="btn stop" @click="stopInterview">Stop Interview</button>
       </div>
     </div>
-
     <!-- Resume sidebar -->
     <div class="sidebar">
       <h2 class="subtitle">Candidate Resume</h2>
@@ -41,198 +58,484 @@
         />
         <button class="btn" @click="openFilePicker">Choose file</button>
       </div>
-
       <textarea
         v-model="resumeText"
         @paste="onPasteResume"
         placeholder="Or paste your resume text here..."
         class="textarea"
       />
-
       <div class="resume-info" v-if="resumeFile">
         <span>{{ resumeFile.name }} ({{ (resumeFile.size/1024).toFixed(1) }} KB)</span>
         <button class="clear-btn" @click="clearResume">✕</button>
       </div>
-
       <button class="btn upload-btn" :disabled="!resumeText || uploading" @click="sendResume">
         {{ uploading ? 'Uploading…' : 'Upload Resume' }}
       </button>
-
       <div class="ready" v-if="resumeReady">
         <span class="badge ready">Resume ready ✓</span>
       </div>
     </div>
   </div>
 </template>
-
 <script setup>
-import { ref } from 'vue'
+
+
+// --- Interview state ---
+// ...existing code...
+
+// --- Interview state ---
+import { ref, watch, onMounted, onUnmounted } from 'vue';
+import OpenAI from 'openai';
+const isThinking = ref(false);
+const currentAnswer = ref('The AI generated answer or candidate answer will appear here...');
+const currentQuestion = ref('Your interview question will appear here...');
+const showAnswer = ref(true); // default true for initial state
+const interviewing = ref(false);
+const resumeReady = ref(false);
+let streamTimer = null;
+const turn = ref(0);
+let qaHistory = [];
+const qaBatch = ref([]);
+const answerTranscripts = ref([]);
+
+const isRecordingAnswer = ref(false);
+let answerMediaRecorder = null;
+let answerAudioChunks = [];
+const answerAudioBlobs = ref([]); 
+
+// --- Per-answer audio recording state ---
+function startAnswerRecording() {
+  if (isRecordingAnswer.value) return;
+  isRecordingAnswer.value = true;
+  answerAudioChunks = [];
+  console.log('[Answer Recording] Starting audio recording for answer', turn.value);
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      try {
+        answerMediaRecorder = new MediaRecorder(stream);
+      } catch (err) {
+        console.error('Error initializing MediaRecorder:', err);
+        isRecordingAnswer.value = false;
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      answerMediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) answerAudioChunks.push(e.data);
+      };
+      answerMediaRecorder.onstop = () => {
+        try {
+          const blob = new Blob(answerAudioChunks);
+          answerAudioBlobs.value[turn.value-1] = blob;
+          console.log('[Answer Recording] Stopped recording for answer', turn.value, 'Blob size:', blob.size);
+        } catch (err) {
+          console.error('Error creating audio blob:', err);
+        }
+        stream.getTracks().forEach(track => track.stop());
+        isRecordingAnswer.value = false;
+      };
+      answerMediaRecorder.start();
+      console.log('[Answer Recording] MediaRecorder started');
+    })
+    .catch(err => {
+      console.error('Error accessing microphone:', err);
+      isRecordingAnswer.value = false;
+    });
+}
+
+function stopAnswerRecording() {
+  console.log('[Answer Recording] stopAnswerRecording called. isRecordingAnswer:', isRecordingAnswer.value, 'answerMediaRecorder:', answerMediaRecorder ? answerMediaRecorder.state : 'null');
+  if (isRecordingAnswer.value && answerMediaRecorder && answerMediaRecorder.state !== 'inactive') {
+    try {
+      answerMediaRecorder.stop();
+      console.log('[Answer Recording] MediaRecorder.stop() called for answer', turn.value);
+    } catch (err) {
+      console.error('Error stopping answerMediaRecorder:', err);
+    }
+  }
+}
+
+onUnmounted(() => {
+  stopAnswerRecording();
+  stopVideoRecording();
+  if (videoPreview.value) videoPreview.value.srcObject = null;
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+});
+
+watch(showAnswer, (val) => {
+  if (interviewing.value && val) {
+    startAnswerRecording();
+  }
+});
+
+// --- Video Recorder State ---
+const videoPreview = ref(null);
+let mediaStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+const recordedVideoUrl = ref('');
+
+async function startVideoRecording() {
+  recordedVideoUrl.value = '';
+  recordedChunks = [];
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (videoPreview.value) {
+      videoPreview.value.srcObject = mediaStream;
+    }
+    // Dynamically select the best MIME type for MediaRecorder
+    let options = {};
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+      options.mimeType = 'video/webm;codecs=vp8';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      options.mimeType = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      options.mimeType = 'video/mp4';
+    }
+    mediaRecorder = new MediaRecorder(mediaStream, options);
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+        console.log('Chunk size:', e.data.size);
+      }
+    };
+    mediaRecorder.onerror = (err) => {
+      console.error('MediaRecorder error:', err);
+    };
+    mediaRecorder.onwarning = (warn) => {
+      console.warn('MediaRecorder warning:', warn);
+    };
+    mediaRecorder.onstop = () => {
+      // Use default MIME type for best compatibility
+      const blob = new Blob(recordedChunks);
+      console.log('Final blob size:', blob.size);
+      recordedVideoUrl.value = URL.createObjectURL(blob);
+      if (videoPreview.value) videoPreview.value.srcObject = null;
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+    };
+    mediaRecorder.start();
+    // Wait a moment to ensure recording has started
+    return new Promise(resolve => setTimeout(resolve, 300));
+  } catch (err) {
+    console.error('Could not start video recording:', err);
+    return Promise.resolve();
+  }
+}
+
+function stopVideoRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    // Allow a short delay for graceful stop
+    setTimeout(() => {
+      mediaRecorder.stop();
+    }, 500);
+  }
+}
+
+onUnmounted(() => {
+  stopVideoRecording();
+  if (videoPreview.value) videoPreview.value.srcObject = null;
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+});
 
 // --- Main content state ---
-const currentQuestion = ref('Your interview question will appear here...')
-const currentAnswer = ref('The AI generated answer or candidate answer will appear here...')
+// ...existing code...
+
+onMounted(() => {
+  showAnswer.value = true;
+  // If you want a sample initial answer, set it here:
+  // currentAnswer.value = 'The AI generated answer or candidate answer will appear here...';
+});
+
+// Azure Speech Service TTS
+async function speakQuestion(text, onEnd) {
+  const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
+  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+  if (!subscriptionKey || !region) {
+    // Fallback to browser TTS if Azure not configured
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utter = new window.SpeechSynthesisUtterance(text);
+      utter.lang = 'en-US';
+      utter.rate = 1.05;
+      utter.onend = onEnd;
+      window.speechSynthesis.speak(utter);
+      return;
+    }
+    if (typeof onEnd === 'function') onEnd();
+    return;
+  }
+  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const ssml = `
+    <speak version='1.0' xml:lang='en-US'>
+      <voice xml:lang='en-US' xml:gender='Female' name='en-US-AdamMultilingualNeural'>
+        ${text}
+      </voice>
+    </speak>
+  `;
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': subscriptionKey,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
+        'User-Agent': 'OtterAssistantVue'
+      },
+      body: ssml
+    });
+    if (!response.ok) throw new Error('Azure TTS failed');
+    const audioData = await response.arrayBuffer();
+    const blob = new Blob([audioData], { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = onEnd;
+    audio.play();
+  } catch (e) {
+    console.error('Azure TTS error:', e);
+    if (typeof onEnd === 'function') onEnd();
+  }
+}
 
 // --- Resume upload/paste ---
-const dragging = ref(false)
-const resumeFile = ref(null)
-const resumeText = ref('')
-const fileInput = ref(null)
-const uploading = ref(false)
+const dragging = ref(false);
+const resumeFile = ref(null);
+const resumeText = ref('');
+const fileInput = ref(null);
+const uploading = ref(false);
 
 // --- Interview (Option B: one-by-one, adaptive; mocked locally for now) ---
-const interviewing = ref(false)
-const resumeReady = ref(false)
-let streamTimer = null
-let turn = 0
+// ...existing code...
 
-function openFilePicker() { fileInput.value?.click() }
-function onFileChange(e) { const file = e.target.files[0]; if (file) handleFile(file) }
+function openFilePicker() { fileInput.value?.click(); }
+function onFileChange(e) { const file = e.target.files[0]; if (file) handleFile(file); }
 function onDrop(e) {
-  dragging.value = false
-  const file = e.dataTransfer.files[0]
-  if (file) handleFile(file)
+  dragging.value = false;
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
 }
+
 function handleFile(file) {
-  resumeFile.value = file
-  const reader = new FileReader()
-  reader.onload = () => { resumeText.value = String(reader.result || '') }
-  reader.readAsText(file)
+  resumeFile.value = file;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'txt' || ext === 'md' || ext === 'rtf') {
+    const reader = new FileReader();
+    reader.onload = () => { 
+      resumeText.value = String(reader.result || '');
+    };
+    reader.readAsText(file);
+  } else if (ext === 'pdf') {
+    import('pdfjs-dist/legacy/build/pdf').then(pdfjsLib => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const typedarray = new Uint8Array(reader.result);
+        const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map(item => item.str).join(' ') + '\n';
+        }
+        resumeText.value = text;
+      };
+      reader.readAsArrayBuffer(file);
+    }).catch(err => { console.error('PDF import error:', err); });
+  } else if (ext === 'docx') {
+    import('mammoth').then(mammoth => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const arrayBuffer = reader.result;
+        const { value } = await mammoth.extractRawText({ arrayBuffer });
+        resumeText.value = value;
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  } else {
+    resumeText.value = 'Unsupported file type.';
+  }
 }
 
 function clearResume() {
-  resumeFile.value = null
-  resumeText.value = ''
-  resumeReady.value = false
+  resumeFile.value = null;
+  resumeText.value = '';
+  resumeReady.value = false;
 }
 
 async function sendResume() {
-  if (!resumeText.value || uploading.value) return
-  uploading.value = true
-  resumeReady.value = false
-  currentAnswer.value = ""  // or ai_result if you’re using that
+  if (!resumeText.value || uploading.value) return;
+  uploading.value = true;
+  resumeReady.value = false;
+  currentAnswer.value = '';
+  qaBatch.value = [];
   try {
-    const apiKey = import.meta.env.VUE_APP_OPENAPI_TOKEN_KEY // or however you store it
-    if (!apiKey) throw new Error("You should setup an OpenAI Key!")
+    const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
+    if (!apiKey) throw new Error('You should setup an OpenAI Key!');
 
-    const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
-    const stream = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+    const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+    // Request a batch of Q/A pairs (e.g., 30)
+    const prompt = `Here is the candidate's resume:\n${resumeText.value}\nGenerate 30 unique interview questions and sample answers.\n- The questions should be a mix of technical and behavioral (soft skills, teamwork, leadership, problem solving, communication, etc).\n- For each question, provide a detailed, descriptive, and lengthier sample answer (at least 5-8 sentences).\n- Format as:\nQuestion 1: ...\nAnswer 1: ...\nQuestion 2: ...\nAnswer 2: ...\n...`;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
       messages: [
-        { role: "system", content: "You are an interview assistant. Generate interview questions and answers from the candidate’s resume." },
-        { role: "user", content: `Here is the candidate’s resume:\n${resumeText.value}` }
+        { role: 'system', content: 'You are an interview assistant. Generate multiple interview questions and answers from the candidate’s resume.' },
+        { role: 'user', content: prompt }
       ],
-      stream: true,
-    })
-
-    resumeReady.value = true
-
-    for await (const chunk of stream) {
-      const text = chunk.choices[0]?.delta?.content || ""
-      currentAnswer.value += text
+      stream: false,
+    });
+    qaBatch.value = parseBatchQA(completion.choices[0].message.content);
+    resumeReady.value = qaBatch.value.length > 0;
+    if (!interviewing.value) {
+      currentAnswer.value = '';
+      currentQuestion.value = '';
+      showAnswer.value = false;
     }
-
   } catch (e) {
-    currentAnswer.value = "Error: " + e.message
+    currentAnswer.value = 'Error: ' + e.message;
   } finally {
-    uploading.value = false
+    uploading.value = false;
   }
 }
 
-
-function startInterview() {
-  if (!resumeReady.value) return
-  interviewing.value = true
-  turn = 0
-  nextQuestion()
+async function startInterview() {
+  interviewing.value = true;
+  turn.value = 0;
+  qaHistory = [];
+  await startVideoRecording(); // Wait for permissions and recording to start
+  nextQuestion(); // Only ask the first question after recording starts
 }
 
-function stopInterview() {
-  interviewing.value = false
-  clearStream()
-  currentQuestion.value = 'Interview stopped.'
-  currentAnswer.value = ''
+async function stopInterview() {
+  interviewing.value = false;
+  clearStream();
+  stopVideoRecording();
+  stopAnswerRecording();
+  currentQuestion.value = 'Interview stopped.';
+  currentAnswer.value = '';
+
+  // Send all answer audio blobs to Azure Speech-to-Text
+  answerTranscripts.value = [];
+  const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
+  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+  if (!subscriptionKey || !region) {
+    answerTranscripts.value = answerAudioBlobs.value.map(() => 'Azure Speech config missing');
+    return;
+  }
+  const endpoint = `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=en-US`;
+  for (let i = 0; i < answerAudioBlobs.value.length; i++) {
+    const blob = answerAudioBlobs.value[i];
+    if (!blob) {
+      answerTranscripts.value[i] = '(No audio)';
+      continue;
+    }
+    // Try to detect the blob type
+    let contentType = blob.type || 'audio/webm';
+    if (contentType !== 'audio/wav' && contentType !== 'audio/ogg' && contentType !== 'audio/webm') {
+      contentType = 'audio/webm'; // fallback
+    }
+    console.log(`[Azure STT] Sending blob for answer ${i+1}, size: ${blob.size}, type: ${contentType}`);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Ocp-Apim-Subscription-Key': subscriptionKey,
+          'Content-Type': contentType,
+          'Accept': 'application/json',
+        },
+        body: blob
+      });
+      console.log(`[Azure STT] Response for answer ${i+1}:`, response);
+      if (!response.ok) throw new Error('Azure STT failed: ' + response.status + ' ' + response.statusText);
+      const result = await response.json();
+      console.log(`[Azure STT] Result for answer ${i+1}:`, result);
+      answerTranscripts.value[i] = result.DisplayText || '(No transcript)';
+    } catch (e) {
+      console.error(`[Azure STT] Error for answer ${i+1}:`, e);
+      answerTranscripts.value[i] = 'Error: ' + e.message;
+    }
+  }
 }
 
 function nextQuestion() {
-  if (!interviewing.value) return
-  clearStream()
-  const qa = mockGenerateNextQA(resumeText.value, turn++)
-  currentQuestion.value = qa.question
-  currentAnswer.value = ''
-  // stream the sample answer locally (typing effect)
-  streamLocalAnswer(qa.sample_answer)
+  stopAnswerRecording();
+  if (!interviewing.value) return;
+  if (turn.value >= qaBatch.value.length) {
+    window.alert('Interview finished!');
+    interviewing.value = false;
+    clearStream();
+    stopVideoRecording();
+    currentQuestion.value = 'Interview finished.';
+    currentAnswer.value = '';
+    showAnswer.value = false;
+    return;
+  }
+  clearStream();
+  showAnswer.value = false;
+  isThinking.value = false;
+  const qa = qaBatch.value[turn.value];
+  currentQuestion.value = qa.question;
+  currentAnswer.value = '';
+  qaHistory.push(qa);
+  turn.value++;
+  speakQuestion(qa.question, () => {
+    const delay = interviewing.value ? Math.floor(Math.random() * 1000) + 1000 : 0;
+    if (interviewing.value && delay > 0) {
+      isThinking.value = true;
+    }
+    setTimeout(() => {
+      showAnswer.value = true;
+      isThinking.value = false;
+      if (interviewing.value) {
+        streamLocalAnswer(qa.answer);
+      } else {
+        currentAnswer.value = qa.answer;
+      }
+    }, delay);
+  });
 }
 
 function streamLocalAnswer(text) {
-  const chars = [...(text || '')]
-  let i = 0
-  streamTimer = setInterval(() => {
-    currentAnswer.value += chars.slice(i, i+3).join('')
-    i += 3
-    if (i >= chars.length) clearStream()
-  }, 22)
-}
-function clearStream(){ if (streamTimer) { clearInterval(streamTimer); streamTimer = null } }
-
-function onPasteResume(){
-  // Auto-upload shortly after paste if content is present
-  setTimeout(() => { if (resumeText.value.trim()) sendResume() }, 150)
-}
-
-// --- Simple keyword extraction + mock Q/A generator ---
-const TECH = [
-  'nginx','docker','kubernetes','aws','gcp','azure','redis','postgres','mysql','mongodb',
-  'typescript','javascript','vue','react','node','express','nest',
-  'python','django','flask','java','spring',
-  'kafka','rabbitmq','grpc','rest','graphql',
-  'terraform','ansible','linux','bash','git','jenkins','github actions',
-  'big-o','algorithm','data structure','system design','microservices','reverse proxy','load balancer','cache','cdn'
-]
-let cachedKeywords = []
-function extractKeywordsFromResume(){
-  const text = resumeText.value.toLowerCase()
-  cachedKeywords = TECH.filter(k => text.includes(k))
-  if (!cachedKeywords.length) cachedKeywords = ['algorithms','system design']
-}
-
-function mockGenerateNextQA(text, turnNo){
-  if (!cachedKeywords.length) extractKeywordsFromResume()
-  const kw = cachedKeywords[turnNo % cachedKeywords.length]
-  const q = makeQuestionFor(kw)
-  const a = makeAnswerFor(kw)
-  return { question: q, sample_answer: a, key_points: makeKeypointsFor(kw) }
-}
-
-function makeQuestionFor(kw){
-  switch(kw){
-    case 'nginx': return 'How would you configure NGINX as a reverse proxy for a Node.js app?'
-    case 'docker': return 'Explain how you would containerize this service using Docker. What goes into the Dockerfile?'
-    case 'kubernetes': return 'How would you deploy a stateless web app to Kubernetes and expose it securely?'
-    case 'big-o':
-    case 'algorithm': return 'What is the time/space complexity of your preferred sorting algorithm and why?'
-    case 'system design': return 'Design a high‑traffic URL shortener. Discuss components and scalability trade‑offs.'
-    default: return `Tell me about your experience with ${kw}.`
+  const chars = [...(text || '')];
+  let i = 0;
+  function typeChunk() {
+    if (i >= chars.length) {
+      clearStream();
+      return;
+    }
+    currentAnswer.value += chars.slice(i, i+3).join('');
+    i += 3;
+    const delay = Math.floor(Math.random() * 80) + 40;
+    streamTimer = setTimeout(typeChunk, delay);
   }
+  typeChunk();
 }
-function makeAnswerFor(kw){
-  const lines = {
-    'nginx': `I would place NGINX in front as a reverse proxy, terminating TLS and forwarding to the Node.js upstreams.\nI’d define an upstream block with multiple app instances for load balancing, enable health checks, gzip, and caching for static assets.\nI’d also set timeouts, client_max_body_size as needed, and use separate server blocks for staging vs prod.`,
-    'docker': `I start with a small base image, install only runtime deps, and copy a pruned build.\nI set NODE_ENV=production, run as a non‑root user, expose the port, and use a multi‑stage Dockerfile to keep image small.\nFor reproducibility I pin versions and use a .dockerignore to keep the context lean.`,
-    'kubernetes': `I’d create a Deployment for stateless replicas, a Service (ClusterIP) for stable discovery, and an Ingress to expose it.\nAdd HPA on CPU/requests, resource requests/limits, liveness/readiness probes, and ConfigMaps/Secrets for configuration.\nUse rolling updates and network policies for isolation.`,
-    'algorithm': `For mergesort the time complexity is O(n log n) and space is O(n).\nIt divides the input, sorts recursively, then merges.\nI’d compare it to quicksort (average O(n log n), worst O(n^2)) and explain when each is preferable.`,
-    'system design': `I’d use an API layer to accept URLs, a key‑generation service, storage (NoSQL) for mappings, and a redirect service.\nAdd a cache like Redis for hot keys, NGINX or CDN at the edge, background workers for analytics, and partitioning for scale.\nI’d discuss consistency, rate limits, and observability.`,
-  }
-  return lines[kw] || `In my work with ${kw}, I focus on clear architecture, good observability, and measurable outcomes.\nI can explain trade‑offs, common pitfalls, and how I test and deploy changes safely.`
+
+function clearStream() {
+  if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
 }
-function makeKeypointsFor(kw){
-  switch(kw){
-    case 'nginx': return ['reverse proxy','upstream','load balancing','TLS termination','caching']
-    case 'docker': return ['multi‑stage build','small base image','non‑root user','.dockerignore']
-    case 'kubernetes': return ['Deployment','Service','Ingress','HPA','probes']
-    case 'algorithm': return ['O(n log n)','space O(n)','merge step','quicksort contrast']
-    case 'system design': return ['NoSQL store','key generation','Redis cache','CDN/edge','analytics pipeline']
-    default: return [kw]
+
+function onPasteResume() {
+  setTimeout(() => { if (resumeText.value.trim()) sendResume(); }, 150);
+}
+
+function parseBatchQA(content) {
+  const qaPairs = [];
+  const regex = /Question\s*\d*\s*:(.*?)\nAnswer\s*\d*\s*:(.*?)(?=\nQuestion|$)/gs;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    qaPairs.push({ question: match[1].trim(), answer: match[2].trim() });
   }
+  if (qaPairs.length === 0 && content.trim()) {
+    qaPairs.push({ question: content.trim(), answer: '' });
+  }
+  return qaPairs;
 }
 </script>
 
@@ -328,4 +631,38 @@ function makeKeypointsFor(kw){
   cursor: not-allowed;
 }
 
+/* Thinking effect animation */
+.thinking-effect {
+  color: #2563eb;
+  font-style: italic;
+  font-size: 1.1em;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+}
+.thinking-effect .dots {
+  display: inline-block;
+  animation: dots 1.5s infinite;
+}
+.thinking-effect .dots span {
+  animation: blink 1.2s infinite;
+  opacity: 0.3;
+  margin-left: 2px;
+}
+.thinking-effect .dots span:nth-child(2) {
+  animation-delay: 0.4s;
+}
+.thinking-effect .dots span:nth-child(3) {
+  animation-delay: 0.8s;
+}
+@keyframes dots {
+  0%, 20% { opacity: 0; }
+  40% { opacity: 1; }
+  60% { opacity: 1; }
+  80%, 100% { opacity: 0; }
+}
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
 </style>

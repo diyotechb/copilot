@@ -1,15 +1,12 @@
- <template>
-  <!-- <div>
-
-     <div class="desc_text">
+<template>
+  <div>
+    <div class="desc_text">
       The following settings are only retained locally in your browser.
       See <a :href="github_url" target="_blank">Github</a> for setup instructions.
-    </div> 
+    </div>
 
     <h1>Open AI</h1>
-    <div class="desc_text">To use GPT, you need an API Key from the <a :href="open_ai_api_url" target="_blank">Open
-      AI</a>
-    </div>
+    <div class="desc_text">To use GPT, you need an API Key from the <a :href="open_ai_api_url" target="_blank">Open AI</a></div>
 
     <div>
       <el-input placeholder="sk-xxxx" v-model="openai_key" @change="onKeyChange('openai_key')">
@@ -30,7 +27,6 @@
       <el-input type="textarea" placeholder="You can setup custom prompt here" :rows="5"
                 v-model="gpt_system_prompt" @change="onKeyChange('gpt_system_prompt')"/>
     </div>
-
 
     <h1>Azure Speech Recognition</h1>
     <div class="desc_text">
@@ -56,11 +52,11 @@
       other language codes
     </div>
 
-   <div>
-    <el-button @click="toDef">set all setting to default</el-button>
+    <div>
+      <el-button @click="toDef">set all setting to default</el-button>
+    </div>
   </div>
-
-  </div> -->
+</template>
 </template>
 
 <script>
