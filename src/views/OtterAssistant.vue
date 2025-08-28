@@ -122,11 +122,45 @@ function startAnswerRecording() {
       answerMediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) answerAudioChunks.push(e.data);
       };
-      answerMediaRecorder.onstop = () => {
+      answerMediaRecorder.onstop = async () => {
+        let idx = turn.value-1;
         try {
           const blob = new Blob(answerAudioChunks);
-          answerAudioBlobs.value[turn.value-1] = blob;
-          console.log('[Answer Recording] Stopped recording for answer', turn.value, 'Blob size:', blob.size);
+          answerAudioBlobs.value[idx] = blob;
+          console.log('[Answer Recording] Stopped recording for answer', idx+1, 'Blob size:', blob.size);
+          // Azure STT API call after each recording
+          const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
+          const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+          if (!subscriptionKey || !region) {
+            answerTranscripts.value[idx] = 'Azure Speech config missing';
+          } else {
+            const endpoint = `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=en-US`;
+            let contentType = blob.type || 'audio/webm';
+            if (contentType !== 'audio/wav' && contentType !== 'audio/ogg' && contentType !== 'audio/webm') {
+              contentType = 'audio/webm';
+            }
+            console.log(`[Azure STT] Sending blob for answer ${idx+1}, size: ${blob.size}, type: ${contentType}`);
+            try {
+              const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                  'Ocp-Apim-Subscription-Key': subscriptionKey,
+                  'Content-Type': contentType,
+                  'Accept': 'application/json',
+                },
+                body: blob
+              });
+              console.log(`[Azure STT] Response for answer ${idx+1}:`, response);
+              if (!response.ok) throw new Error('Azure STT failed: ' + response.status + ' ' + response.statusText);
+              const result = await response.json();
+              console.log(`[Azure STT] Result for answer ${idx+1}:`, result);
+              answerTranscripts.value[idx] = result.DisplayText || '(No transcript)';
+              console.log(`[Azure STT] Transcript for answer ${idx+1}:`, answerTranscripts.value[idx]);
+            } catch (e) {
+              console.error(`[Azure STT] Error for answer ${idx+1}:`, e);
+              answerTranscripts.value[idx] = 'Error: ' + e.message;
+            }
+          }
         } catch (err) {
           console.error('Error creating audio blob:', err);
         }
@@ -420,51 +454,10 @@ async function stopInterview() {
   currentQuestion.value = 'Interview stopped.';
   currentAnswer.value = '';
 
-  // Send all answer audio blobs to Azure Speech-to-Text
-  answerTranscripts.value = [];
-  const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-  if (!subscriptionKey || !region) {
-    answerTranscripts.value = answerAudioBlobs.value.map(() => 'Azure Speech config missing');
-    return;
-  }
-  const endpoint = `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=en-US`;
-  for (let i = 0; i < answerAudioBlobs.value.length; i++) {
-    const blob = answerAudioBlobs.value[i];
-    if (!blob) {
-      answerTranscripts.value[i] = '(No audio)';
-      continue;
-    }
-    // Try to detect the blob type
-    let contentType = blob.type || 'audio/webm';
-    if (contentType !== 'audio/wav' && contentType !== 'audio/ogg' && contentType !== 'audio/webm') {
-      contentType = 'audio/webm'; // fallback
-    }
-    console.log(`[Azure STT] Sending blob for answer ${i+1}, size: ${blob.size}, type: ${contentType}`);
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Ocp-Apim-Subscription-Key': subscriptionKey,
-          'Content-Type': contentType,
-          'Accept': 'application/json',
-        },
-        body: blob
-      });
-      console.log(`[Azure STT] Response for answer ${i+1}:`, response);
-      if (!response.ok) throw new Error('Azure STT failed: ' + response.status + ' ' + response.statusText);
-      const result = await response.json();
-      console.log(`[Azure STT] Result for answer ${i+1}:`, result);
-      answerTranscripts.value[i] = result.DisplayText || '(No transcript)';
-    } catch (e) {
-      console.error(`[Azure STT] Error for answer ${i+1}:`, e);
-      answerTranscripts.value[i] = 'Error: ' + e.message;
-    }
-  }
+  // No longer needed: API call now happens after each recording
 }
 
 function nextQuestion() {
-  stopAnswerRecording();
   if (!interviewing.value) return;
   if (turn.value >= qaBatch.value.length) {
     window.alert('Interview finished!');
@@ -484,6 +477,7 @@ function nextQuestion() {
   currentAnswer.value = '';
   qaHistory.push(qa);
   turn.value++;
+  stopAnswerRecording();
   speakQuestion(qa.question, () => {
     const delay = interviewing.value ? Math.floor(Math.random() * 1000) + 1000 : 0;
     if (interviewing.value && delay > 0) {
