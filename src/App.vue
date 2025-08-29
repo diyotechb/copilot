@@ -1,9 +1,7 @@
 <template>
   <div id="app">
     <el-menu :default-active="$router.currentRoute.path" mode="horizontal" :router="true">
-      <el-menu-item index="/">Otter Assistant</el-menu-item>
-       <!-- <el-menu-item index="/setting">Setting</el-menu-item>
-      <el-menu-item index="/assistant">Assistant</el-menu-item> -->
+      <!-- Remove any tab or navigation related to Otter Assistant -->
     </el-menu>
     <router-view class="router_view"/>
   </div>
