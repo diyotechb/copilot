@@ -49,28 +49,21 @@ const router = new VueRouter({
 // Global navigation guard for authentication
 router.beforeEach((to, from, next) => {
     const token = localStorage.getItem('otterAuthToken');
-    console.log('[Router Guard] Navigating from', from.name, 'to', to.name);
     if (to.name === 'Login') {
         if (token) {
-            console.log('[Router Guard] Authenticated, redirecting to ResumeSetup');
             return next({ name: 'ResumeSetup' });
         }
-        console.log('[Router Guard] Not authenticated, staying on Login');
         return next();
     }
     if (!token) {
-        console.log('[Router Guard] No token, redirecting to Login');
         return next({ name: 'Login' });
     }
     if (to.name === 'InterviewView') {
         const interviewQA = localStorage.getItem('interviewQA');
-        console.log('[Router Guard] interviewQA:', interviewQA);
         if (!interviewQA || interviewQA.trim().length === 0) {
             window.alert('Interview questions are not ready. Please complete setup first.');
-            console.log('[Router Guard] interviewQA missing, redirecting to ResumeSetup');
             return next({ name: 'ResumeSetup' });
         }
-        console.log('[Router Guard] interviewQA found, allowing navigation to InterviewView');
     }
     next();
 });

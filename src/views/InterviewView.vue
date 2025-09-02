@@ -4,6 +4,7 @@
       <InterviewInstructions @startInterview="startInterview" />
     </div>
     <div v-else class="interview-content">
+      <!-- Interview in progress -->
       <div v-if="interviewQA.length && interviewing" class="main-card">
         <div class="section question-section">
           <h2 class="subtitle">Question</h2>
@@ -30,14 +31,42 @@
           <button v-if="interviewing" class="btn stop" @click="stopInterview">Stop Interview</button>
         </div>
       </div>
+      <!-- Show loading only if loadingTranscripts is true -->
+      <SummaryView
+        v-else-if="!interviewing && !allTranscriptsReceived"
+        :interviewQA="interviewQA"
+        :answerTranscripts="answerTranscripts"
+        :recordedVideoUrl="recordedVideoUrl"
+        :enableVideo="enableVideo"
+        :loadingTranscripts="true"
+      />
+      <!-- Show summary only if interview is finished and not loading -->
+      <SummaryView
+        v-else-if="!interviewing && allTranscriptsReceived"
+        :interviewQA="interviewQA"
+        :answerTranscripts="answerTranscripts"
+        :recordedVideoUrl="recordedVideoUrl"
+        :enableVideo="enableVideo"
+        :loadingTranscripts="false"
+      />
       <div v-else style="color:#aaa; text-align:center;">No interview questions found.</div>
     </div>
   <div class="video-corner">
+    <!-- Show VideoRecorder only at the end of the interview if enabled -->
+    <!-- VideoRecorder only mounts if enableVideo is true -->
     <VideoRecorder
-      :interviewing="interviewing && !showInstructions"
+      v-if="enableVideo === true && !interviewing && showRecordedVideo"
+      :interviewing="false"
       @video-mounted="videoPreview = $event"
       @videoUrl="recordedVideoUrl = $event"
       @download="handleDownload"
+    />
+    <AnswerRecorder
+      v-if="interviewing && showAnswer"
+      :silenceThreshold="silenceThreshold"
+      :showAnswer="showAnswer"
+      @silenceDetected="onSilenceDetected"
+      @audioBlob="onAudioBlob"
     />
   </div>
   <!-- Download button moved to VideoRecorder.vue -->
@@ -48,9 +77,23 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
+import AnswerRecorder from '../components/AnswerRecorder.vue';
+import SummaryView from './SummaryView.vue';
 export default {
+  computed: {
+    showRecordedVideo() {
+      return this.enableVideo && !this.interviewing && this.recordedVideoUrl;
+    },
+    allTranscriptsReceived() {
+      // Only check for answered questions (turn index)
+      return (
+        this.answerTranscripts.length === this.turn &&
+        this.answerTranscripts.every(t => t && t !== '(Not received yet)')
+      );
+    }
+  },
   name: 'InterviewView',
-  components: { VideoRecorder, InterviewInstructions },
+  components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView },
   data() {
     return {
       resumeText: localStorage.getItem('resumeText') || '',
@@ -60,17 +103,20 @@ export default {
       currentQuestion: '',
       currentAnswer: '',
       turn: 0,
-            interviewing: false,
+      interviewing: false,
       showAnswer: false,
       isThinking: false,
       answerTranscripts: [],
-      recordedVideoUrl: '',
-      videoPreview: null,
+  recordedVideoUrl: '',
+  videoPreview: null,
+  enableVideo: localStorage.getItem('enableVideo') === 'true',
       streamTimer: null,
       silenceTimer: null,
-      silenceThreshold: 5000, // 5 seconds
+  silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, // Silence wait time from env
       silenceStart: null,
-      showInstructions: true,
+  showInstructions: true,
+  loadingTranscripts: false,
+  lastAudioBlob: null,
     };
   },
   created() {
@@ -78,6 +124,8 @@ export default {
   },
   mounted() {
     this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
+    // Debug: log enableVideo value on mount
+    console.log('[InterviewView] enableVideo value on mount:', this.enableVideo);
     // If navigated here, check if we should start interview immediately
     if (this.$route && this.$route.name === 'InterviewView') {
       this.showInstructions = false;
@@ -90,7 +138,42 @@ export default {
   beforeUnmount() {
     this.clearStream();
   },
+  watch: {
+    allTranscriptsReceived(val) {
+      if (val && !this.interviewing) {
+        console.log('[InterviewView] Summary page loaded. Transcripts:', this.answerTranscripts);
+      }
+    }
+  },
   methods: {
+    onSilenceDetected() {
+      console.log('[InterviewView] Silence detected, moving to next question.');
+      this.nextQuestion();
+    },
+    async onAudioBlob(blob) {
+  this.lastAudioBlob = blob;
+      console.log('[InterviewView] Audio blob received from AnswerRecorder:', blob);
+      if (!this.$refs.assemblyAISpeech) {
+        console.error('[InterviewView] $refs.assemblyAISpeech is undefined!');
+        this.answerTranscripts.push('[AssemblyAISpeech ref not found]');
+        return;
+      }
+      console.log('[InterviewView] Calling sendToAssemblyAI on AssemblyAISpeech...');
+      try {
+        this.loadingTranscripts = true;
+        const transcript = await this.$refs.assemblyAISpeech.sendToAssemblyAI(blob);
+        if (transcript) {
+          this.answerTranscripts.push(transcript);
+        } else {
+          this.answerTranscripts.push('[No transcript received]');
+        }
+      } catch (err) {
+        console.error('[InterviewView] AssemblyAI transcription error:', err);
+        this.answerTranscripts.push('[Transcription error]');
+      } finally {
+        this.loadingTranscripts = false;
+      }
+    },
     handleDownload(url) {
       if (!url) return;
       const a = document.createElement('a');
@@ -133,22 +216,50 @@ export default {
     },
     async startInterview() {
       try {
-        await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log('[InterviewView] Video recording enabled:', this.enableVideo);
+        if (this.enableVideo) {
+          console.log('[InterviewView] Requesting camera and microphone permissions...');
+          await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } else {
+          console.log('[InterviewView] Requesting microphone permission only...');
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
         this.showInstructions = false;
         this.interviewing = true;
         this.turn = 0;
         this.answerTranscripts = [];
         this.nextQuestion();
       } catch (err) {
-        window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+        console.error('[InterviewView] Permission error:', err);
+        window.alert('Microphone (and camera, if enabled) permission denied. Please allow access to start the interview.');
       }
     },
     async stopInterview() {
+  console.log('[InterviewView] stopInterview called.');
+  console.log('[InterviewView] lastAudioBlob:', this.lastAudioBlob);
+  console.log('[InterviewView] answerTranscripts before:', this.answerTranscripts);
       this.interviewing = false;
       this.clearStream();
       this.currentQuestion = 'Interview stopped.';
       this.currentAnswer = '';
       this.showAnswer = false;
+      // Show loading only while waiting for the last transcript
+      if (this.lastAudioBlob != null) {
+        this.loadingTranscripts = true;
+        try {
+          const transcript = await this.$refs.assemblyAISpeech.sendToAssemblyAI(this.lastAudioBlob);
+          this.answerTranscripts.push(transcript || '[No transcript received]');
+        } catch (err) {
+          this.answerTranscripts.push('[Transcription error]');
+        } finally {
+          this.loadingTranscripts = false;
+          console.log('[InterviewView] Last transcript received or error. LoadingTranscripts set to false.');
+        }
+      } else {
+        this.loadingTranscripts = false;
+        console.log('[InterviewView] No lastAudioBlob. LoadingTranscripts set to false.');
+      }
+  // lastAudioBlob is tracked in data() and set in onAudioBlob
     },
     nextQuestion() {
       if (!this.interviewing) return;
@@ -251,45 +362,10 @@ export default {
         if (typeof onEnd === 'function') onEnd();
       }
     },
-    async startAnswerRecording() {
-      // Remove answer timer, only use silence detection
-      this.startSilenceDetection();
+    onTranscript(transcript) {
+      this.answerTranscripts.push(transcript);
+      this.nextQuestion();
     },
-    startSilenceDetection() {
-      if (!this.mediaStream || !(this.mediaStream instanceof MediaStream)) {
-        console.error('No valid mediaStream for silence detection.');
-        return;
-      }
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.mediaStreamSource = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.mediaStreamSource.connect(this.analyser);
-      const data = new Uint8Array(this.analyser.fftSize);
-      this.silenceStart = null;
-      this.silenceTimer = setInterval(() => {
-        this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - 128) < 2);
-        if (isSilent) {
-          if (!this.silenceStart) this.silenceStart = Date.now();
-          if (Date.now() - this.silenceStart > this.silenceThreshold) {
-            this.stopAnswerRecording();
-            this.nextQuestion();
-          }
-        } else {
-          this.silenceStart = null;
-        }
-      }, 250);
-    },
-    stopAnswerRecording() {
-      // Do not stop video recording here
-      if (this.silenceTimer) clearInterval(this.silenceTimer);
-      if (this.audioContext) this.audioContext.close();
-      this.silenceTimer = null;
-      this.audioContext = null;
-      this.mediaStreamSource = null;
-      this.analyser = null;
-      this.silenceStart = null;
-    }
   }
 };
 </script>
@@ -351,13 +427,25 @@ export default {
 }
 .section.question-section,
 .section.answer {
-  width: 100vw;
-  max-width: none;
-  margin: 0 0 2.5rem 0;
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 1rem auto;
   border-radius: 16px;
   background: #f5f5f5;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  padding: 2rem 3vw 2rem 3vw;
+  padding: 2rem 2vw 2rem 2vw;
+}
+.section.question-section {
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 2.5rem auto;
+  border-radius: 16px;
+  background: #f5f5f5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  padding: 2rem 2vw 2rem 2vw;
+  z-index: 1;
+  position: static;
+  height: auto;
 }
 .section.question-section {
   z-index: 1;
@@ -365,16 +453,18 @@ export default {
   height: auto;
 }
 .section.answer {
-  padding: 2rem 2rem 2rem 2rem;
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 1rem auto;
+  border-radius: 16px;
+  background: #f5f5f5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  padding: 2rem 2vw 2rem 2vw;
   min-height: 320px;
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  max-width: none;
-  margin: 0 0 1rem 0;
-  width: auto;
-  align-self: flex-start;
   overflow: hidden;
 }
 .answer-body {

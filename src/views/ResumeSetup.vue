@@ -13,7 +13,36 @@
           </option>
         </select>
       </div>
-      <button class="btn submit-btn" :disabled="!resumeText || !selectedVoice || loadingQA" @click="submitSetup">Submit</button>
+      <div class="section">
+        <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+          <span
+            @click="toggleVideo"
+            :style="{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: enableVideo ? '#2563eb' : '#e5e7eb',
+              color: enableVideo ? '#fff' : '#888',
+              fontSize: '1.5rem',
+              boxShadow: enableVideo ? '0 2px 8px rgba(37,99,235,0.12)' : 'none',
+              border: enableVideo ? '2px solid #2563eb' : '2px solid #e5e7eb',
+              transition: 'all 0.2s',
+              cursor: 'pointer',
+            }"
+            title="Toggle video recording"
+          >
+            <svg v-if="enableVideo" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-1.382l2.447 1.632A1 1 0 0 0 18 13V7a1 1 0 0 0-1.553-.816L14 7.382V6a2 2 0 0 0-2-2H4zm0 2h7v6H4V7z"/></svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-1.382l2.447 1.632A1 1 0 0 0 18 13V7a1 1 0 0 0-1.553-.816L14 7.382V6a2 2 0 0 0-2-2H4zm0 2h7v6H4V7zm10.707 7.293-12-12-1.414 1.414 12 12 1.414-1.414z"/></svg>
+          </span>
+          <span>{{ enableVideo ? 'Video recording enabled' : 'Video recording disabled' }}</span>
+        </label>
+      </div>
+      <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
+        <button class="btn submit-btn" :disabled="!resumeText || !selectedVoice || loadingQA" @click="submitSetup">Submit</button>
+      </div>
       <div v-if="submitSent" class="submit-message">
         <div class="loader" style="margin-bottom:1.5rem;"></div>
         <div style="color:#2563eb; font-weight:600; font-size:1.1rem;">Submitting your setup and generating interview questions...</div>
@@ -54,6 +83,7 @@ export default {
       loadingQA: false,
       qaReady: false,
       submitSent: false,
+      enableVideo: localStorage.getItem('enableVideo') === null ? true : localStorage.getItem('enableVideo') === 'true',
     };
   },
   created() {
@@ -61,6 +91,10 @@ export default {
     this.fetchVoices();
   },
   methods: {
+    toggleVideo() {
+      this.enableVideo = !this.enableVideo;
+      localStorage.setItem('enableVideo', this.enableVideo ? 'true' : 'false');
+    },
     onVoiceChange() {
       if (this.selectedVoice) {
         this.playVoiceSample(this.selectedVoice);
@@ -228,19 +262,22 @@ export default {
       }
     },
     handleStartInterview() {
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      const mediaConstraints = this.enableVideo ? { video: true, audio: true } : { audio: true };
+      navigator.mediaDevices.getUserMedia(mediaConstraints)
         .then(() => {
           const interviewQA = localStorage.getItem('interviewQA');
-          console.log('[ResumeSetup] handleStartInterview called, interviewQA:', interviewQA);
           if (!interviewQA || interviewQA.trim().length === 0) {
             window.alert('Interview questions are not ready. Please try again or contact support.');
             return;
           }
-          console.log('[ResumeSetup] Redirecting to InterviewView...');
           this.$router.push({ name: 'InterviewView' });
         })
         .catch(() => {
-          window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+          if (this.enableVideo) {
+            window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+          } else {
+            window.alert('Microphone permission denied. Please allow access to start the interview.');
+          }
         });
     },
     goToInterview() {

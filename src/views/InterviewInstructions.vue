@@ -4,18 +4,20 @@
       <span>Important: Please read these instructions before starting your interview!</span>
     </div>
     <h2>Interview Instructions</h2>
+    <div class="summary-notification" style="margin:1rem 0; background:#e0f2fe; color:#0369a1; padding:0.75rem 1rem; border-radius:8px; font-weight:500;">
+      After the interview, you'll be taken to a summary page showing your transcripts, actual answers, and (if enabled) your recorded video.
+    </div>
     <div class="instructions-box">
       <ul>
         <li>The interview will begin immediately after you click <b>Start Interview</b>.</li>
         <li>Each question will be read aloud by the selected voice.</li>
         <li style="background:#fffbe6; border-radius:8px; padding:0.5rem 1rem; font-weight:600; color:#b45309; box-shadow:0 2px 8px rgba(180,83,9,0.08);">
-          If you pause or are silent for more than <b>5 seconds</b>, the interview will automatically skip to the next question.
+            If you pause or are silent for more than <b>{{ silenceWaitSeconds }} seconds</b>, the interview will automatically skip to the next question.
         </li>
-        <li>All your answers will be recorded on video for review.</li>
         <li>Questions are generated based on your resume and job description (if provided).</li>
-        <li>You can stop the interview at any time using the <b>Stop Interview</b> button.</li>
+        <li>You can stop the interview at any time using the <b>Stop Interview</b> button. The last answer will be submitted even if you stop mid-way.</li>
       </ul>
-      <div class="instructions-note">Make sure your camera and microphone are enabled before starting.</div>
+      <div class="instructions-note">Camera and microphone permissions will only be requested if needed for your selected options.</div>
     </div>
     <div style="text-align:center; margin-top:2rem;">
       <slot name="loading"></slot>
@@ -26,7 +28,16 @@
 
 <script>
 export default {
-  name: 'InterviewInstructions'
+  name: 'InterviewInstructions',
+  computed: {
+    silenceWaitSeconds() {
+      const envVal = process.env.VUE_APP_SILENCE_WAIT_MS;
+      if (!envVal) {
+        throw new Error('VUE_APP_SILENCE_WAIT_MS is not defined in the environment. Please set it in your .env file.');
+      }
+      return Math.round(Number(envVal) / 1000);
+    }
+  }
 };
 </script>
 

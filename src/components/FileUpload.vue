@@ -9,7 +9,7 @@
     <textarea v-model="text" @paste="onPasteText" :placeholder="`Or paste your ${label.toLowerCase()} text here...`" class="textarea" />
     <div class="resume-info" v-if="file">
       <span>{{ file.name }} ({{ (file.size/1024).toFixed(1) }} KB)</span>
-      <button class="clear-btn" @click="clearFile">✕</button>
+  <button class="clear-btn" @click="clearFile">Clear file</button>
     </div>
   </div>
 </template>

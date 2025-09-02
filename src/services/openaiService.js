@@ -8,7 +8,7 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
     throw new Error('The OPENAI_API_KEY environment variable is missing or empty; either provide it, or instantiate the OpenAI client with an apiKey option, like new OpenAI({ apiKey: "My API Key" }).');
   }
   const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-  let prompt = `Generate a large, unique, and randomized set of interview questions and answers based on the following resume. Avoid repeating common questions. Make each question distinct and relevant to the resume and job description. Generate as many Q/A pairs as possible, up to the model's response limit. For each answer, make it as descriptive and detailed as possible, providing deep technical insights and real-world examples. Ensure the questions and answers are different and randomized for every run.`;
+  let prompt = `Generate a large, unique, and highly randomized set of interview questions and answers based on the following resume. Avoid repeating common questions. Make each question distinct and relevant to the resume and job description. Generate as many Q/A pairs as possible, up to the model's response limit. For each answer, make it as descriptive and detailed as possible, providing deep technical insights and real-world examples. Vary the style, difficulty, and format of each question and answer. Add a random fact or twist to each answer. Ensure the questions and answers are different and randomized for every run.`;
   if (jobDescriptionText) {
     prompt += ` Also consider the following job description.\nJob Description:\n${jobDescriptionText}`;
   }
@@ -22,6 +22,7 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
         { role: 'system', content: 'You are an interview assistant. Generate multiple interview questions and answers from the candidate’s resume.' },
         { role: 'user', content: prompt }
       ],
+      temperature: 0.9,
       stream: false,
     });
     console.log('[OpenAI Completion]', completion);
