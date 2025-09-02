@@ -8,16 +8,8 @@
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 export default {
-  created() {
-    console.log('%c[AnswerRecorder] created. Initial showAnswer:','color: #2563eb; font-weight: bold;', this.showAnswer);
-  },
-  updated() {
-  // console.log('%c[AnswerRecorder] created. Initial showAnswer:','color: #2563eb; font-weight: bold;', this.showAnswer);
-  },
   mounted() {
-  // console.log('%c[AnswerRecorder] updated. showAnswer:','color: #2563eb; font-weight: bold;', this.showAnswer);
     if (this.showAnswer && !this.recording) {
-      console.log('[AnswerRecorder] mounted: showAnswer is true, starting recording immediately.');
       this.startRecording();
     }
   },
@@ -30,6 +22,10 @@ export default {
     showAnswer: {
       type: Boolean,
       default: false
+    },
+    questionIndex: { 
+      type: Number, 
+      required: true 
     }
   },
   data() {
@@ -48,9 +44,7 @@ export default {
   },
   watch: {
     showAnswer(newVal, oldVal) {
-      console.log('%c[AnswerRecorder] showAnswer watcher triggered. Old value:','color: #f59e42; font-weight: bold;', oldVal, 'New value:', newVal);
       if (newVal && !this.recording) {
-        console.log('%c[AnswerRecorder] showAnswer is true, starting recording automatically.','color: #059669; font-weight: bold;');
         this.startRecording();
       }
     }
@@ -88,18 +82,25 @@ export default {
       }
     },
     async handleStop() {
-      console.log('[AnswerRecorder] Audio recording stopped.');
       const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
-      console.log('[AnswerRecorder] Sending audioBlob to AssemblyAI for transcription:', audioBlob);
+
+      if (!audioBlob || audioBlob.size === 0) {
+        console.warn('[AnswerRecorder] No audio recorded, skipping transcription.');
+        localStorage.setItem('transcriptionInProcess', 'false');
+        return;
+      }
+      localStorage.setItem('transcriptionInProcess', 'true');
       let transcript = '';
       try {
         transcript = await sendToAssemblyAI(audioBlob);
-        console.log('[AnswerRecorder] Transcript received:', transcript);
       } catch (err) {
         console.error('[AnswerRecorder] AssemblyAI transcription error:', err);
         transcript = '[Transcription error]';
       }
-      this.$emit('transcript', transcript);
+      let transcripts = JSON.parse(localStorage.getItem('transcripts') || '[]');
+      transcripts[this.questionIndex] = transcript;
+      localStorage.setItem('transcripts', JSON.stringify(transcripts));
+      localStorage.setItem('transcriptionInProcess', 'false');
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;

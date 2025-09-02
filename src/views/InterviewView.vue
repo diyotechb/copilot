@@ -65,8 +65,10 @@
       v-if="interviewing && showAnswer"
       :silenceThreshold="silenceThreshold"
       :showAnswer="showAnswer"
+      :questionIndex="turn - 1"
       @silenceDetected="onSilenceDetected"
       @audioBlob="onAudioBlob"
+      ref="answerRecorder"
     />
   </div>
   <!-- Download button moved to VideoRecorder.vue -->
@@ -75,6 +77,7 @@
 
 <script>
 import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
@@ -85,11 +88,26 @@ export default {
       return this.enableVideo && !this.interviewing && this.recordedVideoUrl;
     },
     allTranscriptsReceived() {
-      // Only check for answered questions (turn index)
-      return (
-        this.answerTranscripts.length === this.turn &&
-        this.answerTranscripts.every(t => t && t !== '(Not received yet)')
-      );
+      if (this.interviewing) {
+        const allReceived = this.answerTranscripts.length === this.interviewQA.length;
+        console.log('[InterviewView] allReceived:', allReceived);
+        return false;
+      }
+      if (this.lastAudioBlob) {
+        console.log('[InterviewView] Transcript for last answer is pending, show loading.');
+        return false;
+      }
+      const allReceived = this.answerTranscripts.length === this.interviewQA.length && this.interviewQA.length > 0;
+      if (allReceived) {
+        console.log('[InterviewView] All transcripts received, showing summary.');
+        return true;
+      }
+      if (this.answerTranscripts.length === 0 && this.interviewQA.length === 0) {
+        console.log('[InterviewView] No transcript expected, showing summary.');
+        return true;
+      }
+      console.log('[InterviewView] Waiting for transcripts, show loading.');
+      return false;
     }
   },
   name: 'InterviewView',
@@ -99,34 +117,33 @@ export default {
       resumeText: localStorage.getItem('resumeText') || '',
       selectedVoice: localStorage.getItem('selectedVoice') || '',
       jobDescription: localStorage.getItem('jobDescription') || '',
+      interviewStopping: false,
       interviewQA: [],
       currentQuestion: '',
       currentAnswer: '',
       turn: 0,
       interviewing: false,
-      showAnswer: false,
+      showAnswer: true,
       isThinking: false,
       answerTranscripts: [],
-  recordedVideoUrl: '',
-  videoPreview: null,
-  enableVideo: localStorage.getItem('enableVideo') === 'true',
+      recordedVideoUrl: '',
+      videoPreview: null,
+      enableVideo: localStorage.getItem('enableVideo') === 'true',
       streamTimer: null,
       silenceTimer: null,
-  silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, // Silence wait time from env
+      silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, // Silence wait time from env
       silenceStart: null,
-  showInstructions: true,
-  loadingTranscripts: false,
-  lastAudioBlob: null,
+      showInstructions: true,
+      loadingTranscripts: false,
+      lastAudioBlob: null,
     };
   },
   created() {
-    this.parseInterviewQA();
+    const storedQA = localStorage.getItem('interviewQA');
+    this.interviewQA = storedQA ? JSON.parse(storedQA) : [];
   },
   mounted() {
-    this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
-    // Debug: log enableVideo value on mount
-    console.log('[InterviewView] enableVideo value on mount:', this.enableVideo);
-    // If navigated here, check if we should start interview immediately
+  this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
     if (this.$route && this.$route.name === 'InterviewView') {
       this.showInstructions = false;
       this.interviewing = true;
@@ -140,6 +157,13 @@ export default {
   },
   watch: {
     allTranscriptsReceived(val) {
+      console.log('[InterviewView] allTranscriptsReceived changed:', val);
+      if (!val && !this.interviewing) {
+        console.log('[InterviewView] Loading screen debug:');
+        console.log('interviewing:', this.interviewing);
+        console.log('lastAudioBlob:', this.lastAudioBlob);
+        console.log('answerTranscripts:', this.answerTranscripts);
+      }
       if (val && !this.interviewing) {
         console.log('[InterviewView] Summary page loaded. Transcripts:', this.answerTranscripts);
       }
@@ -151,27 +175,20 @@ export default {
       this.nextQuestion();
     },
     async onAudioBlob(blob) {
-  this.lastAudioBlob = blob;
-      console.log('[InterviewView] Audio blob received from AnswerRecorder:', blob);
-      if (!this.$refs.assemblyAISpeech) {
-        console.error('[InterviewView] $refs.assemblyAISpeech is undefined!');
-        this.answerTranscripts.push('[AssemblyAISpeech ref not found]');
-        return;
-      }
-      console.log('[InterviewView] Calling sendToAssemblyAI on AssemblyAISpeech...');
+      this.showAnswer = false; // Unmount AnswerRecorder immediately
+      this.lastAudioBlob = blob;
       try {
-        this.loadingTranscripts = true;
-        const transcript = await this.$refs.assemblyAISpeech.sendToAssemblyAI(blob);
-        if (transcript) {
-          this.answerTranscripts.push(transcript);
-        } else {
-          this.answerTranscripts.push('[No transcript received]');
-        }
+        const transcript = await sendToAssemblyAI(blob);
+        this.answerTranscripts.push(transcript || '[No transcript received]');
+        console.log('[InterviewView] answerTranscripts updated:', this.answerTranscripts);
       } catch (err) {
-        console.error('[InterviewView] AssemblyAI transcription error:', err);
         this.answerTranscripts.push('[Transcription error]');
+        console.log('[InterviewView] answerTranscripts updated:', this.answerTranscripts);
       } finally {
+        this.lastAudioBlob = null;
         this.loadingTranscripts = false;
+        this.interviewStopping = false;
+        this.interviewing = false;
       }
     },
     handleDownload(url) {
@@ -191,28 +208,6 @@ export default {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    },
-    parseInterviewQA() {
-      const qaRaw = localStorage.getItem('interviewQA') || '';
-      let qaArr = this.parseBatchQA(qaRaw);
-      // Shuffle Q/A array
-      for (let i = qaArr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
-      }
-      this.interviewQA = qaArr;
-    },
-    parseBatchQA(content) {
-      const qaPairs = [];
-      const regex = /Question\s*\d+\s*:(.*?)\nAnswer\s*\d+\s*:(.*?)(?=\nQuestion|$)/gs;
-      let match;
-      while ((match = regex.exec(content)) !== null) {
-        qaPairs.push({ question: match[1].trim(), answer: match[2].trim() });
-      }
-      if (qaPairs.length === 0 && content.trim()) {
-        qaPairs.push({ question: content.trim(), answer: '' });
-      }
-      return qaPairs;
     },
     async startInterview() {
       try {
@@ -235,37 +230,20 @@ export default {
       }
     },
     async stopInterview() {
-  console.log('[InterviewView] stopInterview called.');
-  console.log('[InterviewView] lastAudioBlob:', this.lastAudioBlob);
-  console.log('[InterviewView] answerTranscripts before:', this.answerTranscripts);
-      this.interviewing = false;
-      this.clearStream();
-      this.currentQuestion = 'Interview stopped.';
-      this.currentAnswer = '';
-      this.showAnswer = false;
-      // Show loading only while waiting for the last transcript
-      if (this.lastAudioBlob != null) {
-        this.loadingTranscripts = true;
-        try {
-          const transcript = await this.$refs.assemblyAISpeech.sendToAssemblyAI(this.lastAudioBlob);
-          this.answerTranscripts.push(transcript || '[No transcript received]');
-        } catch (err) {
-          this.answerTranscripts.push('[Transcription error]');
-        } finally {
-          this.loadingTranscripts = false;
-          console.log('[InterviewView] Last transcript received or error. LoadingTranscripts set to false.');
-        }
-      } else {
-        this.loadingTranscripts = false;
-        console.log('[InterviewView] No lastAudioBlob. LoadingTranscripts set to false.');
+      localStorage.setItem('transcriptionInProcess', 'true');
+      if (this.$refs.answerRecorder && this.$refs.answerRecorder.isRecording) {
+        this.$refs.answerRecorder.stopRecording();
       }
-  // lastAudioBlob is tracked in data() and set in onAudioBlob
+      this.interviewing = false;
+      this.showAnswer = false;
+      this.$router.push({ name: 'SummaryView' });
     },
     nextQuestion() {
-      if (!this.interviewing) return;
+      if (!this.interviewing || this.interviewStopping) return;
       if (this.turn >= this.interviewQA.length) {
         window.alert('Interview finished!');
         this.interviewing = false;
+        this.showAnswer = false;
         this.clearStream();
         this.currentQuestion = 'Interview finished.';
         this.currentAnswer = '';
@@ -361,10 +339,6 @@ export default {
         console.error('Azure TTS error:', e);
         if (typeof onEnd === 'function') onEnd();
       }
-    },
-    onTranscript(transcript) {
-      this.answerTranscripts.push(transcript);
-      this.nextQuestion();
     },
   }
 };

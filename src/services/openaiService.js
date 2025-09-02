@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 
 export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
-  console.log('[generateInterviewQA] Called with:', { resumeText, jobDescriptionText, apiKey });
+  // console.log('[generateInterviewQA] Called with:', { resumeText, jobDescriptionText, apiKey });
   if (!apiKey) {
     console.error('[generateInterviewQA] Missing OpenAI API key:', apiKey);
     throw new Error('The OPENAI_API_KEY environment variable is missing or empty; either provide it, or instantiate the OpenAI client with an apiKey option, like new OpenAI({ apiKey: "My API Key" }).');
@@ -14,7 +14,7 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   }
   prompt += `\nResume:\n${resumeText}`;
   prompt += `\n\nFormat your response exactly as follows:\nQuestion 1: ...\nAnswer 1: ...\nQuestion 2: ...\nAnswer 2: ...\n(Continue for all questions)`;
-  console.log('[OpenAI Prompt]', prompt);
+  // console.log('[OpenAI Prompt]', prompt);
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -25,7 +25,7 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
       temperature: 0.9,
       stream: false,
     });
-    console.log('[OpenAI Completion]', completion);
+    // console.log('[OpenAI Completion]', completion);
     return completion.choices[0].message.content;
   } catch (err) {
     console.error('[generateInterviewQA] OpenAI API error:', err);

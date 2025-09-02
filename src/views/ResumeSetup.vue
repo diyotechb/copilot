@@ -86,8 +86,12 @@ export default {
       enableVideo: localStorage.getItem('enableVideo') === null ? true : localStorage.getItem('enableVideo') === 'true',
     };
   },
-  created() {
+  mounted() {
     localStorage.removeItem('interviewQA');
+    localStorage.removeItem('transcripts');
+    localStorage.removeItem('transcriptionInProcess');
+    localStorage.removeItem('resumeText');
+    localStorage.removeItem('selectedVoice');
     this.fetchVoices();
   },
   methods: {
@@ -236,6 +240,18 @@ export default {
         this.handleFileSubmission(file, 'jobDescriptionText');
       }
     },
+    parseBatchQA(content) {
+      const qaPairs = [];
+      const regex = /Question\s*\d+\s*:(.*?)\nAnswer\s*\d+\s*:(.*?)(?=\nQuestion|$)/gs;
+      let match;
+      while ((match = regex.exec(content)) !== null) {
+        qaPairs.push({ question: match[1].trim(), answer: match[2].trim() });
+      }
+      if (qaPairs.length === 0 && content.trim()) {
+        qaPairs.push({ question: content.trim(), answer: '' });
+      }
+      return qaPairs;
+    },
     async submitSetup() {
       this.submitSent = true;
       this.loadingQA = true;
@@ -250,7 +266,13 @@ export default {
           resumeText: this.resumeText,
           jobDescriptionText: this.jobDescriptionText
         });
-        localStorage.setItem('interviewQA', qa);
+        const qaArr = this.parseBatchQA(qa);
+        for (let i = qaArr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
+        }
+        localStorage.setItem('interviewQA', JSON.stringify(qaArr));
+        //parse and save the interviewQA
         this.qaReady = true;
         this.loadingQA = false;
         this.submitSent = false;

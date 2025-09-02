@@ -19,6 +19,11 @@ const routes = [
         component: () => import('@/views/ResumeSetup.vue')
     },
     {
+        path: '/summary',
+        name: 'SummaryView',
+        component: () => import('@/views/SummaryView.vue')
+    },
+    {
         path: '/interview',
         name: 'InterviewView',
         component: () => import('@/views/InterviewView.vue')
