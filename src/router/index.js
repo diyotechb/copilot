@@ -1,9 +1,9 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
-import HomeView from '../views/HomeView.vue'
-import BedrockView from '@/views/BedrockView.vue'
-import OtterAssistant from '@/views/OtterAssistant.vue'
-// import Login from '@/views/Login.vue'
+import Login from '@/views/Login.vue'
+import ResumeSetup from '@/views/ResumeSetup.vue'
+import SummaryView from '@/views/SummaryView.vue'
+import InterviewView from '@/views/InterviewView.vue'
 
 Vue.use(VueRouter)
 
@@ -11,40 +11,27 @@ const routes = [
     {
         path: '/',
         name: 'Login',
-        component: () => import('@/views/Login.vue')
+        component: Login
     },
     {
         path: '/setup',
         name: 'ResumeSetup',
-        component: () => import('@/views/ResumeSetup.vue')
+        component: ResumeSetup
     },
     {
         path: '/summary',
         name: 'SummaryView',
-        component: () => import('@/views/SummaryView.vue')
+        component: SummaryView
     },
     {
         path: '/interview',
         name: 'InterviewView',
-        component: () => import('@/views/InterviewView.vue')
-    },
-    {
-        path: '/assistant',
-        name: 'bedrock',
-        component: BedrockView
+        component: InterviewView
     },
     {
         path: '/setting',
-        component: () => import(/* webpackChunkName: "about" */ '../views/ResumeSetup.vue')
-    },
-    {
-        path: '/new',
-        component: () => import(/* webpackChunkName: "about" */ '../views/Homeview2.vue')
-    },
-    {
-        path: '/view3',
-        component: () => import(/* webpackChunkName: "about" */ '../views/HomeView3.vue')
-    },
+        component: ResumeSetup
+    }
 ]
 
 const router = new VueRouter({
