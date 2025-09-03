@@ -78,7 +78,6 @@ export default {
   },
   beforeUnmount() {
     this.stopRecording();
-    this.clearSilenceDetection();
   },
   methods: {
     async startRecording() {
@@ -114,7 +113,6 @@ export default {
           }
         };
         this.mediaRecorder.start();
-        this.startSilenceDetection();
       } catch (err) {
         console.error('Could not start video recording:', err);
       }
@@ -125,7 +123,6 @@ export default {
           this.mediaRecorder.stop();
         }, 500);
       }
-      this.clearSilenceDetection();
     },
     goHome() {
       this.stopRecording();
@@ -142,44 +139,6 @@ export default {
       });
       if (!this.recordedVideoUrl) return;
       this.$emit('download', this.recordedVideoUrl);
-    },
-    startSilenceDetection() {
-      if (!this.mediaStream || !(this.mediaStream instanceof MediaStream)) {
-        console.error('No valid mediaStream for silence detection.');
-        return;
-      }
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.mediaStreamSource = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.mediaStreamSource.connect(this.analyser);
-      const data = new Uint8Array(this.analyser.fftSize);
-      this.silenceStart = null;
-      this.silenceTimer = setInterval(() => {
-        this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - 128) < 2);
-        if (isSilent) {
-          if (!this.silenceStart) this.silenceStart = Date.now();
-          if (Date.now() - this.silenceStart > this.silenceThreshold) {
-            this.$emit('silenceDetected');
-            this.silenceStart = null;
-          }
-        } else {
-          this.silenceStart = null;
-        }
-      }, 250);
-    },
-    clearSilenceDetection() {
-      if (this.silenceTimer) {
-        clearInterval(this.silenceTimer);
-        this.silenceTimer = null;
-      }
-      if (this.audioContext) {
-        this.audioContext.close();
-        this.audioContext = null;
-      }
-      this.mediaStreamSource = null;
-      this.analyser = null;
-      this.silenceStart = null;
     }
   }
 };

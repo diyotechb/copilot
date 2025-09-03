@@ -51,11 +51,20 @@ export default {
   },
   methods: {
     async startRecording() {
-      this.error = '';
-      this.audioChunks = [];
-      try {
+  this.error = '';
+  this.audioChunks = [];
+  try {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        this.mediaRecorder = new MediaRecorder(this.mediaStream);
+        // Choose a supported format
+        let mimeType = '';
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+          mimeType = 'audio/ogg';
+        } else {
+          mimeType = ''; // fallback to default
+        }
+        this.mediaRecorder = new MediaRecorder(this.mediaStream, mimeType ? { mimeType } : undefined);
         this.mediaRecorder.ondataavailable = (e) => {
           if (e.data.size > 0) {
             this.audioChunks.push(e.data);
@@ -72,6 +81,7 @@ export default {
     },
     stopRecording() {
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        setTimeout(() => {
         this.mediaRecorder.stop();
         this.recording = false;
         this.clearSilenceDetection();
@@ -79,16 +89,33 @@ export default {
           this.mediaStream.getTracks().forEach(track => track.stop());
           this.mediaStream = null;
         }
+      }, 500); 
       }
     },
     async handleStop() {
-      const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+      let mimeType = '';
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        mimeType = 'audio/ogg';
+      } else {
+        mimeType = '';
+      }
+      const audioBlob = new Blob(this.audioChunks, mimeType ? { type: mimeType } : undefined);
 
       if (!audioBlob || audioBlob.size === 0) {
         console.warn('[AnswerRecorder] No audio recorded, skipping transcription.');
         localStorage.setItem('transcriptionInProcess', 'false');
         return;
       }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Audio = reader.result;
+        localStorage.setItem(`Recording_${this.questionIndex}`, base64Audio);
+      };
+      reader.readAsDataURL(audioBlob);
+
       localStorage.setItem('transcriptionInProcess', 'true');
       let transcript = '';
       try {

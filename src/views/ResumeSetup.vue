@@ -2,8 +2,14 @@
   <div class="resume-setup-container">
     <template v-if="!loadingQA && !qaReady">
       <h2>Resume & Interviewer Voice Setup</h2>
-      <FileUpload label="Resume" v-model="resumeText" />
-      <FileUpload label="Job Description" v-model="jobDescriptionText" />
+      <FileUpload
+        label="Resume"
+        @input="resumeText = $event"
+      />
+      <FileUpload
+        label="Job Description"
+        @input="jobDescriptionText = $event"
+      />
       <div class="section">
         <h3>Select Interviewer Voice</h3>
         <select v-model="selectedVoice" class="voice-select" @change="onVoiceChange">
@@ -64,9 +70,6 @@
 import FileUpload from '../components/FileUpload.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import { generateInterviewQA } from '../services/openaiService.js';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import mammoth from 'mammoth';
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 export default {
   name: 'ResumeSetup',
@@ -74,11 +77,9 @@ export default {
   data() {
     return {
       resumeText: '',
-      resumeFile: null,
       voices: [],
       selectedVoice: '',
       jobDescriptionText: '',
-      jobDescriptionFile: null,
       uploading: false,
       loadingQA: false,
       qaReady: false,
@@ -154,92 +155,6 @@ export default {
         alert('Could not play sample for this voice.');
       }
     },
-    clearResume() {
-      this.resumeFile = null;
-      this.resumeText = "";
-    },
-    clearJobDescription() {
-      this.jobDescriptionFile = null;
-      this.jobDescriptionText = "";
-    },
-    onPasteResume() {
-      setTimeout(() => { if (this.resumeText.trim()) {/* Optionally auto-upload */} }, 150);
-    },
-    onPasteJobDescription() {
-      setTimeout(() => { if (this.jobDescriptionText.trim()) {/* Optionally auto-upload */} }, 150);
-    },
-    async handleFileSubmission(file, target) {
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (["txt","md","rtf"].includes(ext)) {
-        const reader = new FileReader();
-        reader.onload = () => { this[target] = String(reader.result || ""); };
-        reader.readAsText(file);
-      } else if (ext === "pdf") {
-        this[target] = "Extracting text from PDF...";
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          try {
-            const typedarray = new Uint8Array(ev.target.result);
-            const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
-            let text = "";
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i);
-              const content = await page.getTextContent();
-              text += content.items.map(item => item.str).join(" ") + "\n";
-            }
-            this[target] = text.trim();
-          } catch (err) {
-            this[target] = "Failed to extract text from PDF.";
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      } else if (ext === "docx") {
-        this[target] = "Extracting text from DOCX...";
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          try {
-            const arrayBuffer = ev.target.result;
-            const result = await mammoth.extractRawText({ arrayBuffer });
-            this[target] = result.value.trim();
-          } catch (err) {
-            this[target] = "Failed to extract text from DOCX.";
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      } else {
-        this[target] = "Unsupported file type.";
-      }
-    },
-    async onFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        this.resumeFile = file;
-        this.handleFileSubmission(file, 'resumeText');
-      }
-    },
-    async onDrop(e) {
-      this.dragging = false;
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        this.resumeFile = file;
-        this.handleFileSubmission(file, 'resumeText');
-      }
-    },
-    async onJobFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        this.jobDescriptionFile = file;
-        this.handleFileSubmission(file, 'jobDescriptionText');
-      }
-    },
-    async onDropJob(e) {
-      this.draggingJob = false;
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        this.jobDescriptionFile = file;
-        this.handleFileSubmission(file, 'jobDescriptionText');
-      }
-    },
     parseBatchQA(content) {
       const qaPairs = [];
       const regex = /Question\s*\d+\s*:(.*?)\nAnswer\s*\d+\s*:(.*?)(?=\nQuestion|$)/gs;
@@ -256,11 +171,9 @@ export default {
       this.submitSent = true;
       this.loadingQA = true;
       this.qaReady = false;
-      // Save selections
       localStorage.setItem('resumeText', this.resumeText);
       localStorage.setItem('selectedVoice', this.selectedVoice);
       localStorage.setItem('jobDescription', this.jobDescriptionText);
-      // Generate Q/A
       try {
         const qa = await generateInterviewQA({
           resumeText: this.resumeText,
@@ -272,7 +185,6 @@ export default {
           [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
         }
         localStorage.setItem('interviewQA', JSON.stringify(qaArr));
-        //parse and save the interviewQA
         this.qaReady = true;
         this.loadingQA = false;
         this.submitSent = false;

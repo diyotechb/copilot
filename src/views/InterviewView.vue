@@ -274,7 +274,21 @@ export default {
       });
     },
     streamLocalAnswer(text) {
-      const chunkSize = Math.max(Math.ceil((text || '').length / 16), 8); // Smaller chunks
+      const delayFactor = Number(process.env.VUE_APP_STREAM_DELAY_FACTOR) || 1;
+      const chunkSizeFactor = Number(process.env.VUE_APP_STREAM_CHUNK_FACTOR) || 1;
+
+      if (!delayFactor || !chunkSizeFactor) {
+        throw new Error('Missing VUE_APP_STREAM_DELAY_FACTOR or VUE_APP_STREAM_CHUNK_FACTOR in environment variables.');
+      }
+
+      const baseChunkSize = Math.max(Math.ceil((text || '').length / 16), 8);
+      const chunkSize = Math.round(baseChunkSize * chunkSizeFactor);
+
+      const baseMinDelay = 500;
+      const baseMaxDelay = 700;
+      const minDelay = Math.floor(baseMinDelay * delayFactor);
+      const maxDelay = Math.floor(baseMaxDelay * delayFactor);
+
       const chars = [...(text || '')];
       let i = 0;
       const typeChunk = () => {
@@ -282,9 +296,9 @@ export default {
           this.clearStream();
           return;
         }
-        this.currentAnswer += chars.slice(i, i+chunkSize).join('');
+        this.currentAnswer += chars.slice(i, i + chunkSize).join('');
         i += chunkSize;
-        const delay = Math.floor(Math.random() * 700) + 500; // Slower and randomized chunk reveal
+        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
         this.streamTimer = setTimeout(typeChunk, delay);
       };
       typeChunk();

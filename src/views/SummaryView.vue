@@ -24,6 +24,29 @@
           <span class="summary-label">Actual Answer:</span>
           <span class="summary-value">{{ localInterviewQA[idx]?.answer || '(No answer found)' }}</span>
         </div>
+        <div class="summary-row">
+          <span class="summary-label">Recording: </span>
+          <button
+            class="play-btn"
+            :disabled="!getRecording(idx)"
+            @click="playRecording(idx)"
+          >
+            ▶️ Play
+          </button>
+          <button
+            class="stop-btn"
+            :disabled="!getRecording(idx)"
+            @click="stopPlayback(idx)"
+          >
+            ⏹️ Stop
+          </button>
+          <audio
+            v-if="getRecording(idx)"
+            :src="getRecording(idx)"
+            :ref="'audio_' + idx"
+            style="display:none"
+          ></audio>
+        </div>
       </div>
     </div>
   </div>
@@ -62,6 +85,25 @@ export default {
     loadTranscripts() {
       const stored = localStorage.getItem('transcripts');
       this.transcripts = stored ? JSON.parse(stored) : [];
+    },
+    getRecording(idx) {
+      return localStorage.getItem(`Recording_${idx}`);
+    },
+     playRecording(idx) {
+      let audioEl = this.$refs['audio_' + idx];
+      if (Array.isArray(audioEl)) audioEl = audioEl[0];
+      if (audioEl && typeof audioEl.play === 'function') {
+        audioEl.currentTime = 0;
+        audioEl.play();
+      }
+    },
+    stopPlayback(idx) {
+      let audioEl = this.$refs['audio_' + idx];
+      if (Array.isArray(audioEl)) audioEl = audioEl[0];
+      if (audioEl && typeof audioEl.pause === 'function') {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+      }
     }
   }
 };
@@ -104,6 +146,15 @@ export default {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+.play-btn,
+.stop-btn {
+  padding-left: 1rem;      /* Add left padding */
+  padding-right: 1rem;     /* Keep right padding for balance */
+  min-width: 90px;
+  margin-left: 0.5rem;
+  text-align: center;
+  display: inline-block;
+}
 .summary-label {
   font-weight: 600;
   color: #22223b;
@@ -135,6 +186,28 @@ export default {
   height: 48px;
   animation: spin 1s linear infinite;
   margin: 0 auto;
+}
+.play-btn {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  transition: background 0.2s;
+}
+.play-btn:disabled {
+  background: #e5e7eb;
+  color: #888;
+  cursor: not-allowed;
+}
+.stop-btn {
+  background: #ef4444;
+}
+.stop-btn:hover {
+  background: #dc2626;
 }
 @keyframes spin {
   0% { transform: rotate(0deg); }
