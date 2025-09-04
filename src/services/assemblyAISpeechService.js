@@ -1,5 +1,3 @@
-// src/services/assemblyAISpeechService.js
-
 export async function sendToAssemblyAI(audioBlob) {
   const apiKey = process.env.VUE_APP_ASSEMBLY_AI_TOKEN;
   if (!apiKey) {
@@ -16,7 +14,7 @@ export async function sendToAssemblyAI(audioBlob) {
   });
   const uploadData = await uploadRes.json();
   if (!uploadData.upload_url) {
-    console.error('[assemblyAISpeechService] Failed to upload audio to AssemblyAI.');
+    console.error('[assemblyAISpeechService] Failed to upload audio to AssemblyAI.', uploadData);
     throw new Error('Failed to upload audio to AssemblyAI.');
   }
   // Step 2: Request transcription
@@ -26,11 +24,15 @@ export async function sendToAssemblyAI(audioBlob) {
       'Authorization': apiKey,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ audio_url: uploadData.upload_url })
+    body: JSON.stringify({
+        audio_url: uploadData.upload_url,
+        sentiment_analysis: true,
+        disfluencies: true
+    })
   });
   const transcriptData = await transcriptRes.json();
   if (!transcriptData.id) {
-    console.error('[assemblyAISpeechService] Failed to start transcription job.');
+    console.error('[assemblyAISpeechService] Failed to start transcription job.', transcriptData);
     throw new Error('Failed to start transcription job.');
   }
   // Step 3: Poll for transcript
@@ -44,16 +46,12 @@ export async function sendToAssemblyAI(audioBlob) {
     const pollData = await pollRes.json();
     status = pollData.status;
     if (status === 'completed') {
-      transcript = pollData.text;
-      console.log('[assemblyAISpeechService] Transcription completed:', transcript);
-      break;
+      console.log('[assemblyAISpeechService] Transcription completed:', pollData);
+      return pollData;
     } else if (status === 'failed') {
-      console.error('[assemblyAISpeechService] AssemblyAI transcription failed.');
+      console.error('[assemblyAISpeechService] AssemblyAI transcription failed.', pollData);
       throw new Error('AssemblyAI transcription failed.');
     }
   }
-  if (!transcript) {
-    console.warn('[assemblyAISpeechService] Transcription did not complete in time.');
-  }
-  return transcript;
+  return null;
 }

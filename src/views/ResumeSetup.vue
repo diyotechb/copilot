@@ -20,6 +20,24 @@
         </select>
       </div>
       <div class="section">
+        <h3>Choose Answer Font Size</h3>
+        <div style="display:flex;align-items:center;gap:1.5rem;">
+          <input
+            type="range"
+            min="16"
+            max="28"
+            step="1"
+            v-model="answerFontSize"
+            @input="onFontSizeChange"
+            style="width:180px;"
+          />
+          <span :style="{ fontSize: answerFontSize + 'px', fontWeight: 500, background: '#f3f4f6', padding: '0.5rem 1rem', borderRadius: '0.5rem' }">
+            Sample Answer Text
+          </span>
+          <span style="margin-left:1rem; color:#2563eb; font-weight:600;">{{ answerFontSize }}px</span>
+        </div>
+      </div>
+      <div class="section">
         <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
           <span
             @click="toggleVideo"
@@ -70,6 +88,7 @@
 import FileUpload from '../components/FileUpload.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import { generateInterviewQA } from '../services/openaiService.js';
+import { clearRecordingsStore } from '@/services/audioStore';
 
 export default {
   name: 'ResumeSetup',
@@ -84,6 +103,7 @@ export default {
       loadingQA: false,
       qaReady: false,
       submitSent: false,
+      answerFontSize: 22,
       enableVideo: localStorage.getItem('enableVideo') === null ? true : localStorage.getItem('enableVideo') === 'true',
     };
   },
@@ -93,9 +113,15 @@ export default {
     localStorage.removeItem('transcriptionInProcess');
     localStorage.removeItem('resumeText');
     localStorage.removeItem('selectedVoice');
+    const storedFontSize = localStorage.getItem('answerFontSize');
+    if (storedFontSize) this.answerFontSize = parseInt(storedFontSize, 10);
     this.fetchVoices();
+    clearRecordingsStore();
   },
   methods: {
+    onFontSizeChange() {
+      localStorage.setItem('answerFontSize', this.answerFontSize);
+    },
     toggleVideo() {
       this.enableVideo = !this.enableVideo;
       localStorage.setItem('enableVideo', this.enableVideo ? 'true' : 'false');
@@ -312,5 +338,12 @@ export default {
 .submit-message {
   margin-top: 2rem;
   text-align: center;
+}
+.section .sample-answer {
+  font-weight: 500;
+  background: #f3f4f6;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  display: inline-block;
 }
 </style>

@@ -7,6 +7,7 @@
 
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
+import { saveRecording, getRecording } from '@/services/audioStore';
 export default {
   mounted() {
     if (this.showAnswer && !this.recording) {
@@ -50,7 +51,7 @@ export default {
     }
   },
   methods: {
-    async startRecording() {
+  async startRecording() {
   this.error = '';
   this.audioChunks = [];
   try {
@@ -62,7 +63,7 @@ export default {
         } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
           mimeType = 'audio/ogg';
         } else {
-          mimeType = ''; // fallback to default
+          mimeType = '';
         }
         this.mediaRecorder = new MediaRecorder(this.mediaStream, mimeType ? { mimeType } : undefined);
         this.mediaRecorder.ondataavailable = (e) => {
@@ -109,12 +110,8 @@ export default {
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64Audio = reader.result;
-        localStorage.setItem(`Recording_${this.questionIndex}`, base64Audio);
-      };
-      reader.readAsDataURL(audioBlob);
+      // Save audioBlob to IndexedDB instead of localStorage
+      await saveRecording(`Recording_${this.questionIndex}`, audioBlob);
 
       localStorage.setItem('transcriptionInProcess', 'true');
       let transcript = '';

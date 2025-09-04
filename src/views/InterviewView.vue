@@ -7,12 +7,21 @@
       <!-- Interview in progress -->
       <div v-if="interviewQA.length && interviewing" class="main-card">
         <div class="section question-section">
+          <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
+            {{ turn }}/{{ interviewQA.length }}
+          </div>
           <h2 class="subtitle">Question</h2>
           <p class="question-text">{{ currentQuestion }}</p>
         </div>
         <div class="section answer">
           <h2 class="subtitle">Answer</h2>
-          <div class="answer-body" v-if="showAnswer">{{ currentAnswer }}</div>
+          <div
+            class="answer-body"
+            v-if="showAnswer"
+            :style="{ fontSize: answerFontSize + 'px' }"
+          >
+            {{ currentAnswer }}
+          </div>
           <div v-else-if="interviewing && isThinking" class="answer-body thinking-effect">
             <span>Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span></span>
           </div>
@@ -76,7 +85,6 @@
 </template>
 
 <script>
-import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
@@ -90,23 +98,18 @@ export default {
     allTranscriptsReceived() {
       if (this.interviewing) {
         const allReceived = this.answerTranscripts.length === this.interviewQA.length;
-        console.log('[InterviewView] allReceived:', allReceived);
         return false;
       }
       if (this.lastAudioBlob) {
-        console.log('[InterviewView] Transcript for last answer is pending, show loading.');
         return false;
       }
       const allReceived = this.answerTranscripts.length === this.interviewQA.length && this.interviewQA.length > 0;
       if (allReceived) {
-        console.log('[InterviewView] All transcripts received, showing summary.');
         return true;
       }
       if (this.answerTranscripts.length === 0 && this.interviewQA.length === 0) {
-        console.log('[InterviewView] No transcript expected, showing summary.');
         return true;
       }
-      console.log('[InterviewView] Waiting for transcripts, show loading.');
       return false;
     }
   },
@@ -155,23 +158,14 @@ export default {
   beforeUnmount() {
     this.clearStream();
   },
-  watch: {
-    allTranscriptsReceived(val) {
-      console.log('[InterviewView] allTranscriptsReceived changed:', val);
-      if (!val && !this.interviewing) {
-        console.log('[InterviewView] Loading screen debug:');
-        console.log('interviewing:', this.interviewing);
-        console.log('lastAudioBlob:', this.lastAudioBlob);
-        console.log('answerTranscripts:', this.answerTranscripts);
-      }
-      if (val && !this.interviewing) {
-        console.log('[InterviewView] Summary page loaded. Transcripts:', this.answerTranscripts);
-      }
+  computed: {
+  // ...existing computed properties...
+    answerFontSize() {
+      return Number(localStorage.getItem('answerFontSize')) || 28;
     }
   },
   methods: {
     onSilenceDetected() {
-      console.log('[InterviewView] Silence detected, moving to next question.');
       this.nextQuestion();
     },
     async onAudioBlob(blob) {
@@ -180,10 +174,8 @@ export default {
       try {
         const transcript = await sendToAssemblyAI(blob);
         this.answerTranscripts.push(transcript || '[No transcript received]');
-        console.log('[InterviewView] answerTranscripts updated:', this.answerTranscripts);
       } catch (err) {
         this.answerTranscripts.push('[Transcription error]');
-        console.log('[InterviewView] answerTranscripts updated:', this.answerTranscripts);
       } finally {
         this.lastAudioBlob = null;
         this.loadingTranscripts = false;
@@ -211,12 +203,9 @@ export default {
     },
     async startInterview() {
       try {
-        console.log('[InterviewView] Video recording enabled:', this.enableVideo);
         if (this.enableVideo) {
-          console.log('[InterviewView] Requesting camera and microphone permissions...');
           await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         } else {
-          console.log('[InterviewView] Requesting microphone permission only...');
           await navigator.mediaDevices.getUserMedia({ audio: true });
         }
         this.showInstructions = false;
@@ -241,7 +230,6 @@ export default {
     nextQuestion() {
       if (!this.interviewing || this.interviewStopping) return;
       if (this.turn >= this.interviewQA.length) {
-        window.alert('Interview finished!');
         this.interviewing = false;
         this.showAnswer = false;
         this.clearStream();
@@ -276,6 +264,9 @@ export default {
     streamLocalAnswer(text) {
       const delayFactor = Number(process.env.VUE_APP_STREAM_DELAY_FACTOR) || 1;
       const chunkSizeFactor = Number(process.env.VUE_APP_STREAM_CHUNK_FACTOR) || 1;
+
+      console.log('Streaming answer with chunk size factor:', chunkSizeFactor);
+      console.log('Streaming answer with delay factor:', delayFactor);
 
       if (!delayFactor || !chunkSizeFactor) {
         throw new Error('Missing VUE_APP_STREAM_DELAY_FACTOR or VUE_APP_STREAM_CHUNK_FACTOR in environment variables.');

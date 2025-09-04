@@ -2,10 +2,15 @@ import OpenAI from 'openai';
 
 export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
+  const openaiModel = process.env.VUE_APP_OPENAI_MODEL;
   // console.log('[generateInterviewQA] Called with:', { resumeText, jobDescriptionText, apiKey });
   if (!apiKey) {
     console.error('[generateInterviewQA] Missing OpenAI API key:', apiKey);
     throw new Error('The OPENAI_API_KEY environment variable is missing or empty; either provide it, or instantiate the OpenAI client with an apiKey option, like new OpenAI({ apiKey: "My API Key" }).');
+  }
+  if (!openaiModel) {
+    console.error('[generateInterviewQA] Missing OpenAI model:', openaiModel);
+    throw new Error('The OPENAI_MODEL environment variable is missing or empty; either provide it, or instantiate the OpenAI client with a model option, like new OpenAI({ model: "My Model" }).');
   }
   const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
   let prompt = `Generate a large, unique, and highly randomized set of interview questions and answers based on the following resume. Avoid repeating common questions. Make each question distinct and relevant to the resume and job description. Generate as many Q/A pairs as possible, up to the model's response limit. For each answer, make it as descriptive and detailed as possible, providing deep technical insights and real-world examples. Vary the style, difficulty, and format of each question and answer. Add a random fact or twist to each answer. Ensure the questions and answers are different and randomized for every run.`;
@@ -17,7 +22,7 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   // console.log('[OpenAI Prompt]', prompt);
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: openaiModel,
       messages: [
         { role: 'system', content: 'You are an interview assistant. Generate multiple interview questions and answers from the candidate’s resume.' },
         { role: 'user', content: prompt }
