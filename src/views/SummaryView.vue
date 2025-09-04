@@ -105,7 +105,8 @@
 
 <script>
 import fillerWordsList from '@/assets/fillerWords.json';
-import { getRecording as getRecordingFromDb } from '@/services/audioStore';
+import { getRecording as getRecordingFromDb } from '@/store/audioStore';
+import { getInterviewQA, getTranscriptionStatus } from '@/store/interviewStore';
 
 export default {
   name: 'SummaryView',
@@ -120,15 +121,18 @@ export default {
       recordingUrls: {}
     };
   },
-  mounted() {
-    this.localInterviewQA = this.interviewQA && this.interviewQA.length
-      ? this.interviewQA
-      : JSON.parse(localStorage.getItem('interviewQA') || '[]');
+  async mounted() {
+    if (this.interviewQA && this.interviewQA.length) {
+      this.localInterviewQA = this.interviewQA;
+    } else {
+      const allQA = await getInterviewQA();
+      this.localInterviewQA = allQA.length ? allQA[allQA.length - 1] : [];
+    }
     this.checkTranscriptionStatus();
   },
   methods: {
-    checkTranscriptionStatus() {
-      const inProcess = localStorage.getItem('transcriptionInProcess');
+    async checkTranscriptionStatus() {
+      const inProcess = await getTranscriptionStatus();
       if (inProcess === 'true') {
         console.log('Transcription in process...');
         this.loadingTranscripts = true;

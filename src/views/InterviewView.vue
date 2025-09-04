@@ -18,7 +18,6 @@
           <div
             class="answer-body"
             v-if="showAnswer"
-            :style="{ fontSize: answerFontSize + 'px' }"
           >
             {{ currentAnswer }}
           </div>
@@ -90,6 +89,8 @@ import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
+import { getSetting } from '@/store/settingStore';
+import { getInterviewQA, saveTranscriptionStatus } from '@/store/interviewStore';
 export default {
   computed: {
     showRecordedVideo() {
@@ -117,21 +118,21 @@ export default {
   components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView },
   data() {
     return {
-      resumeText: localStorage.getItem('resumeText') || '',
-      selectedVoice: localStorage.getItem('selectedVoice') || '',
-      jobDescription: localStorage.getItem('jobDescription') || '',
+      resumeText: '',
+      selectedVoice: '',
+      jobDescription: '',
       interviewStopping: false,
       interviewQA: [],
       currentQuestion: '',
       currentAnswer: '',
       turn: 0,
-      interviewing: false,
+      interviewing: true,
       showAnswer: true,
       isThinking: false,
       answerTranscripts: [],
       recordedVideoUrl: '',
       videoPreview: null,
-      enableVideo: localStorage.getItem('enableVideo') === 'true',
+      enableVideo: false,
       streamTimer: null,
       silenceTimer: null,
       silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, // Silence wait time from env
@@ -141,28 +142,24 @@ export default {
       lastAudioBlob: null,
     };
   },
-  created() {
-    const storedQA = localStorage.getItem('interviewQA');
-    this.interviewQA = storedQA ? JSON.parse(storedQA) : [];
+  async created() {
+    this.resumeText = (await getSetting('resumeText')) || '';
+    this.selectedVoice = (await getSetting('selectedVoice')) || '';
+    this.jobDescription = (await getSetting('jobDescription')) || '';
+    this.enableVideo = (await getSetting('enableVideo')) === 'true';
+    const qaArr = await getInterviewQA(); // Use your session key or logic
+    this.interviewQA = qaArr || [];
   },
   mounted() {
-  this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
-    if (this.$route && this.$route.name === 'InterviewView') {
-      this.showInstructions = false;
-      this.interviewing = true;
-      this.turn = 0;
-      this.answerTranscripts = [];
-      this.nextQuestion();
-    }
+    this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
+    this.showInstructions = false;
+    this.interviewing = true;
+    this.turn = 0;
+    this.answerTranscripts = [];
+    console.log("[Debug] On mount interviewing:", this.interviewing);
   },
   beforeUnmount() {
     this.clearStream();
-  },
-  computed: {
-  // ...existing computed properties...
-    answerFontSize() {
-      return Number(localStorage.getItem('answerFontSize')) || 28;
-    }
   },
   methods: {
     onSilenceDetected() {
@@ -180,7 +177,6 @@ export default {
         this.lastAudioBlob = null;
         this.loadingTranscripts = false;
         this.interviewStopping = false;
-        this.interviewing = false;
       }
     },
     handleDownload(url) {
@@ -202,6 +198,7 @@ export default {
       document.body.removeChild(a);
     },
     async startInterview() {
+      console.log("[Debug] startInterview called");
       try {
         if (this.enableVideo) {
           await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -219,7 +216,7 @@ export default {
       }
     },
     async stopInterview() {
-      localStorage.setItem('transcriptionInProcess', 'true');
+      await saveTranscriptionStatus(true);
       if (this.$refs.answerRecorder && this.$refs.answerRecorder.isRecording) {
         this.$refs.answerRecorder.stopRecording();
       }
@@ -228,8 +225,10 @@ export default {
       this.$router.push({ name: 'SummaryView' });
     },
     nextQuestion() {
+      console.log("[Debug] nextQuestion called");
       if (!this.interviewing || this.interviewStopping) return;
       if (this.turn >= this.interviewQA.length) {
+        console.log("[Debug] Interview finished");
         this.interviewing = false;
         this.showAnswer = false;
         this.clearStream();
@@ -242,6 +241,8 @@ export default {
       this.showAnswer = false;
       this.isThinking = false;
       const qa = this.interviewQA[this.turn];
+      console.log("[Debug] Current turn:", this.turn);
+      console.log("[Debug] Next question:", qa.question);
       this.currentQuestion = qa.question;
       this.currentAnswer = '';
       this.turn++;
@@ -297,54 +298,56 @@ export default {
     clearStream() {
       if (this.streamTimer) { clearInterval(this.streamTimer); this.streamTimer = null; }
     },
-    async speakQuestion(text, onEnd) {
-      // Use Azure TTS or browser TTS
-      const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-      if (!subscriptionKey || !region) {
-        if (window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-          const utter = new window.SpeechSynthesisUtterance(text);
-          utter.lang = 'en-US';
-          utter.rate = 1.05;
-          utter.onend = onEnd;
-          window.speechSynthesis.speak(utter);
-          return;
-        }
-        if (typeof onEnd === 'function') onEnd();
-        return;
-      }
-      const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
-      const ssml = `
-        <speak version='1.0' xml:lang='en-US'>
-          <voice xml:lang='en-US' name='${this.selectedVoice}'>
-            ${text}
-          </voice>
-        </speak>
-      `;
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Ocp-Apim-Subscription-Key': subscriptionKey,
-            'Content-Type': 'application/ssml+xml',
-            'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
-            'User-Agent': 'InterviewViewVue'
-          },
-          body: ssml
-        });
-        if (!response.ok) throw new Error('Azure TTS failed');
-        const audioData = await response.arrayBuffer();
-        const blob = new Blob([audioData], { type: 'audio/mp3' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = onEnd;
-        audio.play();
-      } catch (e) {
-        console.error('Azure TTS error:', e);
-        if (typeof onEnd === 'function') onEnd();
-      }
-    },
+   async speakQuestion(text, onEnd) {
+  const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
+  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+  if (!subscriptionKey || !region) {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utter = new window.SpeechSynthesisUtterance(text);
+      utter.lang = 'en-US';
+      utter.rate = 1.05;
+      utter.onend = onEnd;
+      window.speechSynthesis.speak(utter);
+      return;
+    }
+    if (typeof onEnd === 'function') onEnd();
+    return;
+  }
+  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const ssml = `
+    <speak version='1.0' xml:lang='en-US'>
+      <voice xml:lang='en-US' name='${this.selectedVoice}'>
+        ${text}
+      </voice>
+    </speak>
+  `;
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': subscriptionKey,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
+        'User-Agent': 'InterviewViewVue'
+      },
+      body: ssml
+    });
+    if (!response.ok) throw new Error('Azure TTS failed');
+    const audioData = await response.arrayBuffer();
+    const blob = new Blob([audioData], { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = onEnd;
+    audio.play().catch(e => {
+      console.error('Audio playback error:', e);
+      if (typeof onEnd === 'function') onEnd();
+    });
+  } catch (e) {
+    console.error('Azure TTS error:', e);
+    if (typeof onEnd === 'function') onEnd();
+  }
+}
   }
 };
 </script>
@@ -523,6 +526,24 @@ export default {
 }
 .thinking-effect .dots span:nth-child(3) {
   animation-delay: 0.8s;
+}
+.otter-transcript {
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-size: 18px; /* Fixed font size similar to Otter.ai */
+  background: #f8fafc;
+  line-height: 1.7;
+  color: #222;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.answer-body {
+  font-size: 18px; /* Match Otter.ai font size */
+  color: #333;
+  white-space: pre-wrap;
+  margin-top: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
 }
 @keyframes dots {
   0%, 20% { opacity: 0; }

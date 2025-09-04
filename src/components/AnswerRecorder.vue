@@ -7,7 +7,7 @@
 
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
-import { saveRecording, getRecording } from '@/services/audioStore';
+import { saveRecording, getRecording } from '@/store/audioStore';
 export default {
   mounted() {
     if (this.showAnswer && !this.recording) {

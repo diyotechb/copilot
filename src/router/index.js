@@ -4,6 +4,7 @@ import Login from '@/views/Login.vue'
 import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
+import { getInterviewQA } from '@/store/interviewStore'
 
 Vue.use(VueRouter)
 
@@ -39,7 +40,7 @@ const router = new VueRouter({
 })
 
 // Global navigation guard for authentication
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
     const token = localStorage.getItem('otterAuthToken');
     if (to.name === 'Login') {
         if (token) {
@@ -51,8 +52,8 @@ router.beforeEach((to, from, next) => {
         return next({ name: 'Login' });
     }
     if (to.name === 'InterviewView') {
-        const interviewQA = localStorage.getItem('interviewQA');
-        if (!interviewQA || interviewQA.trim().length === 0) {
+        const interviewQA = await getInterviewQA();
+        if (!interviewQA || (Array.isArray(interviewQA) ? interviewQA.length === 0 : interviewQA.trim().length === 0)) {
             window.alert('Interview questions are not ready. Please complete setup first.');
             return next({ name: 'ResumeSetup' });
         }

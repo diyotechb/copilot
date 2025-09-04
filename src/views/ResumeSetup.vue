@@ -12,29 +12,14 @@
       />
       <div class="section">
         <h3>Select Interviewer Voice</h3>
-        <select v-model="selectedVoice" class="voice-select" @change="onVoiceChange">
+        <select v-model="selectedVoice" class="voice-select" @change="onVoiceChange" :disabled="voicesLoading">
           <option value="" disabled>Select a voice</option>
           <option v-for="voice in voices" :key="voice.ShortName || voice.shortName" :value="voice.ShortName || voice.shortName">
             {{ (voice.ShortName || voice.Name || '').split('-').slice(-1)[0] }}<span v-if="voice.Gender || voice.gender"> ({{ voice.Gender || voice.gender }})</span>
           </option>
         </select>
-      </div>
-      <div class="section">
-        <h3>Choose Answer Font Size</h3>
-        <div style="display:flex;align-items:center;gap:1.5rem;">
-          <input
-            type="range"
-            min="16"
-            max="28"
-            step="1"
-            v-model="answerFontSize"
-            @input="onFontSizeChange"
-            style="width:180px;"
-          />
-          <span :style="{ fontSize: answerFontSize + 'px', fontWeight: 500, background: '#f3f4f6', padding: '0.5rem 1rem', borderRadius: '0.5rem' }">
-            Sample Answer Text
-          </span>
-          <span style="margin-left:1rem; color:#2563eb; font-weight:600;">{{ answerFontSize }}px</span>
+        <div v-if="voicesLoading" style="margin-bottom:1rem; color:#2563eb;">
+          Loading voices...
         </div>
       </div>
       <div class="section">
@@ -65,7 +50,11 @@
         </label>
       </div>
       <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
-        <button class="btn submit-btn" :disabled="!resumeText || !selectedVoice || loadingQA" @click="submitSetup">Submit</button>
+        <button class="btn submit-btn"
+          :disabled="!resumeText || !selectedVoice || loadingQA || voicesLoading"
+          @click="submitSetup">
+          Submit
+        </button>
       </div>
       <div v-if="submitSent" class="submit-message">
         <div class="loader" style="margin-bottom:1.5rem;"></div>
@@ -87,8 +76,10 @@
 <script>
 import FileUpload from '../components/FileUpload.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
+import { saveSetting, getSetting } from '@/store/settingStore';
+import { getInterviewQA, saveInterviewQA } from '@/store/interviewStore';
 import { generateInterviewQA } from '../services/openaiService.js';
-import { clearRecordingsStore } from '@/services/audioStore';
+import { clearRecordingsStore } from '@/store/audioStore';
 
 export default {
   name: 'ResumeSetup',
@@ -103,28 +94,23 @@ export default {
       loadingQA: false,
       qaReady: false,
       submitSent: false,
-      answerFontSize: 22,
-      enableVideo: localStorage.getItem('enableVideo') === null ? true : localStorage.getItem('enableVideo') === 'true',
+      enableVideo: false,
+      voicesLoading: true,
     };
   },
-  mounted() {
-    localStorage.removeItem('interviewQA');
-    localStorage.removeItem('transcripts');
-    localStorage.removeItem('transcriptionInProcess');
-    localStorage.removeItem('resumeText');
-    localStorage.removeItem('selectedVoice');
-    const storedFontSize = localStorage.getItem('answerFontSize');
-    if (storedFontSize) this.answerFontSize = parseInt(storedFontSize, 10);
-    this.fetchVoices();
+  async mounted() {
+    await this.fetchVoices();
     clearRecordingsStore();
+    this.enableVideo = (await getSetting('enableVideo')) === 'true';
+    const savedVoice = await getSetting('selectedVoice');
+      if (savedVoice) {
+      this.selectedVoice = savedVoice;
+    }
   },
   methods: {
-    onFontSizeChange() {
-      localStorage.setItem('answerFontSize', this.answerFontSize);
-    },
     toggleVideo() {
       this.enableVideo = !this.enableVideo;
-      localStorage.setItem('enableVideo', this.enableVideo ? 'true' : 'false');
+      saveSetting('enableVideo', this.enableVideo ? 'true' : 'false');
     },
     onVoiceChange() {
       if (this.selectedVoice) {
@@ -132,6 +118,7 @@ export default {
       }
     },
     async fetchVoices() {
+      this.voicesLoading = true;
       const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
       const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
       if (!subscriptionKey || !region) return;
@@ -146,6 +133,8 @@ export default {
         this.voices = allVoices.filter(v => (v.Locale || v.locale) === 'en-US');
       } catch (e) {
         this.voices = [];
+      } finally {
+        this.voicesLoading = false;
       }
     },
     async playVoiceSample(voiceName) {
@@ -197,9 +186,10 @@ export default {
       this.submitSent = true;
       this.loadingQA = true;
       this.qaReady = false;
-      localStorage.setItem('resumeText', this.resumeText);
-      localStorage.setItem('selectedVoice', this.selectedVoice);
-      localStorage.setItem('jobDescription', this.jobDescriptionText);
+      await saveSetting('resumeText', this.resumeText);
+      await saveSetting('selectedVoice', this.selectedVoice);
+      await saveSetting('jobDescription', this.jobDescriptionText);
+
       try {
         const qa = await generateInterviewQA({
           resumeText: this.resumeText,
@@ -210,7 +200,7 @@ export default {
           const j = Math.floor(Math.random() * (i + 1));
           [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
         }
-        localStorage.setItem('interviewQA', JSON.stringify(qaArr));
+        await saveInterviewQA(qaArr);
         this.qaReady = true;
         this.loadingQA = false;
         this.submitSent = false;
@@ -221,24 +211,23 @@ export default {
         this.submitSent = false;
       }
     },
-    handleStartInterview() {
+    async handleStartInterview() {
       const mediaConstraints = this.enableVideo ? { video: true, audio: true } : { audio: true };
-      navigator.mediaDevices.getUserMedia(mediaConstraints)
-        .then(() => {
-          const interviewQA = localStorage.getItem('interviewQA');
-          if (!interviewQA || interviewQA.trim().length === 0) {
-            window.alert('Interview questions are not ready. Please try again or contact support.');
-            return;
-          }
-          this.$router.push({ name: 'InterviewView' });
-        })
-        .catch(() => {
-          if (this.enableVideo) {
-            window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
-          } else {
-            window.alert('Microphone permission denied. Please allow access to start the interview.');
-          }
-        });
+      try {
+        await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        const interviewQA = await getInterviewQA();
+        if (!interviewQA || (Array.isArray(interviewQA) ? interviewQA.length === 0 : interviewQA.trim().length === 0)) {
+          window.alert('Interview questions are not ready. Please try again or contact support.');
+          return;
+        }
+        this.$router.push({ name: 'InterviewView' });
+      } catch (err) {
+        if (this.enableVideo) {
+          window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+        } else {
+          window.alert('Microphone permission denied. Please allow access to start the interview.');
+        }
+      }
     },
     goToInterview() {
       this.$router.push({ name: 'InterviewView' });
