@@ -7,7 +7,14 @@
 
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
+<<<<<<< HEAD
 import { saveRecording, getRecording } from '@/store/audioStore';
+=======
+import { saveRecording } from '@/store/audioStore';
+import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
+import { getSetting } from '@/store/settingStore';
+
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 export default {
   mounted() {
     if (this.showAnswer && !this.recording) {
@@ -40,7 +47,8 @@ export default {
       mediaStreamSource: null,
       analyser: null,
       silenceTimer: null,
-      silenceStart: null
+      silenceStart: null,
+      difficultyLevel: null
     };
   },
   watch: {
@@ -51,10 +59,10 @@ export default {
     }
   },
   methods: {
-  async startRecording() {
-  this.error = '';
-  this.audioChunks = [];
-  try {
+    async startRecording() {
+      this.error = '';
+      this.audioChunks = [];
+      try {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         // Choose a supported format
         let mimeType = '';
@@ -103,28 +111,33 @@ export default {
         mimeType = '';
       }
       const audioBlob = new Blob(this.audioChunks, mimeType ? { type: mimeType } : undefined);
-
       if (!audioBlob || audioBlob.size === 0) {
-        console.warn('[AnswerRecorder] No audio recorded, skipping transcription.');
-        localStorage.setItem('transcriptionInProcess', 'false');
+        await saveTranscriptionStatus(false);
         return;
       }
-
-      // Save audioBlob to IndexedDB instead of localStorage
       await saveRecording(`Recording_${this.questionIndex}`, audioBlob);
-
-      localStorage.setItem('transcriptionInProcess', 'true');
+      await saveTranscriptionStatus(true);
       let transcript = '';
       try {
+        console.log("[DEBUG] Sending audio blob for transcription");
         transcript = await sendToAssemblyAI(audioBlob);
       } catch (err) {
         console.error('[AnswerRecorder] AssemblyAI transcription error:', err);
         transcript = '[Transcription error]';
       }
-      let transcripts = JSON.parse(localStorage.getItem('transcripts') || '[]');
+      let transcripts = await getTranscripts();
+      if (!transcripts) {
+        transcripts = [];
+      }
+      const difficultyLevel = await getSetting('interviewDifficulty');
+      console.log("[DEBUG] Difficulty Level:", difficultyLevel);
+      if (difficultyLevel === 'Beginner') {
+        console.log("[DEBUG] Emitting transcript:", transcript);
+        this.$emit('transcript', transcript);
+      }
       transcripts[this.questionIndex] = transcript;
-      localStorage.setItem('transcripts', JSON.stringify(transcripts));
-      localStorage.setItem('transcriptionInProcess', 'false');
+      await saveTranscripts(transcripts);
+      await saveTranscriptionStatus(false);
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;

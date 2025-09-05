@@ -6,19 +6,25 @@
     <div v-else class="interview-content">
       <!-- Interview in progress -->
       <div v-if="interviewQA.length && interviewing" class="main-card">
-        <div class="section question-section">
+        <!-- Question Section -->
+        <div v-if="showQuestionSection" class="section question-section">
           <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
             {{ turn }}/{{ interviewQA.length }}
           </div>
           <h2 class="subtitle">Question</h2>
           <p class="question-text">{{ currentQuestion }}</p>
         </div>
+        <!-- Answer Section -->
         <div class="section answer">
           <h2 class="subtitle">Answer</h2>
+<<<<<<< HEAD
           <div
             class="answer-body"
             v-if="showAnswer"
           >
+=======
+          <div class="answer-body" v-if="showAnswer">
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
             {{ currentAnswer }}
           </div>
           <div v-else-if="interviewing && isThinking" class="answer-body thinking-effect">
@@ -34,8 +40,81 @@
             </ul>
           </div>
         </div>
-        <div class="actions fixed-actions">
-          <button class="btn next" :disabled="!interviewing" @click="nextQuestion">Next Question</button>
+        <!-- Transcript Section for Beginner -->
+        <div v-if="showTranscriptSection && difficultyLevel === 'Beginner'" class="section transcript-section">
+          <h3>Transcript</h3>
+          <div v-if="transcriptLoading" style="color:#2563eb; font-style:italic;">
+            Loading transcript...
+          </div>
+          <p v-else class="otter-transcript" v-html="highlightTranscript(currentTranscript)"></p>
+          <div v-if="currentTranscript && currentTranscript.words">
+              <table class="transcript-metrics-table">
+              <tr>
+                <th>Metric</th>
+                <th>Value</th>
+              </tr>
+              <tr>
+                <td>Confidence</td>
+                <td>{{ averageConfidence(currentTranscript.words) }}%</td>
+              </tr>
+              <tr>
+                <td>Filler Words</td>
+                <td>{{ currentTranscript._fillerWordCount }}</td>
+              </tr>
+              <tr>
+                <td>Filler Word Percentage</td>
+                <td>
+                  {{ ((currentTranscript._fillerWordCount / currentTranscript.words.length) * 100).toFixed(1) }}%
+                </td>
+              </tr>
+            </table>
+          </div>
+          <div v-if="feedbackMessage" class="feedback-section" style="margin-top:1.5rem;">
+            <h3>Feedback</h3>
+            <p>{{ feedbackMessage }}</p>
+            <div style="color: #888; font-size: 0.9em;">
+            </div>
+          </div>
+          <!-- Legend for highlights -->
+          <div class="transcript-legend" style="margin-top:1.5rem;">
+          <strong>Legend:</strong>
+          <div>
+            <span
+              style="background:rgba(34,197,94,0.15);padding:2px 8px;border-radius:4px;"
+              title="Positive sentiment: Indicates the speaker expressed positive emotion or approval in this segment."
+            >Positive sentiment</span>
+            <span
+              style="background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:4px;margin-left:8px;"
+              title="Negative sentiment: Indicates the speaker expressed negative emotion or disapproval in this segment."
+            >Negative sentiment</span>
+            <span
+              style="background:rgba(59,130,246,0.10);padding:2px 8px;border-radius:4px;margin-left:8px;"
+              title="Neutral sentiment: Indicates the speaker expressed neutral or factual information."
+            >Neutral sentiment</span>
+            <span
+              style="color:#a855f7;font-weight:bold;margin-left:8px;"
+              title="Filler word: Common words or phrases that do not add meaning, such as 'um', 'uh', 'you know'."
+            >Filler word</span>
+            <span
+              style="background:#fee2e2;color:#dc2626;border-radius:3px;font-weight:bold;margin-left:8px;"
+              title="Low confidence: The speech recognition system was not confident about this word."
+            >Low confidence</span>
+            <span
+              style="background:#fef9c3;color:#ca8a04;border-radius:3px;font-weight:bold;margin-left:8px;"
+              title="Medium confidence: The speech recognition system was moderately confident about this word."
+            >Medium confidence</span>
+          </div>
+        </div>
+        </div>
+        <!-- Actions (Buttons) always below all sections -->
+        <div class="fixed-actions" style="margin-top:2rem;">
+          <button
+            class="btn next"
+            :disabled="!interviewing || (difficultyLevel === 'Beginner' && !transcriptLoaded)"
+            @click="nextQuestion"
+          >
+            Next Question
+          </button>
           <button v-if="interviewing" class="btn stop" @click="stopInterview">Stop Interview</button>
         </div>
       </div>
@@ -59,39 +138,51 @@
       />
       <div v-else style="color:#aaa; text-align:center;">No interview questions found.</div>
     </div>
-  <div class="video-corner">
-    <!-- Show VideoRecorder only at the end of the interview if enabled -->
-    <!-- VideoRecorder only mounts if enableVideo is true -->
-    <VideoRecorder
-      v-if="enableVideo === true && !interviewing && showRecordedVideo"
-      :interviewing="false"
-      @video-mounted="videoPreview = $event"
-      @videoUrl="recordedVideoUrl = $event"
-      @download="handleDownload"
-    />
-    <AnswerRecorder
-      v-if="interviewing && showAnswer"
-      :silenceThreshold="silenceThreshold"
-      :showAnswer="showAnswer"
-      :questionIndex="turn - 1"
-      @silenceDetected="onSilenceDetected"
-      @audioBlob="onAudioBlob"
-      ref="answerRecorder"
-    />
-  </div>
-  <!-- Download button moved to VideoRecorder.vue -->
+    <div class="video-corner">
+      <!-- Show VideoRecorder only at the end of the interview if enabled -->
+      <VideoRecorder
+        v-if="enableVideo === true && !interviewing && showRecordedVideo"
+        :interviewing="false"
+        @video-mounted="videoPreview = $event"
+        @videoUrl="recordedVideoUrl = $event"
+        @download="handleDownload"
+      />
+      <AnswerRecorder
+        v-if="interviewing && showAnswer"
+        :silenceThreshold="silenceThreshold"
+        :showAnswer="showAnswer"
+        :questionIndex="turn - 1"
+        @transcript="handleTranscriptReady"
+        @silenceDetected="onSilenceDetected"
+        ref="answerRecorder"
+      />
+    </div>
   </div>
 </template>
 
 <script>
-import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
 import { getInterviewQA, saveTranscriptionStatus } from '@/store/interviewStore';
+<<<<<<< HEAD
+=======
+import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
+import { speakWithAzureTTS } from '@/services/azureSpeechService';
+
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 export default {
+  watch: {
+    feedbackMessage(newVal, oldVal) {
+      if (newVal && newVal !== oldVal && this.selectedVoice && this.difficultyLevel === 'Beginner') {
+        speakWithAzureTTS(newVal, this.selectedVoice, () => {
+          this.transcriptLoaded = true;
+        });
+    }
+  },
+},
   computed: {
     showRecordedVideo() {
       return this.enableVideo && !this.interviewing && this.recordedVideoUrl;
@@ -112,15 +203,55 @@ export default {
         return true;
       }
       return false;
+    },
+    feedbackMessage() {
+      if (!this.currentTranscript || !this.currentTranscript.words) {
+        return '';
+      }
+      const confidence = Number(this.averageConfidence(this.currentTranscript.words));
+      const fillerCount = this.currentTranscript._fillerWordCount || 0;
+      const totalWords = this.currentTranscript.words.length || 1;
+      const fillerPercent = ((fillerCount / totalWords) * 100);
+
+      let feedback = [];
+
+      // Confidence feedback
+      if (confidence >= 90) {
+        feedback.push('Excellent clarity and pronunciation. Your answers are very clear.');
+      } else if (confidence >= 75) {
+        feedback.push('Good clarity, but try to speak a bit more clearly for even better results.');
+      } else {
+        feedback.push('Speech recognition had trouble understanding some words. Try to speak slower and more clearly.');
+      }
+
+      // Filler word feedback
+      if (fillerPercent < 5) {
+        feedback.push('Great job minimizing filler words!');
+      } else if (fillerPercent < 15) {
+        feedback.push('You used some filler words. Try to reduce them for a more polished response.');
+      } else {
+        feedback.push('Frequent use of filler words detected. Practice pausing instead of using fillers.');
+      }
+      // Overall feedback
+      if (confidence >= 90 && fillerPercent < 5) {
+        feedback.push('Overall, your answer was very strong!');
+      }
+
+      const result = feedback.join(' ');
+      return result;
     }
   },
   name: 'InterviewView',
   components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView },
   data() {
     return {
+<<<<<<< HEAD
       resumeText: '',
       selectedVoice: '',
       jobDescription: '',
+=======
+      selectedVoice: '',
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
       interviewStopping: false,
       interviewQA: [],
       currentQuestion: '',
@@ -135,14 +266,20 @@ export default {
       enableVideo: false,
       streamTimer: null,
       silenceTimer: null,
-      silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, // Silence wait time from env
-      silenceStart: null,
+      silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, 
+      showQuestionSection: process.env.VUE_APP_SHOW_QUESTION_SECTION === 'true',
       showInstructions: true,
       loadingTranscripts: false,
       lastAudioBlob: null,
+      difficultyLevel: null,
+      showTranscriptSection: false,
+      currentTranscript: null,
+      transcriptLoading: false,
+      transcriptLoaded: false,
     };
   },
   async created() {
+<<<<<<< HEAD
     this.resumeText = (await getSetting('resumeText')) || '';
     this.selectedVoice = (await getSetting('selectedVoice')) || '';
     this.jobDescription = (await getSetting('jobDescription')) || '';
@@ -157,11 +294,31 @@ export default {
     this.turn = 0;
     this.answerTranscripts = [];
     console.log("[Debug] On mount interviewing:", this.interviewing);
+=======
+    const storedQA = await getInterviewQA();
+    this.interviewQA = Array.isArray(storedQA) ? storedQA : [];
+    this.difficultyLevel = await getSetting('interviewDifficulty');
+  },  
+  async mounted() {
+    this.enableVideo = await getSetting('enableVideo');
+    this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
+    const savedVoice = await getSetting('selectedVoice');
+    this.selectedVoice = savedVoice; 
+    this.interviewQA = await getInterviewQA();
+    if (this.$route && this.$route.name === 'InterviewView') {
+      this.showInstructions = false;
+      this.interviewing = true;
+      this.turn = 0;
+      this.answerTranscripts = [];
+      this.nextQuestion();
+    }
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
   },
   beforeUnmount() {
     this.clearStream();
   },
   methods: {
+<<<<<<< HEAD
     onSilenceDetected() {
       this.nextQuestion();
     },
@@ -177,6 +334,16 @@ export default {
         this.lastAudioBlob = null;
         this.loadingTranscripts = false;
         this.interviewStopping = false;
+=======
+    highlightTranscript,
+    averageConfidence,
+    async onSilenceDetected() {
+      if (this.difficultyLevel === 'Intermediate') {
+        this.nextQuestion();
+      } else {
+        this.showTranscriptSection = true;
+        this.transcriptLoading = true;
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
       }
     },
     handleDownload(url) {
@@ -240,13 +407,17 @@ export default {
       this.clearStream();
       this.showAnswer = false;
       this.isThinking = false;
+      this.showTranscriptSection = false;
+      this.currentTranscript = null;
+      this.transcriptLoaded = false;
+      this.transcriptLoading = false;
       const qa = this.interviewQA[this.turn];
       console.log("[Debug] Current turn:", this.turn);
       console.log("[Debug] Next question:", qa.question);
       this.currentQuestion = qa.question;
       this.currentAnswer = '';
       this.turn++;
-      this.speakQuestion(qa.question, () => {
+      speakWithAzureTTS(qa.question, this.selectedVoice, () => {
         // After TTS finishes, wait 3-6 seconds before showing the answer
         this.isThinking = true;
         const delay = Math.floor(Math.random() * 3000) + 3000;
@@ -272,10 +443,8 @@ export default {
       if (!delayFactor || !chunkSizeFactor) {
         throw new Error('Missing VUE_APP_STREAM_DELAY_FACTOR or VUE_APP_STREAM_CHUNK_FACTOR in environment variables.');
       }
-
       const baseChunkSize = Math.max(Math.ceil((text || '').length / 16), 8);
       const chunkSize = Math.round(baseChunkSize * chunkSizeFactor);
-
       const baseMinDelay = 500;
       const baseMaxDelay = 700;
       const minDelay = Math.floor(baseMinDelay * delayFactor);
@@ -298,6 +467,7 @@ export default {
     clearStream() {
       if (this.streamTimer) { clearInterval(this.streamTimer); this.streamTimer = null; }
     },
+<<<<<<< HEAD
    async speakQuestion(text, onEnd) {
   const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
   const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
@@ -348,6 +518,13 @@ export default {
     if (typeof onEnd === 'function') onEnd();
   }
 }
+=======
+    handleTranscriptReady(transcript) {
+      this.currentTranscript = transcript;
+      this.showTranscriptSection = true;
+      this.transcriptLoading = false;
+    }
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
   }
 };
 </script>
@@ -382,14 +559,16 @@ export default {
   background: #059669;
 }
 .interview-main-layout {
-  overflow: hidden;
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
+  overflow-x: hidden;
+  overflow-y: auto; /* Allow vertical scrolling */
 }
+
 .interview-content {
   flex: 1;
   display: flex;
@@ -397,7 +576,9 @@ export default {
   justify-content: flex-start;
   align-items: stretch;
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto; /* Allow vertical scrolling */
 }
 .section {
   border: 1px solid #e5e7eb;
@@ -437,7 +618,7 @@ export default {
 .section.answer {
   width: 80vw;
   max-width: 800px;
-  margin: 0 auto 1rem auto;
+  margin: 3rem auto 1rem auto;
   border-radius: 16px;
   background: #f5f5f5;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
@@ -449,8 +630,46 @@ export default {
   justify-content: flex-start;
   overflow: hidden;
 }
+.section.transcript-section {
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 1rem auto;
+  border-radius: 16px;
+  background: #e0e7ff; /* Slightly different background color */
+  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
+  padding: 2.5rem 2vw 2rem 2vw;
+  min-height: 220px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+  margin-bottom: 6rem;
+}
+.fixed-actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  z-index: 200;
+  background: transparent;
+  justify-content: center;
+  padding-bottom: 0;
+  display: flex;
+  gap: 1.5rem;
+}
+.otter-transcript {
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-size: 18px; /* Fixed font size similar to Otter.ai */
+  background: #f8fafc;
+  line-height: 1.7;
+  color: #222;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
 .answer-body {
-  font-size: 1.15rem;
+  font-size: 18px; /* Match Otter.ai font size */
   color: #333;
   white-space: pre-wrap;
   margin-top: 0.5rem;
@@ -527,6 +746,7 @@ export default {
 .thinking-effect .dots span:nth-child(3) {
   animation-delay: 0.8s;
 }
+<<<<<<< HEAD
 .otter-transcript {
   font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
   font-size: 18px; /* Fixed font size similar to Otter.ai */
@@ -544,6 +764,45 @@ export default {
   margin-top: 0.5rem;
   max-height: 300px;
   overflow-y: auto;
+=======
+.transcript-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(59,130,246,0.07);
+}
+.transcript-metrics-table th,
+.transcript-metrics-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  font-size: 1rem;
+}
+.transcript-metrics-table th {
+  background: #e0e7ff;
+  font-weight: 600;
+}
+.transcript-metrics-table tr:last-child td {
+  border-bottom: none;
+}
+.feedback-section {
+  background: #fef9c3;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 4px rgba(202,138,4,0.07);
+  font-size: 1.1rem;
+  color: #92400e;
+}
+.feedback-section h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  color: #ca8a04;
+  font-size: 1.15rem;
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 }
 @keyframes dots {
   0%, 20% { opacity: 0; }

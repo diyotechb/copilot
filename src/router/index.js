@@ -53,7 +53,11 @@ router.beforeEach(async (to, from, next) => {
     }
     if (to.name === 'InterviewView') {
         const interviewQA = await getInterviewQA();
+<<<<<<< HEAD
         if (!interviewQA || (Array.isArray(interviewQA) ? interviewQA.length === 0 : interviewQA.trim().length === 0)) {
+=======
+        if (!interviewQA || interviewQA.length === 0) {
+>>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
             window.alert('Interview questions are not ready. Please complete setup first.');
             return next({ name: 'ResumeSetup' });
         }

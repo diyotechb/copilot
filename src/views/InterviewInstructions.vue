@@ -44,7 +44,6 @@ export default {
 <style scoped>
 .instructions-container {
   max-width: 520px;
-  margin: 2rem auto;
   background: #fff;
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -56,6 +55,7 @@ export default {
   color: #333;
   font-size: 1rem;
   margin-bottom: 1.5rem;
+  padding-left: 2rem;
 }
 .instructions-box ul {
   margin-left: 1.5rem;
@@ -80,7 +80,7 @@ export default {
   color: #b45309;
   border: 2px solid #f59e42;
   border-radius: 8px;
-  padding: 0.75rem 1rem;
+  /* padding: 0.75rem 1rem; */
   font-size: 1.1rem;
   font-weight: 600;
   text-align: center;
