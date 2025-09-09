@@ -116,14 +116,9 @@
 
 <script>
 import fillerWordsList from '@/assets/fillerWords.json';
-<<<<<<< HEAD
-import { getRecording as getRecordingFromDb } from '@/store/audioStore';
-import { getInterviewQA, getTranscriptionStatus } from '@/store/interviewStore';
-=======
 import { getRecording as getRecordingFromDb } from '@/services/audioStore';
 import { getTranscriptionStatus, getTranscripts, getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 
 export default {
   name: 'SummaryView',
@@ -138,21 +133,6 @@ export default {
       recordingUrls: {}
     };
   },
-<<<<<<< HEAD
-  async mounted() {
-    if (this.interviewQA && this.interviewQA.length) {
-      this.localInterviewQA = this.interviewQA;
-    } else {
-      const allQA = await getInterviewQA();
-      this.localInterviewQA = allQA.length ? allQA[allQA.length - 1] : [];
-    }
-    this.checkTranscriptionStatus();
-  },
-  methods: {
-    async checkTranscriptionStatus() {
-      const inProcess = await getTranscriptionStatus();
-      if (inProcess === 'true') {
-=======
  async mounted() {
     this.localInterviewQA = this.interviewQA && this.interviewQA.length
       ? this.interviewQA
@@ -165,7 +145,6 @@ export default {
     async checkTranscriptionStatus() {
       const inProcess = await getTranscriptionStatus();
       if (inProcess === true) {
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
         console.log('Transcription in process...');
         this.loadingTranscripts = true;
         setTimeout(this.checkTranscriptionStatus, 1000);

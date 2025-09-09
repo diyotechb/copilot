@@ -7,14 +7,10 @@
 
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
-<<<<<<< HEAD
-import { saveRecording, getRecording } from '@/store/audioStore';
-=======
 import { saveRecording } from '@/store/audioStore';
 import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
 import { getSetting } from '@/store/settingStore';
 
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 export default {
   mounted() {
     if (this.showAnswer && !this.recording) {

@@ -18,11 +18,6 @@
             {{ (voice.ShortName || voice.Name || '').split('-').slice(-1)[0] }}<span v-if="voice.Gender || voice.gender"> ({{ voice.Gender || voice.gender }})</span>
           </option>
         </select>
-<<<<<<< HEAD
-        <div v-if="voicesLoading" style="margin-bottom:1rem; color:#2563eb;">
-          Loading voices...
-        </div>
-=======
       </div>
       <div class="section">
         <h3>Interview Difficulty</h3>
@@ -30,7 +25,6 @@
           <option value="Beginner">Beginner</option>
           <option value="Intermediate">Intermediate</option>
         </select>
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
       </div>
       <div class="section">
         <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
@@ -89,13 +83,9 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import { saveSetting, getSetting } from '@/store/settingStore';
 import { getInterviewQA, saveInterviewQA } from '@/store/interviewStore';
 import { generateInterviewQA } from '../services/openaiService.js';
-<<<<<<< HEAD
-import { clearRecordingsStore } from '@/store/audioStore';
-=======
 import { clearRecordingsStore } from '@/services/audioStore';
 import { saveSetting, getSetting } from '@/store/settingStore';
 import { saveInterviewQA } from '@/store/interviewStore';
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 
 export default {
   name: 'ResumeSetup',
@@ -110,16 +100,6 @@ export default {
       loadingQA: false,
       qaReady: false,
       submitSent: false,
-<<<<<<< HEAD
-      enableVideo: false,
-      voicesLoading: true,
-    };
-  },
-  async mounted() {
-    await this.fetchVoices();
-    clearRecordingsStore();
-    this.enableVideo = (await getSetting('enableVideo')) === 'true';
-=======
       answerFontSize: 22,
       interviewQA: [],
       enableVideo: false,
@@ -130,27 +110,19 @@ export default {
     this.fetchVoices();
     clearRecordingsStore();
     this.enableVideo = await getSetting('enableVideo');
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
     const savedVoice = await getSetting('selectedVoice');
       if (savedVoice) {
       this.selectedVoice = savedVoice;
     }
-<<<<<<< HEAD
-=======
     const savedDifficulty = await getSetting('interviewDifficulty');
     if (savedDifficulty) {
       this.interviewDifficulty = savedDifficulty;
     }
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
   },
   methods: {
     toggleVideo() {
       this.enableVideo = !this.enableVideo;
-<<<<<<< HEAD
-      saveSetting('enableVideo', this.enableVideo ? 'true' : 'false');
-=======
       saveSetting('enableVideo', this.enableVideo);
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
     },
     onVoiceChange() {
       if (this.selectedVoice) {
@@ -229,15 +201,8 @@ export default {
       this.submitSent = true;
       this.loadingQA = true;
       this.qaReady = false;
-<<<<<<< HEAD
-      await saveSetting('resumeText', this.resumeText);
-      await saveSetting('selectedVoice', this.selectedVoice);
-      await saveSetting('jobDescription', this.jobDescriptionText);
-
-=======
       
       await saveSetting('selectedVoice', this.selectedVoice);
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
       try {
         const qa = await generateInterviewQA({
           resumeText: this.resumeText,
@@ -248,10 +213,7 @@ export default {
           const j = Math.floor(Math.random() * (i + 1));
           [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
         }
-<<<<<<< HEAD
-=======
         this.interviewQA = qaArr;
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
         await saveInterviewQA(qaArr);
         this.qaReady = true;
         this.loadingQA = false;
@@ -265,23 +227,6 @@ export default {
     },
     async handleStartInterview() {
       const mediaConstraints = this.enableVideo ? { video: true, audio: true } : { audio: true };
-<<<<<<< HEAD
-      try {
-        await navigator.mediaDevices.getUserMedia(mediaConstraints);
-        const interviewQA = await getInterviewQA();
-        if (!interviewQA || (Array.isArray(interviewQA) ? interviewQA.length === 0 : interviewQA.trim().length === 0)) {
-          window.alert('Interview questions are not ready. Please try again or contact support.');
-          return;
-        }
-        this.$router.push({ name: 'InterviewView' });
-      } catch (err) {
-        if (this.enableVideo) {
-          window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
-        } else {
-          window.alert('Microphone permission denied. Please allow access to start the interview.');
-        }
-      }
-=======
       navigator.mediaDevices.getUserMedia(mediaConstraints)
         .then(() => {
           if (!this.interviewQA || this.interviewQA.length === 0) {
@@ -297,7 +242,6 @@ export default {
             window.alert('Microphone permission denied. Please allow access to start the interview.');
           }
         });
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
     },
     goToInterview() {
       this.$router.push({ name: 'InterviewView' });

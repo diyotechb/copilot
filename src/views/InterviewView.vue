@@ -17,14 +17,7 @@
         <!-- Answer Section -->
         <div class="section answer">
           <h2 class="subtitle">Answer</h2>
-<<<<<<< HEAD
-          <div
-            class="answer-body"
-            v-if="showAnswer"
-          >
-=======
           <div class="answer-body" v-if="showAnswer">
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
             {{ currentAnswer }}
           </div>
           <div v-else-if="interviewing && isThinking" class="answer-body thinking-effect">
@@ -167,12 +160,9 @@ import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
 import { getInterviewQA, saveTranscriptionStatus } from '@/store/interviewStore';
-<<<<<<< HEAD
-=======
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
 import { speakWithAzureTTS } from '@/services/azureSpeechService';
 
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 export default {
   watch: {
     feedbackMessage(newVal, oldVal) {
@@ -245,13 +235,7 @@ export default {
   components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView },
   data() {
     return {
-<<<<<<< HEAD
-      resumeText: '',
       selectedVoice: '',
-      jobDescription: '',
-=======
-      selectedVoice: '',
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
       interviewStopping: false,
       interviewQA: [],
       currentQuestion: '',
@@ -279,22 +263,6 @@ export default {
     };
   },
   async created() {
-<<<<<<< HEAD
-    this.resumeText = (await getSetting('resumeText')) || '';
-    this.selectedVoice = (await getSetting('selectedVoice')) || '';
-    this.jobDescription = (await getSetting('jobDescription')) || '';
-    this.enableVideo = (await getSetting('enableVideo')) === 'true';
-    const qaArr = await getInterviewQA(); // Use your session key or logic
-    this.interviewQA = qaArr || [];
-  },
-  mounted() {
-    this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
-    this.showInstructions = false;
-    this.interviewing = true;
-    this.turn = 0;
-    this.answerTranscripts = [];
-    console.log("[Debug] On mount interviewing:", this.interviewing);
-=======
     const storedQA = await getInterviewQA();
     this.interviewQA = Array.isArray(storedQA) ? storedQA : [];
     this.difficultyLevel = await getSetting('interviewDifficulty');
@@ -312,29 +280,11 @@ export default {
       this.answerTranscripts = [];
       this.nextQuestion();
     }
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
   },
   beforeUnmount() {
     this.clearStream();
   },
   methods: {
-<<<<<<< HEAD
-    onSilenceDetected() {
-      this.nextQuestion();
-    },
-    async onAudioBlob(blob) {
-      this.showAnswer = false; // Unmount AnswerRecorder immediately
-      this.lastAudioBlob = blob;
-      try {
-        const transcript = await sendToAssemblyAI(blob);
-        this.answerTranscripts.push(transcript || '[No transcript received]');
-      } catch (err) {
-        this.answerTranscripts.push('[Transcription error]');
-      } finally {
-        this.lastAudioBlob = null;
-        this.loadingTranscripts = false;
-        this.interviewStopping = false;
-=======
     highlightTranscript,
     averageConfidence,
     async onSilenceDetected() {
@@ -343,7 +293,6 @@ export default {
       } else {
         this.showTranscriptSection = true;
         this.transcriptLoading = true;
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
       }
     },
     handleDownload(url) {
@@ -467,64 +416,11 @@ export default {
     clearStream() {
       if (this.streamTimer) { clearInterval(this.streamTimer); this.streamTimer = null; }
     },
-<<<<<<< HEAD
-   async speakQuestion(text, onEnd) {
-  const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-  if (!subscriptionKey || !region) {
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      const utter = new window.SpeechSynthesisUtterance(text);
-      utter.lang = 'en-US';
-      utter.rate = 1.05;
-      utter.onend = onEnd;
-      window.speechSynthesis.speak(utter);
-      return;
-    }
-    if (typeof onEnd === 'function') onEnd();
-    return;
-  }
-  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
-  const ssml = `
-    <speak version='1.0' xml:lang='en-US'>
-      <voice xml:lang='en-US' name='${this.selectedVoice}'>
-        ${text}
-      </voice>
-    </speak>
-  `;
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': subscriptionKey,
-        'Content-Type': 'application/ssml+xml',
-        'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
-        'User-Agent': 'InterviewViewVue'
-      },
-      body: ssml
-    });
-    if (!response.ok) throw new Error('Azure TTS failed');
-    const audioData = await response.arrayBuffer();
-    const blob = new Blob([audioData], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.onended = onEnd;
-    audio.play().catch(e => {
-      console.error('Audio playback error:', e);
-      if (typeof onEnd === 'function') onEnd();
-    });
-  } catch (e) {
-    console.error('Azure TTS error:', e);
-    if (typeof onEnd === 'function') onEnd();
-  }
-}
-=======
     handleTranscriptReady(transcript) {
       this.currentTranscript = transcript;
       this.showTranscriptSection = true;
       this.transcriptLoading = false;
     }
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
   }
 };
 </script>
@@ -746,25 +642,6 @@ export default {
 .thinking-effect .dots span:nth-child(3) {
   animation-delay: 0.8s;
 }
-<<<<<<< HEAD
-.otter-transcript {
-  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-  font-size: 18px; /* Fixed font size similar to Otter.ai */
-  background: #f8fafc;
-  line-height: 1.7;
-  color: #222;
-  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.answer-body {
-  font-size: 18px; /* Match Otter.ai font size */
-  color: #333;
-  white-space: pre-wrap;
-  margin-top: 0.5rem;
-  max-height: 300px;
-  overflow-y: auto;
-=======
 .transcript-metrics-table {
   width: 100%;
   border-collapse: collapse;
@@ -802,7 +679,6 @@ export default {
   margin-bottom: 0.5rem;
   color: #ca8a04;
   font-size: 1.15rem;
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 }
 @keyframes dots {
   0%, 20% { opacity: 0; }
