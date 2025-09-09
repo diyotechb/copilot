@@ -81,11 +81,9 @@
 import FileUpload from '../components/FileUpload.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import { saveSetting, getSetting } from '@/store/settingStore';
-import { getInterviewQA, saveInterviewQA } from '@/store/interviewStore';
 import { generateInterviewQA } from '../services/openaiService.js';
-import { clearRecordingsStore } from '@/services/audioStore';
-import { saveSetting, getSetting } from '@/store/settingStore';
-import { saveInterviewQA } from '@/store/interviewStore';
+import { clearRecordingsStore } from '@/store/audioStore.js';
+import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
 
 export default {
   name: 'ResumeSetup',
@@ -104,11 +102,14 @@ export default {
       interviewQA: [],
       enableVideo: false,
       interviewDifficulty: 'Beginner',
+      voicesLoading: false,
     };
   },
   async mounted() {
     this.fetchVoices();
     clearRecordingsStore();
+    clearInterviewQAStore();
+    clearTranscriptsStore();
     this.enableVideo = await getSetting('enableVideo');
     const savedVoice = await getSetting('selectedVoice');
       if (savedVoice) {
@@ -185,42 +186,22 @@ export default {
         alert('Could not play sample for this voice.');
       }
     },
-    parseBatchQA(content) {
-      const qaPairs = [];
-      const regex = /Question\s*\d+\s*:(.*?)\nAnswer\s*\d+\s*:(.*?)(?=\nQuestion|$)/gs;
-      let match;
-      while ((match = regex.exec(content)) !== null) {
-        qaPairs.push({ question: match[1].trim(), answer: match[2].trim() });
-      }
-      if (qaPairs.length === 0 && content.trim()) {
-        qaPairs.push({ question: content.trim(), answer: '' });
-      }
-      return qaPairs;
-    },
     async submitSetup() {
       this.submitSent = true;
       this.loadingQA = true;
       this.qaReady = false;
-      
+
       await saveSetting('selectedVoice', this.selectedVoice);
       try {
-        const qa = await generateInterviewQA({
+        this.interviewQA = await generateInterviewQA({
           resumeText: this.resumeText,
           jobDescriptionText: this.jobDescriptionText
-        });
-        const qaArr = this.parseBatchQA(qa);
-        for (let i = qaArr.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
-        }
-        this.interviewQA = qaArr;
-        await saveInterviewQA(qaArr);
+        }); 
         this.qaReady = true;
-        this.loadingQA = false;
-        this.submitSent = false;
       } catch (e) {
         console.error('Failed to generate interview questions:', e);
         window.alert('Failed to generate interview questions.');
+      } finally {
         this.loadingQA = false;
         this.submitSent = false;
       }

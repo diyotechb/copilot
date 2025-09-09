@@ -115,8 +115,9 @@ export default {
       await saveTranscriptionStatus(true);
       let transcript = '';
       try {
-        console.log("[DEBUG] Sending audio blob for transcription");
         transcript = await sendToAssemblyAI(audioBlob);
+        console.log('[DEBUG] Transcription result:', transcript);
+        await saveTranscriptionStatus(false);
       } catch (err) {
         console.error('[AnswerRecorder] AssemblyAI transcription error:', err);
         transcript = '[Transcription error]';
@@ -126,14 +127,11 @@ export default {
         transcripts = [];
       }
       const difficultyLevel = await getSetting('interviewDifficulty');
-      console.log("[DEBUG] Difficulty Level:", difficultyLevel);
       if (difficultyLevel === 'Beginner') {
-        console.log("[DEBUG] Emitting transcript:", transcript);
         this.$emit('transcript', transcript);
       }
       transcripts[this.questionIndex] = transcript;
       await saveTranscripts(transcripts);
-      await saveTranscriptionStatus(false);
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;

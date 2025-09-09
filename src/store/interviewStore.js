@@ -25,18 +25,6 @@ export async function clearTranscriptsStore() {
   await clearStore(TRANSCRIPT_STORE);
 }
 
-<<<<<<< HEAD
-export async function saveTranscript(key, value) {
-  await saveItem(TRANSCRIPT_STORE, key, value);
-}
-
-export async function getTranscript(key) {
-  return await getItem(TRANSCRIPT_STORE, key);
-}
-
-export async function deleteTranscript(key) {
-  await deleteItem(TRANSCRIPT_STORE, key);
-=======
 export async function saveTranscripts(value) {
   await saveItem(TRANSCRIPT_STORE, "transcripts", value);
 }
@@ -47,10 +35,10 @@ export async function getTranscripts() {
 
 export async function deleteTranscript() {
   await deleteItem(TRANSCRIPT_STORE, "transcripts");
->>>>>>> 684fce0 (Implemented storage in IndexDB and initial implementation of Interview Level: Beginner and Intermediate)
 }
 
 export async function saveTranscriptionStatus(value) {
+  console.log('[DEBUG] Saving transcriptionInProcess status:', value);
   await saveItem(QA_STORE, 'transcriptionInProcess', value);
 }
 

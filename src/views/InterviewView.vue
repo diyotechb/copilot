@@ -111,23 +111,12 @@
           <button v-if="interviewing" class="btn stop" @click="stopInterview">Stop Interview</button>
         </div>
       </div>
-      <!-- Show loading only if loadingTranscripts is true -->
       <SummaryView
-        v-else-if="!interviewing && !allTranscriptsReceived"
+        v-else-if="!interviewing"
         :interviewQA="interviewQA"
         :answerTranscripts="answerTranscripts"
         :recordedVideoUrl="recordedVideoUrl"
         :enableVideo="enableVideo"
-        :loadingTranscripts="true"
-      />
-      <!-- Show summary only if interview is finished and not loading -->
-      <SummaryView
-        v-else-if="!interviewing && allTranscriptsReceived"
-        :interviewQA="interviewQA"
-        :answerTranscripts="answerTranscripts"
-        :recordedVideoUrl="recordedVideoUrl"
-        :enableVideo="enableVideo"
-        :loadingTranscripts="false"
       />
       <div v-else style="color:#aaa; text-align:center;">No interview questions found.</div>
     </div>
@@ -159,7 +148,7 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
-import { getInterviewQA, saveTranscriptionStatus } from '@/store/interviewStore';
+import { getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
 import { speakWithAzureTTS } from '@/services/azureSpeechService';
 
@@ -332,7 +321,6 @@ export default {
       }
     },
     async stopInterview() {
-      await saveTranscriptionStatus(true);
       if (this.$refs.answerRecorder && this.$refs.answerRecorder.isRecording) {
         this.$refs.answerRecorder.stopRecording();
       }

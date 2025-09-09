@@ -115,8 +115,7 @@
 </template>
 
 <script>
-import fillerWordsList from '@/assets/fillerWords.json';
-import { getRecording as getRecordingFromDb } from '@/services/audioStore';
+import { getRecording as getRecordingFromDb } from '@/store/audioStore.js';
 import { getTranscriptionStatus, getTranscripts, getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
 
