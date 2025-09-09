@@ -1,15 +1,20 @@
 <template>
-  <div class="video-corner">
-    <video ref="videoPreview" autoplay playsinline muted width="220" height="160" style="border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.12);" v-show="interviewing"></video>
-    <div v-if="recordedVideoUrl && !interviewing" class="center-actions">
-      <video :src="recordedVideoUrl" controls width="220" height="160" style="border-radius:12px;"></video>
-      <button class="btn download-btn" :disabled="!recordedVideoUrl" @click="handleDownload" style="width:220px; margin-top:8px;"
-        ref="downloadBtn">
-        <span style="font-size:1.5rem; margin-right:8px;">⬇️</span> Download
-      </button>
-      <button class="btn home-btn" @click="goHome" style="width:220px; margin-top:12px;">
-        <span style="font-size:1.5rem; margin-right:8px;">🏠</span> Home
-      </button>
+  <div>
+    <div v-if="isSafari && recordedVideoUrl && !interviewing" class="safari-warning">
+      <strong>Note:</strong> Safari has a known issue where the camera may remain active after recording stops. If you see the camera icon, manually refresh the page to fully release camera resources.
+    </div>
+    <div class="video-corner">
+      <!-- Hide video preview during interview -->
+      <div v-if="recordedVideoUrl && !interviewing" class="center-actions">
+        <video :src="recordedVideoUrl" controls width="220" height="160" style="border-radius:12px;"></video>
+        <button class="btn download-btn" :disabled="!recordedVideoUrl" @click="handleDownload" style="width:220px; margin-top:8px;"
+          ref="downloadBtn">
+          <span style="font-size:1.5rem; margin-right:8px;">⬇️</span> Download
+        </button>
+        <button class="btn home-btn" @click="goHome" style="width:220px; margin-top:12px;">
+          <span style="font-size:1.5rem; margin-right:8px;">🏠</span> Home
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -18,6 +23,11 @@
 <script>
 export default {
   name: 'VideoRecorder',
+  computed: {
+    isSafari() {
+      return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    }
+  },
   props: {
     interviewing: Boolean
   },
@@ -52,7 +62,7 @@ export default {
     this.$nextTick(() => {
       const btn = this.$refs.downloadBtn;
       if (btn) {
-        console.log('[Download Button Rendered]', {
+        console.log('[VideoRecorder] Download Button Rendered', {
           disabled: btn.disabled,
           recordedVideoUrl: this.recordedVideoUrl,
           interviewing: this.interviewing
@@ -60,12 +70,14 @@ export default {
       }
     });
     if (this.interviewing) {
+      console.log('[VideoRecorder] Interviewing is true, starting recording and requesting camera/mic permissions.');
       this.startRecording();
+    } else {
+      console.log('[VideoRecorder] Interviewing is false, NOT requesting camera/mic permissions.');
     }
   },
   beforeUnmount() {
     this.stopRecording();
-    this.clearSilenceDetection();
   },
   methods: {
     async startRecording() {
@@ -101,7 +113,6 @@ export default {
           }
         };
         this.mediaRecorder.start();
-        this.startSilenceDetection();
       } catch (err) {
         console.error('Could not start video recording:', err);
       }
@@ -112,10 +123,13 @@ export default {
           this.mediaRecorder.stop();
         }, 500);
       }
-      this.clearSilenceDetection();
     },
     goHome() {
-      this.$router.push({ name: 'ResumeSetup' });
+      this.stopRecording();
+      // Reload the page to fully release camera/mic in Safari
+      setTimeout(() => {
+        window.location.href = this.$router.resolve({ name: 'ResumeSetup' }).href;
+      }, 300);
     },
     handleDownload() {
       console.log('[Download Button Click]', {
@@ -125,50 +139,24 @@ export default {
       });
       if (!this.recordedVideoUrl) return;
       this.$emit('download', this.recordedVideoUrl);
-    },
-    startSilenceDetection() {
-      if (!this.mediaStream || !(this.mediaStream instanceof MediaStream)) {
-        console.error('No valid mediaStream for silence detection.');
-        return;
-      }
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.mediaStreamSource = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.mediaStreamSource.connect(this.analyser);
-      const data = new Uint8Array(this.analyser.fftSize);
-      this.silenceStart = null;
-      this.silenceTimer = setInterval(() => {
-        this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - 128) < 2);
-        if (isSilent) {
-          if (!this.silenceStart) this.silenceStart = Date.now();
-          if (Date.now() - this.silenceStart > this.silenceThreshold) {
-            this.$emit('silenceDetected');
-            this.silenceStart = null;
-          }
-        } else {
-          this.silenceStart = null;
-        }
-      }, 250);
-    },
-    clearSilenceDetection() {
-      if (this.silenceTimer) {
-        clearInterval(this.silenceTimer);
-        this.silenceTimer = null;
-      }
-      if (this.audioContext) {
-        this.audioContext.close();
-        this.audioContext = null;
-      }
-      this.mediaStreamSource = null;
-      this.analyser = null;
-      this.silenceStart = null;
     }
   }
 };
 </script>
 
 <style scoped>
+.safari-warning {
+  background: #fffbe6;
+  color: #b45309;
+  border: 2px solid #f59e42;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px rgba(245, 158, 66, 0.08);
+}
 .center-actions {
   display: flex;
   flex-direction: column;

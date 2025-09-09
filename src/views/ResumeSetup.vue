@@ -2,18 +2,64 @@
   <div class="resume-setup-container">
     <template v-if="!loadingQA && !qaReady">
       <h2>Resume & Interviewer Voice Setup</h2>
-      <FileUpload label="Resume" v-model="resumeText" />
-      <FileUpload label="Job Description" v-model="jobDescriptionText" />
+      <FileUpload
+        label="Resume"
+        @input="resumeText = $event"
+      />
+      <FileUpload
+        label="Job Description"
+        @input="jobDescriptionText = $event"
+      />
       <div class="section">
         <h3>Select Interviewer Voice</h3>
-        <select v-model="selectedVoice" class="voice-select" @change="onVoiceChange">
+        <select v-model="selectedVoice" class="voice-select" @change="onVoiceChange" :disabled="voicesLoading">
           <option value="" disabled>Select a voice</option>
           <option v-for="voice in voices" :key="voice.ShortName || voice.shortName" :value="voice.ShortName || voice.shortName">
             {{ (voice.ShortName || voice.Name || '').split('-').slice(-1)[0] }}<span v-if="voice.Gender || voice.gender"> ({{ voice.Gender || voice.gender }})</span>
           </option>
         </select>
       </div>
-      <button class="btn submit-btn" :disabled="!resumeText || !selectedVoice || loadingQA" @click="submitSetup">Submit</button>
+      <div class="section">
+        <h3>Interview Difficulty</h3>
+        <select v-model="interviewDifficulty" class="difficulty-select" @change="onDifficultyChange">
+          <option value="Beginner">Beginner</option>
+          <option value="Intermediate">Intermediate</option>
+        </select>
+      </div>
+      <div class="section">
+        <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+          <span
+            @click="toggleVideo"
+            :style="{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: enableVideo ? '#2563eb' : '#e5e7eb',
+              color: enableVideo ? '#fff' : '#888',
+              fontSize: '1.5rem',
+              boxShadow: enableVideo ? '0 2px 8px rgba(37,99,235,0.12)' : 'none',
+              border: enableVideo ? '2px solid #2563eb' : '2px solid #e5e7eb',
+              transition: 'all 0.2s',
+              cursor: 'pointer',
+            }"
+            title="Toggle video recording"
+          >
+            <svg v-if="enableVideo" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-1.382l2.447 1.632A1 1 0 0 0 18 13V7a1 1 0 0 0-1.553-.816L14 7.382V6a2 2 0 0 0-2-2H4zm0 2h7v6H4V7z"/></svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-1.382l2.447 1.632A1 1 0 0 0 18 13V7a1 1 0 0 0-1.553-.816L14 7.382V6a2 2 0 0 0-2-2H4zm0 2h7v6H4V7zm10.707 7.293-12-12-1.414 1.414 12 12 1.414-1.414z"/></svg>
+          </span>
+          <span>{{ enableVideo ? 'Video recording enabled' : 'Video recording disabled' }}</span>
+        </label>
+      </div>
+      <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
+        <button class="btn submit-btn"
+          :disabled="!resumeText || !selectedVoice || loadingQA || voicesLoading"
+          @click="submitSetup">
+          Submit
+        </button>
+      </div>
       <div v-if="submitSent" class="submit-message">
         <div class="loader" style="margin-bottom:1.5rem;"></div>
         <div style="color:#2563eb; font-weight:600; font-size:1.1rem;">Submitting your setup and generating interview questions...</div>
@@ -34,10 +80,10 @@
 <script>
 import FileUpload from '../components/FileUpload.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
+import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import mammoth from 'mammoth';
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+import { clearRecordingsStore } from '@/store/audioStore.js';
+import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
 
 export default {
   name: 'ResumeSetup',
@@ -45,28 +91,50 @@ export default {
   data() {
     return {
       resumeText: '',
-      resumeFile: null,
       voices: [],
       selectedVoice: '',
       jobDescriptionText: '',
-      jobDescriptionFile: null,
       uploading: false,
       loadingQA: false,
       qaReady: false,
       submitSent: false,
+      answerFontSize: 22,
+      interviewQA: [],
+      enableVideo: false,
+      interviewDifficulty: 'Beginner',
+      voicesLoading: false,
     };
   },
-  created() {
-    localStorage.removeItem('interviewQA');
+  async mounted() {
     this.fetchVoices();
+    clearRecordingsStore();
+    clearInterviewQAStore();
+    clearTranscriptsStore();
+    this.enableVideo = await getSetting('enableVideo');
+    const savedVoice = await getSetting('selectedVoice');
+      if (savedVoice) {
+      this.selectedVoice = savedVoice;
+    }
+    const savedDifficulty = await getSetting('interviewDifficulty');
+    if (savedDifficulty) {
+      this.interviewDifficulty = savedDifficulty;
+    }
   },
   methods: {
+    toggleVideo() {
+      this.enableVideo = !this.enableVideo;
+      saveSetting('enableVideo', this.enableVideo);
+    },
     onVoiceChange() {
       if (this.selectedVoice) {
         this.playVoiceSample(this.selectedVoice);
       }
     },
+    onDifficultyChange() {
+      saveSetting('interviewDifficulty', this.interviewDifficulty);
+    },
     async fetchVoices() {
+      this.voicesLoading = true;
       const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
       const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
       if (!subscriptionKey || !region) return;
@@ -81,6 +149,8 @@ export default {
         this.voices = allVoices.filter(v => (v.Locale || v.locale) === 'en-US');
       } catch (e) {
         this.voices = [];
+      } finally {
+        this.voicesLoading = false;
       }
     },
     async playVoiceSample(voiceName) {
@@ -116,131 +186,42 @@ export default {
         alert('Could not play sample for this voice.');
       }
     },
-    clearResume() {
-      this.resumeFile = null;
-      this.resumeText = "";
-    },
-    clearJobDescription() {
-      this.jobDescriptionFile = null;
-      this.jobDescriptionText = "";
-    },
-    onPasteResume() {
-      setTimeout(() => { if (this.resumeText.trim()) {/* Optionally auto-upload */} }, 150);
-    },
-    onPasteJobDescription() {
-      setTimeout(() => { if (this.jobDescriptionText.trim()) {/* Optionally auto-upload */} }, 150);
-    },
-    async handleFileSubmission(file, target) {
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (["txt","md","rtf"].includes(ext)) {
-        const reader = new FileReader();
-        reader.onload = () => { this[target] = String(reader.result || ""); };
-        reader.readAsText(file);
-      } else if (ext === "pdf") {
-        this[target] = "Extracting text from PDF...";
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          try {
-            const typedarray = new Uint8Array(ev.target.result);
-            const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
-            let text = "";
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i);
-              const content = await page.getTextContent();
-              text += content.items.map(item => item.str).join(" ") + "\n";
-            }
-            this[target] = text.trim();
-          } catch (err) {
-            this[target] = "Failed to extract text from PDF.";
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      } else if (ext === "docx") {
-        this[target] = "Extracting text from DOCX...";
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          try {
-            const arrayBuffer = ev.target.result;
-            const result = await mammoth.extractRawText({ arrayBuffer });
-            this[target] = result.value.trim();
-          } catch (err) {
-            this[target] = "Failed to extract text from DOCX.";
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      } else {
-        this[target] = "Unsupported file type.";
-      }
-    },
-    async onFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        this.resumeFile = file;
-        this.handleFileSubmission(file, 'resumeText');
-      }
-    },
-    async onDrop(e) {
-      this.dragging = false;
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        this.resumeFile = file;
-        this.handleFileSubmission(file, 'resumeText');
-      }
-    },
-    async onJobFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        this.jobDescriptionFile = file;
-        this.handleFileSubmission(file, 'jobDescriptionText');
-      }
-    },
-    async onDropJob(e) {
-      this.draggingJob = false;
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        this.jobDescriptionFile = file;
-        this.handleFileSubmission(file, 'jobDescriptionText');
-      }
-    },
     async submitSetup() {
       this.submitSent = true;
       this.loadingQA = true;
       this.qaReady = false;
-      // Save selections
-      localStorage.setItem('resumeText', this.resumeText);
-      localStorage.setItem('selectedVoice', this.selectedVoice);
-      localStorage.setItem('jobDescription', this.jobDescriptionText);
-      // Generate Q/A
+
+      await saveSetting('selectedVoice', this.selectedVoice);
       try {
-        const qa = await generateInterviewQA({
+        this.interviewQA = await generateInterviewQA({
           resumeText: this.resumeText,
           jobDescriptionText: this.jobDescriptionText
-        });
-        localStorage.setItem('interviewQA', qa);
+        }); 
         this.qaReady = true;
-        this.loadingQA = false;
-        this.submitSent = false;
       } catch (e) {
         console.error('Failed to generate interview questions:', e);
         window.alert('Failed to generate interview questions.');
+      } finally {
         this.loadingQA = false;
         this.submitSent = false;
       }
     },
-    handleStartInterview() {
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    async handleStartInterview() {
+      const mediaConstraints = this.enableVideo ? { video: true, audio: true } : { audio: true };
+      navigator.mediaDevices.getUserMedia(mediaConstraints)
         .then(() => {
-          const interviewQA = localStorage.getItem('interviewQA');
-          console.log('[ResumeSetup] handleStartInterview called, interviewQA:', interviewQA);
-          if (!interviewQA || interviewQA.trim().length === 0) {
+          if (!this.interviewQA || this.interviewQA.length === 0) {
             window.alert('Interview questions are not ready. Please try again or contact support.');
             return;
           }
-          console.log('[ResumeSetup] Redirecting to InterviewView...');
           this.$router.push({ name: 'InterviewView' });
         })
         .catch(() => {
-          window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+          if (this.enableVideo) {
+            window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+          } else {
+            window.alert('Microphone permission denied. Please allow access to start the interview.');
+          }
         });
     },
     goToInterview() {
@@ -341,5 +322,21 @@ export default {
 .submit-message {
   margin-top: 2rem;
   text-align: center;
+}
+.section .sample-answer {
+  font-weight: 500;
+  background: #f3f4f6;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  display: inline-block;
+}
+.difficulty-select {
+  border-radius: 0.75rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  font-size: 1rem;
+  background: #fff;
+  margin-bottom: 1rem;
+  width: 100%;
 }
 </style>

@@ -4,14 +4,22 @@
       <InterviewInstructions @startInterview="startInterview" />
     </div>
     <div v-else class="interview-content">
+      <!-- Interview in progress -->
       <div v-if="interviewQA.length && interviewing" class="main-card">
-        <div class="section question-section">
+        <!-- Question Section -->
+        <div v-if="showQuestionSection" class="section question-section">
+          <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
+            {{ turn }}/{{ interviewQA.length }}
+          </div>
           <h2 class="subtitle">Question</h2>
           <p class="question-text">{{ currentQuestion }}</p>
         </div>
+        <!-- Answer Section -->
         <div class="section answer">
           <h2 class="subtitle">Answer</h2>
-          <div class="answer-body" v-if="showAnswer">{{ currentAnswer }}</div>
+          <div class="answer-body" v-if="showAnswer">
+            {{ currentAnswer }}
+          </div>
           <div v-else-if="interviewing && isThinking" class="answer-body thinking-effect">
             <span>Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span></span>
           </div>
@@ -25,60 +33,235 @@
             </ul>
           </div>
         </div>
-        <div class="actions fixed-actions">
-          <button class="btn next" :disabled="!interviewing" @click="nextQuestion">Next Question</button>
+        <!-- Transcript Section for Beginner -->
+        <div v-if="showTranscriptSection && difficultyLevel === 'Beginner'" class="section transcript-section">
+          <h3>Transcript</h3>
+          <div v-if="transcriptLoading" style="color:#2563eb; font-style:italic;">
+            Loading transcript...
+          </div>
+          <p v-else class="otter-transcript" v-html="highlightTranscript(currentTranscript)"></p>
+          <div v-if="currentTranscript && currentTranscript.words">
+              <table class="transcript-metrics-table">
+              <tr>
+                <th>Metric</th>
+                <th>Value</th>
+              </tr>
+              <tr>
+                <td>Confidence</td>
+                <td>{{ averageConfidence(currentTranscript.words) }}%</td>
+              </tr>
+              <tr>
+                <td>Filler Words</td>
+                <td>{{ currentTranscript._fillerWordCount }}</td>
+              </tr>
+              <tr>
+                <td>Filler Word Percentage</td>
+                <td>
+                  {{ ((currentTranscript._fillerWordCount / currentTranscript.words.length) * 100).toFixed(1) }}%
+                </td>
+              </tr>
+            </table>
+          </div>
+          <div v-if="feedbackMessage" class="feedback-section" style="margin-top:1.5rem;">
+            <h3>Feedback</h3>
+            <p>{{ feedbackMessage }}</p>
+            <div style="color: #888; font-size: 0.9em;">
+            </div>
+          </div>
+          <!-- Legend for highlights -->
+          <div class="transcript-legend" style="margin-top:1.5rem;">
+          <strong>Legend:</strong>
+          <div>
+            <span
+              style="background:rgba(34,197,94,0.15);padding:2px 8px;border-radius:4px;"
+              title="Positive sentiment: Indicates the speaker expressed positive emotion or approval in this segment."
+            >Positive sentiment</span>
+            <span
+              style="background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:4px;margin-left:8px;"
+              title="Negative sentiment: Indicates the speaker expressed negative emotion or disapproval in this segment."
+            >Negative sentiment</span>
+            <span
+              style="background:rgba(59,130,246,0.10);padding:2px 8px;border-radius:4px;margin-left:8px;"
+              title="Neutral sentiment: Indicates the speaker expressed neutral or factual information."
+            >Neutral sentiment</span>
+            <span
+              style="color:#a855f7;font-weight:bold;margin-left:8px;"
+              title="Filler word: Common words or phrases that do not add meaning, such as 'um', 'uh', 'you know'."
+            >Filler word</span>
+            <span
+              style="background:#fee2e2;color:#dc2626;border-radius:3px;font-weight:bold;margin-left:8px;"
+              title="Low confidence: The speech recognition system was not confident about this word."
+            >Low confidence</span>
+            <span
+              style="background:#fef9c3;color:#ca8a04;border-radius:3px;font-weight:bold;margin-left:8px;"
+              title="Medium confidence: The speech recognition system was moderately confident about this word."
+            >Medium confidence</span>
+          </div>
+        </div>
+        </div>
+        <!-- Actions (Buttons) always below all sections -->
+        <div class="fixed-actions" style="margin-top:2rem;">
+          <button
+            class="btn next"
+            :disabled="!interviewing || (difficultyLevel === 'Beginner' && !transcriptLoaded)"
+            @click="nextQuestion"
+          >
+            Next Question
+          </button>
           <button v-if="interviewing" class="btn stop" @click="stopInterview">Stop Interview</button>
         </div>
       </div>
+      <SummaryView
+        v-else-if="!interviewing"
+        :interviewQA="interviewQA"
+        :answerTranscripts="answerTranscripts"
+        :recordedVideoUrl="recordedVideoUrl"
+        :enableVideo="enableVideo"
+      />
       <div v-else style="color:#aaa; text-align:center;">No interview questions found.</div>
     </div>
-  <div class="video-corner">
-    <VideoRecorder
-      :interviewing="interviewing && !showInstructions"
-      @video-mounted="videoPreview = $event"
-      @videoUrl="recordedVideoUrl = $event"
-      @download="handleDownload"
-    />
-  </div>
-  <!-- Download button moved to VideoRecorder.vue -->
+    <div class="video-corner">
+      <!-- Show VideoRecorder only at the end of the interview if enabled -->
+      <VideoRecorder
+        v-if="enableVideo === true && !interviewing && showRecordedVideo"
+        :interviewing="false"
+        @video-mounted="videoPreview = $event"
+        @videoUrl="recordedVideoUrl = $event"
+        @download="handleDownload"
+      />
+      <AnswerRecorder
+        v-if="interviewing && showAnswer"
+        :silenceThreshold="silenceThreshold"
+        :showAnswer="showAnswer"
+        :questionIndex="turn - 1"
+        @transcript="handleTranscriptReady"
+        @silenceDetected="onSilenceDetected"
+        ref="answerRecorder"
+      />
+    </div>
   </div>
 </template>
 
 <script>
-import { ref, watch, onMounted, onUnmounted } from 'vue';
 import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
+import AnswerRecorder from '../components/AnswerRecorder.vue';
+import SummaryView from './SummaryView.vue';
+import { getSetting } from '@/store/settingStore';
+import { getInterviewQA } from '@/store/interviewStore';
+import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
+import { speakWithAzureTTS } from '@/services/azureSpeechService';
+
 export default {
+  watch: {
+    feedbackMessage(newVal, oldVal) {
+      if (newVal && newVal !== oldVal && this.selectedVoice && this.difficultyLevel === 'Beginner') {
+        speakWithAzureTTS(newVal, this.selectedVoice, () => {
+          this.transcriptLoaded = true;
+        });
+    }
+  },
+},
+  computed: {
+    showRecordedVideo() {
+      return this.enableVideo && !this.interviewing && this.recordedVideoUrl;
+    },
+    allTranscriptsReceived() {
+      if (this.interviewing) {
+        const allReceived = this.answerTranscripts.length === this.interviewQA.length;
+        return false;
+      }
+      if (this.lastAudioBlob) {
+        return false;
+      }
+      const allReceived = this.answerTranscripts.length === this.interviewQA.length && this.interviewQA.length > 0;
+      if (allReceived) {
+        return true;
+      }
+      if (this.answerTranscripts.length === 0 && this.interviewQA.length === 0) {
+        return true;
+      }
+      return false;
+    },
+    feedbackMessage() {
+      if (!this.currentTranscript || !this.currentTranscript.words) {
+        return '';
+      }
+      const confidence = Number(this.averageConfidence(this.currentTranscript.words));
+      const fillerCount = this.currentTranscript._fillerWordCount || 0;
+      const totalWords = this.currentTranscript.words.length || 1;
+      const fillerPercent = ((fillerCount / totalWords) * 100);
+
+      let feedback = [];
+
+      // Confidence feedback
+      if (confidence >= 90) {
+        feedback.push('Excellent clarity and pronunciation. Your answers are very clear.');
+      } else if (confidence >= 75) {
+        feedback.push('Good clarity, but try to speak a bit more clearly for even better results.');
+      } else {
+        feedback.push('Speech recognition had trouble understanding some words. Try to speak slower and more clearly.');
+      }
+
+      // Filler word feedback
+      if (fillerPercent < 5) {
+        feedback.push('Great job minimizing filler words!');
+      } else if (fillerPercent < 15) {
+        feedback.push('You used some filler words. Try to reduce them for a more polished response.');
+      } else {
+        feedback.push('Frequent use of filler words detected. Practice pausing instead of using fillers.');
+      }
+      // Overall feedback
+      if (confidence >= 90 && fillerPercent < 5) {
+        feedback.push('Overall, your answer was very strong!');
+      }
+
+      const result = feedback.join(' ');
+      return result;
+    }
+  },
   name: 'InterviewView',
-  components: { VideoRecorder, InterviewInstructions },
+  components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView },
   data() {
     return {
-      resumeText: localStorage.getItem('resumeText') || '',
-      selectedVoice: localStorage.getItem('selectedVoice') || '',
-      jobDescription: localStorage.getItem('jobDescription') || '',
+      selectedVoice: '',
+      interviewStopping: false,
       interviewQA: [],
       currentQuestion: '',
       currentAnswer: '',
       turn: 0,
-            interviewing: false,
-      showAnswer: false,
+      interviewing: true,
+      showAnswer: true,
       isThinking: false,
       answerTranscripts: [],
       recordedVideoUrl: '',
       videoPreview: null,
+      enableVideo: false,
       streamTimer: null,
       silenceTimer: null,
-      silenceThreshold: 5000, // 5 seconds
-      silenceStart: null,
+      silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, 
+      showQuestionSection: process.env.VUE_APP_SHOW_QUESTION_SECTION === 'true',
       showInstructions: true,
+      loadingTranscripts: false,
+      lastAudioBlob: null,
+      difficultyLevel: null,
+      showTranscriptSection: false,
+      currentTranscript: null,
+      transcriptLoading: false,
+      transcriptLoaded: false,
     };
   },
-  created() {
-    this.parseInterviewQA();
-  },
-  mounted() {
+  async created() {
+    const storedQA = await getInterviewQA();
+    this.interviewQA = Array.isArray(storedQA) ? storedQA : [];
+    this.difficultyLevel = await getSetting('interviewDifficulty');
+  },  
+  async mounted() {
+    this.enableVideo = await getSetting('enableVideo');
     this.$on('video-mounted', (videoEl) => { this.videoPreview = videoEl; });
-    // If navigated here, check if we should start interview immediately
+    const savedVoice = await getSetting('selectedVoice');
+    this.selectedVoice = savedVoice; 
+    this.interviewQA = await getInterviewQA();
     if (this.$route && this.$route.name === 'InterviewView') {
       this.showInstructions = false;
       this.interviewing = true;
@@ -91,6 +274,16 @@ export default {
     this.clearStream();
   },
   methods: {
+    highlightTranscript,
+    averageConfidence,
+    async onSilenceDetected() {
+      if (this.difficultyLevel === 'Intermediate') {
+        this.nextQuestion();
+      } else {
+        this.showTranscriptSection = true;
+        this.transcriptLoading = true;
+      }
+    },
     handleDownload(url) {
       if (!url) return;
       const a = document.createElement('a');
@@ -109,52 +302,39 @@ export default {
       a.click();
       document.body.removeChild(a);
     },
-    parseInterviewQA() {
-      const qaRaw = localStorage.getItem('interviewQA') || '';
-      let qaArr = this.parseBatchQA(qaRaw);
-      // Shuffle Q/A array
-      for (let i = qaArr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [qaArr[i], qaArr[j]] = [qaArr[j], qaArr[i]];
-      }
-      this.interviewQA = qaArr;
-    },
-    parseBatchQA(content) {
-      const qaPairs = [];
-      const regex = /Question\s*\d+\s*:(.*?)\nAnswer\s*\d+\s*:(.*?)(?=\nQuestion|$)/gs;
-      let match;
-      while ((match = regex.exec(content)) !== null) {
-        qaPairs.push({ question: match[1].trim(), answer: match[2].trim() });
-      }
-      if (qaPairs.length === 0 && content.trim()) {
-        qaPairs.push({ question: content.trim(), answer: '' });
-      }
-      return qaPairs;
-    },
     async startInterview() {
+      console.log("[Debug] startInterview called");
       try {
-        await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (this.enableVideo) {
+          await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } else {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
         this.showInstructions = false;
         this.interviewing = true;
         this.turn = 0;
         this.answerTranscripts = [];
         this.nextQuestion();
       } catch (err) {
-        window.alert('Camera and microphone permission denied. Please allow access to start the interview.');
+        console.error('[InterviewView] Permission error:', err);
+        window.alert('Microphone (and camera, if enabled) permission denied. Please allow access to start the interview.');
       }
     },
     async stopInterview() {
+      if (this.$refs.answerRecorder && this.$refs.answerRecorder.isRecording) {
+        this.$refs.answerRecorder.stopRecording();
+      }
       this.interviewing = false;
-      this.clearStream();
-      this.currentQuestion = 'Interview stopped.';
-      this.currentAnswer = '';
       this.showAnswer = false;
+      this.$router.push({ name: 'SummaryView' });
     },
     nextQuestion() {
-      if (!this.interviewing) return;
+      console.log("[Debug] nextQuestion called");
+      if (!this.interviewing || this.interviewStopping) return;
       if (this.turn >= this.interviewQA.length) {
-        window.alert('Interview finished!');
+        console.log("[Debug] Interview finished");
         this.interviewing = false;
+        this.showAnswer = false;
         this.clearStream();
         this.currentQuestion = 'Interview finished.';
         this.currentAnswer = '';
@@ -164,11 +344,17 @@ export default {
       this.clearStream();
       this.showAnswer = false;
       this.isThinking = false;
+      this.showTranscriptSection = false;
+      this.currentTranscript = null;
+      this.transcriptLoaded = false;
+      this.transcriptLoading = false;
       const qa = this.interviewQA[this.turn];
+      console.log("[Debug] Current turn:", this.turn);
+      console.log("[Debug] Next question:", qa.question);
       this.currentQuestion = qa.question;
       this.currentAnswer = '';
       this.turn++;
-      this.speakQuestion(qa.question, () => {
+      speakWithAzureTTS(qa.question, this.selectedVoice, () => {
         // After TTS finishes, wait 3-6 seconds before showing the answer
         this.isThinking = true;
         const delay = Math.floor(Math.random() * 3000) + 3000;
@@ -185,7 +371,22 @@ export default {
       });
     },
     streamLocalAnswer(text) {
-      const chunkSize = Math.max(Math.ceil((text || '').length / 16), 8); // Smaller chunks
+      const delayFactor = Number(process.env.VUE_APP_STREAM_DELAY_FACTOR) || 1;
+      const chunkSizeFactor = Number(process.env.VUE_APP_STREAM_CHUNK_FACTOR) || 1;
+
+      console.log('Streaming answer with chunk size factor:', chunkSizeFactor);
+      console.log('Streaming answer with delay factor:', delayFactor);
+
+      if (!delayFactor || !chunkSizeFactor) {
+        throw new Error('Missing VUE_APP_STREAM_DELAY_FACTOR or VUE_APP_STREAM_CHUNK_FACTOR in environment variables.');
+      }
+      const baseChunkSize = Math.max(Math.ceil((text || '').length / 16), 8);
+      const chunkSize = Math.round(baseChunkSize * chunkSizeFactor);
+      const baseMinDelay = 500;
+      const baseMaxDelay = 700;
+      const minDelay = Math.floor(baseMinDelay * delayFactor);
+      const maxDelay = Math.floor(baseMaxDelay * delayFactor);
+
       const chars = [...(text || '')];
       let i = 0;
       const typeChunk = () => {
@@ -193,9 +394,9 @@ export default {
           this.clearStream();
           return;
         }
-        this.currentAnswer += chars.slice(i, i+chunkSize).join('');
+        this.currentAnswer += chars.slice(i, i + chunkSize).join('');
         i += chunkSize;
-        const delay = Math.floor(Math.random() * 700) + 500; // Slower and randomized chunk reveal
+        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
         this.streamTimer = setTimeout(typeChunk, delay);
       };
       typeChunk();
@@ -203,92 +404,10 @@ export default {
     clearStream() {
       if (this.streamTimer) { clearInterval(this.streamTimer); this.streamTimer = null; }
     },
-    async speakQuestion(text, onEnd) {
-      // Use Azure TTS or browser TTS
-      const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-      if (!subscriptionKey || !region) {
-        if (window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-          const utter = new window.SpeechSynthesisUtterance(text);
-          utter.lang = 'en-US';
-          utter.rate = 1.05;
-          utter.onend = onEnd;
-          window.speechSynthesis.speak(utter);
-          return;
-        }
-        if (typeof onEnd === 'function') onEnd();
-        return;
-      }
-      const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
-      const ssml = `
-        <speak version='1.0' xml:lang='en-US'>
-          <voice xml:lang='en-US' name='${this.selectedVoice}'>
-            ${text}
-          </voice>
-        </speak>
-      `;
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Ocp-Apim-Subscription-Key': subscriptionKey,
-            'Content-Type': 'application/ssml+xml',
-            'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
-            'User-Agent': 'InterviewViewVue'
-          },
-          body: ssml
-        });
-        if (!response.ok) throw new Error('Azure TTS failed');
-        const audioData = await response.arrayBuffer();
-        const blob = new Blob([audioData], { type: 'audio/mp3' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = onEnd;
-        audio.play();
-      } catch (e) {
-        console.error('Azure TTS error:', e);
-        if (typeof onEnd === 'function') onEnd();
-      }
-    },
-    async startAnswerRecording() {
-      // Remove answer timer, only use silence detection
-      this.startSilenceDetection();
-    },
-    startSilenceDetection() {
-      if (!this.mediaStream || !(this.mediaStream instanceof MediaStream)) {
-        console.error('No valid mediaStream for silence detection.');
-        return;
-      }
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.mediaStreamSource = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.mediaStreamSource.connect(this.analyser);
-      const data = new Uint8Array(this.analyser.fftSize);
-      this.silenceStart = null;
-      this.silenceTimer = setInterval(() => {
-        this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - 128) < 2);
-        if (isSilent) {
-          if (!this.silenceStart) this.silenceStart = Date.now();
-          if (Date.now() - this.silenceStart > this.silenceThreshold) {
-            this.stopAnswerRecording();
-            this.nextQuestion();
-          }
-        } else {
-          this.silenceStart = null;
-        }
-      }, 250);
-    },
-    stopAnswerRecording() {
-      // Do not stop video recording here
-      if (this.silenceTimer) clearInterval(this.silenceTimer);
-      if (this.audioContext) this.audioContext.close();
-      this.silenceTimer = null;
-      this.audioContext = null;
-      this.mediaStreamSource = null;
-      this.analyser = null;
-      this.silenceStart = null;
+    handleTranscriptReady(transcript) {
+      this.currentTranscript = transcript;
+      this.showTranscriptSection = true;
+      this.transcriptLoading = false;
     }
   }
 };
@@ -324,14 +443,16 @@ export default {
   background: #059669;
 }
 .interview-main-layout {
-  overflow: hidden;
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
+  overflow-x: hidden;
+  overflow-y: auto; /* Allow vertical scrolling */
 }
+
 .interview-content {
   flex: 1;
   display: flex;
@@ -339,7 +460,9 @@ export default {
   justify-content: flex-start;
   align-items: stretch;
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto; /* Allow vertical scrolling */
 }
 .section {
   border: 1px solid #e5e7eb;
@@ -351,13 +474,25 @@ export default {
 }
 .section.question-section,
 .section.answer {
-  width: 100vw;
-  max-width: none;
-  margin: 0 0 2.5rem 0;
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 1rem auto;
   border-radius: 16px;
   background: #f5f5f5;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  padding: 2rem 3vw 2rem 3vw;
+  padding: 2rem 2vw 2rem 2vw;
+}
+.section.question-section {
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 2.5rem auto;
+  border-radius: 16px;
+  background: #f5f5f5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  padding: 2rem 2vw 2rem 2vw;
+  z-index: 1;
+  position: static;
+  height: auto;
 }
 .section.question-section {
   z-index: 1;
@@ -365,20 +500,60 @@ export default {
   height: auto;
 }
 .section.answer {
-  padding: 2rem 2rem 2rem 2rem;
+  width: 80vw;
+  max-width: 800px;
+  margin: 3rem auto 1rem auto;
+  border-radius: 16px;
+  background: #f5f5f5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  padding: 2rem 2vw 2rem 2vw;
   min-height: 320px;
   flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  max-width: none;
-  margin: 0 0 1rem 0;
-  width: auto;
-  align-self: flex-start;
   overflow: hidden;
 }
+.section.transcript-section {
+  width: 80vw;
+  max-width: 800px;
+  margin: 0 auto 1rem auto;
+  border-radius: 16px;
+  background: #e0e7ff; /* Slightly different background color */
+  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
+  padding: 2.5rem 2vw 2rem 2vw;
+  min-height: 220px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+  margin-bottom: 6rem;
+}
+.fixed-actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  z-index: 200;
+  background: transparent;
+  justify-content: center;
+  padding-bottom: 0;
+  display: flex;
+  gap: 1.5rem;
+}
+.otter-transcript {
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-size: 18px; /* Fixed font size similar to Otter.ai */
+  background: #f8fafc;
+  line-height: 1.7;
+  color: #222;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
 .answer-body {
-  font-size: 1.15rem;
+  font-size: 18px; /* Match Otter.ai font size */
   color: #333;
   white-space: pre-wrap;
   margin-top: 0.5rem;
@@ -454,6 +629,44 @@ export default {
 }
 .thinking-effect .dots span:nth-child(3) {
   animation-delay: 0.8s;
+}
+.transcript-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(59,130,246,0.07);
+}
+.transcript-metrics-table th,
+.transcript-metrics-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  font-size: 1rem;
+}
+.transcript-metrics-table th {
+  background: #e0e7ff;
+  font-weight: 600;
+}
+.transcript-metrics-table tr:last-child td {
+  border-bottom: none;
+}
+.feedback-section {
+  background: #fef9c3;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 4px rgba(202,138,4,0.07);
+  font-size: 1.1rem;
+  color: #92400e;
+}
+.feedback-section h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  color: #ca8a04;
+  font-size: 1.15rem;
 }
 @keyframes dots {
   0%, 20% { opacity: 0; }
