@@ -8,6 +8,18 @@
       <button class="home-btn" @click="$router.push({ name: 'ResumeSetup' })">
         🏠 Home
       </button>
+      <div v-if="enableVideo && recordedVideoUrl" class="summary-video-container" style="margin-bottom:2rem; text-align:center;">
+        <video
+          :src="recordedVideoUrl"
+          controls
+          style="max-width:100%; border-radius:12px; box-shadow:0 2px 8px rgba(59,130,246,0.07);"
+        ></video>
+        <div style="color:#2563eb; font-weight:600; margin-top:0.5rem;">Your Interview Recording</div>
+          <button class="btn download-btn" :disabled="!recordedVideoUrl" @click="handleDownload" style="width:220px; margin-top:8px;"
+            ref="downloadBtn">
+            <span style="font-size:1.5rem; margin-right:8px;">⬇️</span> Download
+        </button>
+      </div>
     <h2 class="summary-title">Interview Summary</h2>
     <div class="summary-legend">
       <span>
@@ -118,24 +130,29 @@
 import { getRecording as getRecordingFromDb } from '@/store/audioStore.js';
 import { getTranscriptionStatus, getTranscripts, getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
+import { getSetting } from '@/store/settingStore';
 
 export default {
   name: 'SummaryView',
-  props: {
-    interviewQA: Array
-  },
   data() {
     return {
       transcripts: [],
       localInterviewQA: [],
       loadingTranscripts: true,
-      recordingUrls: {}
+      recordingUrls: {},
+      enableVideo: false,
+      recordedVideoUrl: ''
     };
   },
- async mounted() {
+  async mounted() {
     this.localInterviewQA = this.interviewQA && this.interviewQA.length
       ? this.interviewQA
       : await getInterviewQA() || '[]';
+    this.enableVideo = await getSetting('enableVideo');
+    this.recordedVideoUrl = await getSetting('recordedVideoUrl');
+    if (this.enableVideo && (this.recordedVideoUrl == null || this.recordedVideoUrl === '')) {
+      console.warn('Video enabled but no recorded video URL found.');
+    }
     this.checkTranscriptionStatus();
   },
   methods: {

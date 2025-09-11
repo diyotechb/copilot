@@ -46,7 +46,6 @@ export async function sendToAssemblyAI(audioBlob) {
     const pollData = await pollRes.json();
     status = pollData.status;
     if (status === 'completed') {
-      console.log('[assemblyAISpeechService] Transcription completed:', pollData);
       return pollData;
     } else if (status === 'failed') {
       console.error('[assemblyAISpeechService] AssemblyAI transcription failed.', pollData);

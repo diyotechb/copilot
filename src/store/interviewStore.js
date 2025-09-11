@@ -38,7 +38,6 @@ export async function deleteTranscript() {
 }
 
 export async function saveTranscriptionStatus(value) {
-  console.log('[DEBUG] Saving transcriptionInProcess status:', value);
   await saveItem(QA_STORE, 'transcriptionInProcess', value);
 }
 

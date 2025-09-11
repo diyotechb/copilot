@@ -19,10 +19,6 @@ export default {
   },
   name: 'AnswerRecorder',
   props: {
-    silenceThreshold: {
-      type: Number,
-      default: 5000
-    },
     showAnswer: {
       type: Boolean,
       default: false
@@ -44,11 +40,12 @@ export default {
       analyser: null,
       silenceTimer: null,
       silenceStart: null,
-      difficultyLevel: null
+      difficultyLevel: null,
+      silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 3000, 
     };
   },
   watch: {
-    showAnswer(newVal, oldVal) {
+    showAnswer(newVal) {
       if (newVal && !this.recording) {
         this.startRecording();
       }
@@ -116,7 +113,6 @@ export default {
       let transcript = '';
       try {
         transcript = await sendToAssemblyAI(audioBlob);
-        console.log('[DEBUG] Transcription result:', transcript);
         await saveTranscriptionStatus(false);
       } catch (err) {
         console.error('[AnswerRecorder] AssemblyAI transcription error:', err);

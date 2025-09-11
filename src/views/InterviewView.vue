@@ -6,11 +6,11 @@
     <div v-else class="interview-content">
       <!-- Interview in progress -->
       <div v-if="interviewQA.length && interviewing" class="main-card">
+        <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
+          {{ turn }}/{{ interviewQA.length }}
+        </div>
         <!-- Question Section -->
         <div v-if="showQuestionSection" class="section question-section">
-          <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
-            {{ turn }}/{{ interviewQA.length }}
-          </div>
           <h2 class="subtitle">Question</h2>
           <p class="question-text">{{ currentQuestion }}</p>
         </div>
@@ -113,25 +113,14 @@
       </div>
       <SummaryView
         v-else-if="!interviewing"
-        :interviewQA="interviewQA"
-        :answerTranscripts="answerTranscripts"
-        :recordedVideoUrl="recordedVideoUrl"
-        :enableVideo="enableVideo"
       />
       <div v-else style="color:#aaa; text-align:center;">No interview questions found.</div>
     </div>
     <div class="video-corner">
       <!-- Show VideoRecorder only at the end of the interview if enabled -->
-      <VideoRecorder
-        v-if="enableVideo === true && !interviewing && showRecordedVideo"
-        :interviewing="false"
-        @video-mounted="videoPreview = $event"
-        @videoUrl="recordedVideoUrl = $event"
-        @download="handleDownload"
-      />
+      <VideoRecorder v-if="enableVideo === true" :interviewStopped="interviewStopped"/>
       <AnswerRecorder
         v-if="interviewing && showAnswer"
-        :silenceThreshold="silenceThreshold"
         :showAnswer="showAnswer"
         :questionIndex="turn - 1"
         @transcript="handleTranscriptReady"
@@ -163,9 +152,6 @@ export default {
   },
 },
   computed: {
-    showRecordedVideo() {
-      return this.enableVideo && !this.interviewing && this.recordedVideoUrl;
-    },
     allTranscriptsReceived() {
       if (this.interviewing) {
         const allReceived = this.answerTranscripts.length === this.interviewQA.length;
@@ -226,6 +212,7 @@ export default {
     return {
       selectedVoice: '',
       interviewStopping: false,
+      interviewStopped: false,
       interviewQA: [],
       currentQuestion: '',
       currentAnswer: '',
@@ -284,26 +271,7 @@ export default {
         this.transcriptLoading = true;
       }
     },
-    handleDownload(url) {
-      if (!url) return;
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'interview-video.webm';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    },
-    downloadVideo() {
-      if (!this.recordedVideoUrl) return;
-      const a = document.createElement('a');
-      a.href = this.recordedVideoUrl;
-      a.download = 'interview-video.webm';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    },
     async startInterview() {
-      console.log("[Debug] startInterview called");
       try {
         if (this.enableVideo) {
           await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -325,14 +293,14 @@ export default {
         this.$refs.answerRecorder.stopRecording();
       }
       this.interviewing = false;
+      this.interviewStopped = true;
+      console.log('[DEBUG] Interview stopped by user, interviewStopped: ', this.interviewStopped);
       this.showAnswer = false;
       this.$router.push({ name: 'SummaryView' });
     },
     nextQuestion() {
-      console.log("[Debug] nextQuestion called");
       if (!this.interviewing || this.interviewStopping) return;
       if (this.turn >= this.interviewQA.length) {
-        console.log("[Debug] Interview finished");
         this.interviewing = false;
         this.showAnswer = false;
         this.clearStream();
@@ -349,8 +317,6 @@ export default {
       this.transcriptLoaded = false;
       this.transcriptLoading = false;
       const qa = this.interviewQA[this.turn];
-      console.log("[Debug] Current turn:", this.turn);
-      console.log("[Debug] Next question:", qa.question);
       this.currentQuestion = qa.question;
       this.currentAnswer = '';
       this.turn++;

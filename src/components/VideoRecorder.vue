@@ -3,24 +3,13 @@
     <div v-if="isSafari && recordedVideoUrl && !interviewing" class="safari-warning">
       <strong>Note:</strong> Safari has a known issue where the camera may remain active after recording stops. If you see the camera icon, manually refresh the page to fully release camera resources.
     </div>
-    <div class="video-corner">
-      <!-- Hide video preview during interview -->
-      <div v-if="recordedVideoUrl && !interviewing" class="center-actions">
-        <video :src="recordedVideoUrl" controls width="220" height="160" style="border-radius:12px;"></video>
-        <button class="btn download-btn" :disabled="!recordedVideoUrl" @click="handleDownload" style="width:220px; margin-top:8px;"
-          ref="downloadBtn">
-          <span style="font-size:1.5rem; margin-right:8px;">⬇️</span> Download
-        </button>
-        <button class="btn home-btn" @click="goHome" style="width:220px; margin-top:12px;">
-          <span style="font-size:1.5rem; margin-right:8px;">🏠</span> Home
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 
 
 <script>
+import { saveSetting } from '@/store/settingStore';
+
 export default {
   name: 'VideoRecorder',
   computed: {
@@ -29,7 +18,10 @@ export default {
     }
   },
   props: {
-    interviewing: Boolean
+    interviewStopped: {
+      type: Boolean,
+      default: false
+    }
   },
   data() {
     return {
@@ -47,37 +39,15 @@ export default {
     };
   },
   watch: {
-    interviewing(newVal, oldVal) {
-      if (newVal && !oldVal) {
-        this.startRecording();
-      } else if (!newVal && oldVal) {
-        this.stopRecording();
-      }
+    interviewStopped(newVal, oldVal) {
+        if (oldVal != newVal) {
+          console.log('[DEBUG] Interview stopped by user, interviewStopped: ', this.interviewStopped);
+          this.stopRecording();
+        }
     }
   },
   mounted() {
-    this.videoPreview = this.$refs.videoPreview;
-    this.$emit('video-mounted', this.videoPreview);
-    // Debug button state
-    this.$nextTick(() => {
-      const btn = this.$refs.downloadBtn;
-      if (btn) {
-        console.log('[VideoRecorder] Download Button Rendered', {
-          disabled: btn.disabled,
-          recordedVideoUrl: this.recordedVideoUrl,
-          interviewing: this.interviewing
-        });
-      }
-    });
-    if (this.interviewing) {
-      console.log('[VideoRecorder] Interviewing is true, starting recording and requesting camera/mic permissions.');
-      this.startRecording();
-    } else {
-      console.log('[VideoRecorder] Interviewing is false, NOT requesting camera/mic permissions.');
-    }
-  },
-  beforeUnmount() {
-    this.stopRecording();
+    this.startRecording();
   },
   methods: {
     async startRecording() {
@@ -103,9 +73,11 @@ export default {
           }
         };
         this.mediaRecorder.onstop = () => {
+          console.log('[DEBUG] MediaRecorder stopped, processing video...');
           const blob = new Blob(this.recordedChunks);
           this.recordedVideoUrl = URL.createObjectURL(blob);
-          this.$emit('videoUrl', this.recordedVideoUrl);
+          console.log('[DEBUG] Recorded video URL:', this.recordedVideoUrl);
+          saveSetting('lastRecordedVideo', this.recordedVideoUrl);
           if (this.videoPreview) this.videoPreview.srcObject = null;
           if (this.mediaStream) {
             this.mediaStream.getTracks().forEach(track => track.stop());
@@ -118,27 +90,12 @@ export default {
       }
     },
     stopRecording() {
+      console.log('[DEBUG] stopRecording called');
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         setTimeout(() => {
           this.mediaRecorder.stop();
-        }, 500);
+        }, 200);
       }
-    },
-    goHome() {
-      this.stopRecording();
-      // Reload the page to fully release camera/mic in Safari
-      setTimeout(() => {
-        window.location.href = this.$router.resolve({ name: 'ResumeSetup' }).href;
-      }, 300);
-    },
-    handleDownload() {
-      console.log('[Download Button Click]', {
-        recordedVideoUrl: this.recordedVideoUrl,
-        interviewing: this.interviewing,
-        disabled: !this.recordedVideoUrl
-      });
-      if (!this.recordedVideoUrl) return;
-      this.$emit('download', this.recordedVideoUrl);
     }
   }
 };
