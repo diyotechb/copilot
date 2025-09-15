@@ -189,10 +189,8 @@ export default {
         const inProcess = await getTranscriptionStatus();
         console.log('[DEBUG] Transcription status:', inProcess);
         if (inProcess === true) {
-          this.loadingTranscripts = true;
           setTimeout(() => this.checkTranscriptionStatus(), 1000);
         } else if (inProcess === false) {
-          this.loadingTranscripts = false;
           this.pollForTranscripts();
         } else {
           // Handle undefined or error
@@ -200,12 +198,13 @@ export default {
           setTimeout(() => this.checkTranscriptionStatus(), 1000);
         }
     },
-    async pollForTranscripts(retries = 5, interval = 1000) {
+    async pollForTranscripts(retries = 10, interval = 1500) {
       for (let i = 0; i < retries; i++) {
         const stored = await getTranscripts();
         if (Array.isArray(stored) && stored.length > 0) {
           this.transcripts = stored;
           console.log('[DEBUG] Loaded transcripts:', this.transcripts);
+          this.loadingTranscripts = false;
           return;
         }
         await new Promise(resolve => setTimeout(resolve, interval));
@@ -213,6 +212,7 @@ export default {
       // If not found after retries, show a warning or fallback
       console.warn('Transcripts not found after polling.');
       this.transcripts = [];
+      this.loadingTranscripts = false;
     },
      async playRecording(idx) {
           let audioEl = this.$refs['audio_' + idx];
