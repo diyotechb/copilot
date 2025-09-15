@@ -13,7 +13,18 @@ export async function saveInterviewQA(value) {
 }
 
 export async function getInterviewQA() {
-  return await getItem(QA_STORE, 'interviewQA');
+  const result = await getItem(QA_STORE, 'interviewQA');
+  // Always return an array
+  if (Array.isArray(result)) return result;
+  if (result) {
+    try {
+      const parsed = JSON.parse(result);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
 }
 
 export async function deleteInterviewQA(key) {
@@ -30,7 +41,18 @@ export async function saveTranscripts(value) {
 }
 
 export async function getTranscripts() {
-  return await getItem(TRANSCRIPT_STORE, "transcripts");
+  const result = await getItem(TRANSCRIPT_STORE, "transcripts");
+  // Always return an array
+  if (Array.isArray(result)) return result;
+  if (result) {
+    try {
+      const parsed = JSON.parse(result);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
 }
 
 export async function deleteTranscript() {
@@ -38,11 +60,18 @@ export async function deleteTranscript() {
 }
 
 export async function saveTranscriptionStatus(value) {
-  console.log('[DEBUG] Saving transcriptionInProcess status:', value);
   await saveItem(QA_STORE, 'transcriptionInProcess', value);
 }
 
 // Get transcriptionInProcess flag
 export async function getTranscriptionStatus() {
-  return await getItem(QA_STORE, 'transcriptionInProcess');
+  const result = await getItem(QA_STORE, 'transcriptionInProcess');
+  // Always return true or false
+  if (typeof result === 'boolean') return result;
+  if (typeof result === 'string') {
+    if (result === 'true') return true;
+    if (result === 'false') return false;
+  }
+  console.log("[DEBUG] Transcription status is undefined, defaulting to true");
+  return true; 
 }

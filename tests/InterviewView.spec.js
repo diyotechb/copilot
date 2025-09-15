@@ -67,12 +67,6 @@ describe('InterviewView.vue transcript functionality', () => {
       // Stub created to prevent parseInterviewQA from overriding test data
       created: jest.fn()
     });
-    // Debug logs for troubleshooting
-    console.log('interviewQA.length:', wrapper.vm.interviewQA.length);
-    console.log('answerTranscripts.length:', wrapper.vm.answerTranscripts.length);
-    console.log('interviewing:', wrapper.vm.interviewing);
-    console.log('lastAudioBlob:', wrapper.vm.lastAudioBlob);
-    console.log('allTranscriptsReceived:', wrapper.vm.allTranscriptsReceived);
     expect(wrapper.vm.allTranscriptsReceived).toBe(true);
   });
 

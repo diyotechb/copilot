@@ -82,7 +82,7 @@ import FileUpload from '../components/FileUpload.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
-import { clearRecordingsStore } from '@/store/audioStore.js';
+import { clearRecordingsStore } from '@/store/recordingStore.js';
 import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
 
 export default {

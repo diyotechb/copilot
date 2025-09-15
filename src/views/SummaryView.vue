@@ -4,10 +4,31 @@
       <div class="loader"></div>
       <div class="loading-text">Preparing transcripts...</div>
     </div>
+    <div v-else-if="enableVideo && !recordedVideoUrl && !videoTimeout" class="summary-loading">
+      <div class="loader"></div>
+      <div class="loading-text">Processing video...</div>
+    </div>
+    <div v-else-if="enableVideo && videoTimeout" class="summary-warning">
+      <div class="warning-text" style="color:#ef4444; font-weight:600; margin-bottom:1rem;">
+        ⚠️ Video recording was not found. You can still review your interview summary below.
+      </div>
+    </div>
     <div v-else>
       <button class="home-btn" @click="$router.push({ name: 'ResumeSetup' })">
         🏠 Home
       </button>
+      <div v-if="enableVideo && recordedVideoUrl" class="summary-video-container" style="margin-bottom:2rem; text-align:center;">
+        <video
+          :src="recordedVideoUrl"
+          controls
+          style="max-width:100%; border-radius:12px; box-shadow:0 2px 8px rgba(59,130,246,0.07);"
+        ></video>
+        <div style="color:#2563eb; font-weight:600; margin-top:0.5rem;">Your Interview Recording</div>
+          <button class="btn download-btn" :disabled="!recordedVideoUrl" @click="handleDownload" style="width:220px; margin-top:8px;"
+            ref="downloadBtn">
+            <span style="font-size:1.5rem; margin-right:8px;">⬇️</span> Download
+        </button>
+      </div>
     <h2 class="summary-title">Interview Summary</h2>
     <div class="summary-legend">
       <span>
@@ -48,44 +69,45 @@
           <span class="summary-value">{{ localInterviewQA[idx]?.answer || '(No answer found)' }}</span>
         </div>
         <div class="summary-row">
-  <span class="summary-label">Statistics:</span>
-  <table class="summary-stats-table">
-    <tr>
-      <td>Overall Confidence</td>
-      <td>
-        <template v-if="transcriptObj.words && transcriptObj.words.length">
-          {{ averageConfidence(transcriptObj.words) }}%
-        </template>
-        <template v-else>
-          N/A
-        </template>
-      </td>
-    </tr>
-    <tr>
-      <td>Filler Word Usage</td>
-      <td>
-        <template v-if="typeof transcriptObj._fillerWordCount !== 'undefined'">
-          {{ transcriptObj._fillerWordCount }}
-        </template>
-        <template v-else>
-          N/A
-        </template>
-      </td>
-    </tr>
-    <tr>
-      <td>Filler Words Percentage</td>
-      <td>
-        <template v-if="transcriptObj.words && transcriptObj.words.length && typeof transcriptObj._fillerWordCount !== 'undefined'">
-          {{ ((transcriptObj._fillerWordCount / transcriptObj.words.length) * 100).toFixed(1) }}%
-        </template>
-        <template v-else>
-          N/A
-        </template>
-      </td>
-    </tr>
-    <!-- Add more metrics here as needed -->
-  </table>
-  </div>
+        <span class="summary-label">Statistics:</span>
+        <table class="summary-stats-table">
+          <tr>
+            <td>Overall Confidence</td>
+            <td>
+              <template v-if="transcriptObj.words && transcriptObj.words.length">
+                {{ averageConfidence(transcriptObj.words) }}%
+              </template>
+              <template v-else>
+                N/A
+              </template>
+            </td>
+          </tr>
+          <tr>
+            <td>Filler Word Usage</td>
+            <td>
+              <template v-if="typeof transcriptObj._fillerWordCount !== 'undefined'">
+                {{ transcriptObj._fillerWordCount }}
+              </template>
+              <template v-else>
+                N/A
+              </template>
+            </td>
+          </tr>
+          <tr>
+            <td>Filler Words Percentage</td>
+            <td>
+              <template v-if="transcriptObj.words && transcriptObj.words.length && typeof transcriptObj._fillerWordCount !== 'undefined'">
+                {{ ((transcriptObj._fillerWordCount / transcriptObj.words.length) * 100).toFixed(1) }}%
+              </template>
+              <template v-else>
+                N/A
+              </template>
+            </td>
+          </tr>
+          <!-- Add more metrics here as needed -->
+        </table>
+        <FeedbackSection v-if="transcriptObj.words && transcriptObj.words.length" :transcript="transcriptObj" />
+        </div>
         <div class="summary-row">
         <span class="summary-label">Recording: </span>
         <button
@@ -115,56 +137,82 @@
 </template>
 
 <script>
-import { getRecording as getRecordingFromDb } from '@/store/audioStore.js';
 import { getTranscriptionStatus, getTranscripts, getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
+import { getSetting } from '@/store/settingStore';
+import { getVideoRecording } from '@/store/recordingStore.js';
+import FeedbackSection from '@/views/FeedbackSection.vue';
+
 
 export default {
   name: 'SummaryView',
-  props: {
-    interviewQA: Array
+  components: {
+    FeedbackSection,
   },
   data() {
     return {
       transcripts: [],
       localInterviewQA: [],
       loadingTranscripts: true,
-      recordingUrls: {}
+      recordingUrls: {},
+      enableVideo: false,
+      recordedVideoUrl: '',
+      videoTimeout: false,
     };
   },
- async mounted() {
+  async mounted() {
     this.localInterviewQA = this.interviewQA && this.interviewQA.length
       ? this.interviewQA
       : await getInterviewQA() || '[]';
+    this.enableVideo = await getSetting('enableVideo');
+    this.pollForVideoBlob(); 
     this.checkTranscriptionStatus();
   },
   methods: {
     highlightTranscript,
     averageConfidence,
-    async checkTranscriptionStatus() {
-      const inProcess = await getTranscriptionStatus();
-      if (inProcess === true) {
-        console.log('Transcription in process...');
-        this.loadingTranscripts = true;
-        setTimeout(this.checkTranscriptionStatus, 1000);
-      } else {
-        console.log('Transcription finished. Loading transcripts...');
-        this.loadingTranscripts = false;
-        this.loadTranscripts();
-      }
-    },
-    async loadTranscripts() {
-      const stored = await getTranscripts();
-      this.transcripts = Array.isArray(stored) ? stored : (stored ? JSON.parse(stored) : []);
-      // Preload audio URLs for all indices
-      for (let idx = 0; idx < this.transcripts.length; idx++) {
-        const key = `Recording_${idx}`;
-        const blob = await getRecordingFromDb(key);
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          this.$set(this.recordingUrls, key, url);
+    async pollForVideoBlob(retries = 20, interval = 1000) {
+      for (let i = 0; i < retries; i++) {
+        const videoBlob = await getVideoRecording();
+        if (videoBlob) {
+          this.recordedVideoUrl = URL.createObjectURL(videoBlob);
+          return;
         }
+        await new Promise(resolve => setTimeout(resolve, interval));
       }
+      // If not found after retries, show a warning or fallback
+      console.warn('Video recording not found after polling.');
+      this.recordedVideoUrl = ''; 
+      this.videoTimeout = true;
+    },
+   async checkTranscriptionStatus() {
+        const inProcess = await getTranscriptionStatus();
+        console.log('[DEBUG] Transcription status:', inProcess);
+        if (inProcess === true) {
+          setTimeout(() => this.checkTranscriptionStatus(), 1000);
+        } else if (inProcess === false) {
+          this.pollForTranscripts();
+        } else {
+          // Handle undefined or error
+          console.warn('Transcription status is undefined, retrying...');
+          setTimeout(() => this.checkTranscriptionStatus(), 1000);
+        }
+    },
+    async pollForTranscripts(retries = 10, interval = 1500) {
+      for (let i = 0; i < retries; i++) {
+        const stored = await getTranscripts();
+        if (Array.isArray(stored) && stored.length > 0) {
+          this.transcripts = stored;
+          console.log('[DEBUG] Loaded transcripts:', this.transcripts);
+          this.loadingTranscripts = false;
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+      // If not found after retries, show a warning or fallback
+      console.warn('Transcripts not found after polling.');
+      this.transcripts = [];
+      this.loadingTranscripts = false;
     },
      async playRecording(idx) {
           let audioEl = this.$refs['audio_' + idx];
@@ -188,6 +236,16 @@ export default {
             audioEl.currentTime = 0;
           }
         },
+        handleDownload() {
+          if (!this.recordedVideoUrl) return;
+          console.log("[DEBUG] Initiating video download...");
+          const link = document.createElement('a');
+          link.href = this.recordedVideoUrl;
+          link.download = 'interview-recording.webm'; // or .mp4 if that's your format
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
       }
 };
 </script>

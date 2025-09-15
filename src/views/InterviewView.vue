@@ -6,11 +6,11 @@
     <div v-else class="interview-content">
       <!-- Interview in progress -->
       <div v-if="interviewQA.length && interviewing" class="main-card">
+        <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
+          {{ turn }}/{{ interviewQA.length }}
+        </div>
         <!-- Question Section -->
         <div v-if="showQuestionSection" class="section question-section">
-          <div class="question-number" style="font-size:1.1rem; font-weight:600; color:#2563eb; margin-bottom:0.5rem;">
-            {{ turn }}/{{ interviewQA.length }}
-          </div>
           <h2 class="subtitle">Question</h2>
           <p class="question-text">{{ currentQuestion }}</p>
         </div>
@@ -62,12 +62,7 @@
               </tr>
             </table>
           </div>
-          <div v-if="feedbackMessage" class="feedback-section" style="margin-top:1.5rem;">
-            <h3>Feedback</h3>
-            <p>{{ feedbackMessage }}</p>
-            <div style="color: #888; font-size: 0.9em;">
-            </div>
-          </div>
+          <FeedbackSection v-if="currentTranscript && currentTranscript.words" :transcript="currentTranscript" />
           <!-- Legend for highlights -->
           <div class="transcript-legend" style="margin-top:1.5rem;">
           <strong>Legend:</strong>
@@ -113,25 +108,14 @@
       </div>
       <SummaryView
         v-else-if="!interviewing"
-        :interviewQA="interviewQA"
-        :answerTranscripts="answerTranscripts"
-        :recordedVideoUrl="recordedVideoUrl"
-        :enableVideo="enableVideo"
       />
       <div v-else style="color:#aaa; text-align:center;">No interview questions found.</div>
     </div>
     <div class="video-corner">
       <!-- Show VideoRecorder only at the end of the interview if enabled -->
-      <VideoRecorder
-        v-if="enableVideo === true && !interviewing && showRecordedVideo"
-        :interviewing="false"
-        @video-mounted="videoPreview = $event"
-        @videoUrl="recordedVideoUrl = $event"
-        @download="handleDownload"
-      />
+      <VideoRecorder v-if="enableVideo === true" ref="videoRecorder"/>
       <AnswerRecorder
         v-if="interviewing && showAnswer"
-        :silenceThreshold="silenceThreshold"
         :showAnswer="showAnswer"
         :questionIndex="turn - 1"
         @transcript="handleTranscriptReady"
@@ -151,6 +135,7 @@ import { getSetting } from '@/store/settingStore';
 import { getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
 import { speakWithAzureTTS } from '@/services/azureSpeechService';
+import FeedbackSection from '../views/FeedbackSection.vue';
 
 export default {
   watch: {
@@ -163,9 +148,6 @@ export default {
   },
 },
   computed: {
-    showRecordedVideo() {
-      return this.enableVideo && !this.interviewing && this.recordedVideoUrl;
-    },
     allTranscriptsReceived() {
       if (this.interviewing) {
         const allReceived = this.answerTranscripts.length === this.interviewQA.length;
@@ -183,45 +165,9 @@ export default {
       }
       return false;
     },
-    feedbackMessage() {
-      if (!this.currentTranscript || !this.currentTranscript.words) {
-        return '';
-      }
-      const confidence = Number(this.averageConfidence(this.currentTranscript.words));
-      const fillerCount = this.currentTranscript._fillerWordCount || 0;
-      const totalWords = this.currentTranscript.words.length || 1;
-      const fillerPercent = ((fillerCount / totalWords) * 100);
-
-      let feedback = [];
-
-      // Confidence feedback
-      if (confidence >= 90) {
-        feedback.push('Excellent clarity and pronunciation. Your answers are very clear.');
-      } else if (confidence >= 75) {
-        feedback.push('Good clarity, but try to speak a bit more clearly for even better results.');
-      } else {
-        feedback.push('Speech recognition had trouble understanding some words. Try to speak slower and more clearly.');
-      }
-
-      // Filler word feedback
-      if (fillerPercent < 5) {
-        feedback.push('Great job minimizing filler words!');
-      } else if (fillerPercent < 15) {
-        feedback.push('You used some filler words. Try to reduce them for a more polished response.');
-      } else {
-        feedback.push('Frequent use of filler words detected. Practice pausing instead of using fillers.');
-      }
-      // Overall feedback
-      if (confidence >= 90 && fillerPercent < 5) {
-        feedback.push('Overall, your answer was very strong!');
-      }
-
-      const result = feedback.join(' ');
-      return result;
-    }
   },
   name: 'InterviewView',
-  components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView },
+  components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView, FeedbackSection },
   data() {
     return {
       selectedVoice: '',
@@ -284,26 +230,7 @@ export default {
         this.transcriptLoading = true;
       }
     },
-    handleDownload(url) {
-      if (!url) return;
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'interview-video.webm';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    },
-    downloadVideo() {
-      if (!this.recordedVideoUrl) return;
-      const a = document.createElement('a');
-      a.href = this.recordedVideoUrl;
-      a.download = 'interview-video.webm';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    },
     async startInterview() {
-      console.log("[Debug] startInterview called");
       try {
         if (this.enableVideo) {
           await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -324,15 +251,16 @@ export default {
       if (this.$refs.answerRecorder && this.$refs.answerRecorder.isRecording) {
         this.$refs.answerRecorder.stopRecording();
       }
+      if (this.$refs.videoRecorder && this.enableVideo) {
+        this.$refs.videoRecorder.stopRecording();
+      }
       this.interviewing = false;
       this.showAnswer = false;
       this.$router.push({ name: 'SummaryView' });
     },
     nextQuestion() {
-      console.log("[Debug] nextQuestion called");
       if (!this.interviewing || this.interviewStopping) return;
       if (this.turn >= this.interviewQA.length) {
-        console.log("[Debug] Interview finished");
         this.interviewing = false;
         this.showAnswer = false;
         this.clearStream();
@@ -349,8 +277,6 @@ export default {
       this.transcriptLoaded = false;
       this.transcriptLoading = false;
       const qa = this.interviewQA[this.turn];
-      console.log("[Debug] Current turn:", this.turn);
-      console.log("[Debug] Next question:", qa.question);
       this.currentQuestion = qa.question;
       this.currentAnswer = '';
       this.turn++;
@@ -414,8 +340,6 @@ export default {
 </script>
 
 <style scoped>
-/* Restore video preview to bottom right corner */
-/* Move video preview further down to avoid obstructing answers */
 .video-corner {
   position: fixed;
   bottom: 8px;
@@ -652,21 +576,6 @@ export default {
 }
 .transcript-metrics-table tr:last-child td {
   border-bottom: none;
-}
-.feedback-section {
-  background: #fef9c3;
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
-  margin-bottom: 1rem;
-  box-shadow: 0 1px 4px rgba(202,138,4,0.07);
-  font-size: 1.1rem;
-  color: #92400e;
-}
-.feedback-section h3 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  color: #ca8a04;
-  font-size: 1.15rem;
 }
 @keyframes dots {
   0%, 20% { opacity: 0; }
