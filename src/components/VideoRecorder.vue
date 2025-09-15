@@ -8,19 +8,13 @@
 
 
 <script>
-import { saveSetting } from '@/store/settingStore';
+import { saveVideoRecording } from '@/store/recordingStore';
 
 export default {
   name: 'VideoRecorder',
   computed: {
     isSafari() {
       return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    }
-  },
-  props: {
-    interviewStopped: {
-      type: Boolean,
-      default: false
     }
   },
   data() {
@@ -37,14 +31,6 @@ export default {
       silenceThreshold: 5000,
       silenceStart: null
     };
-  },
-  watch: {
-    interviewStopped(newVal, oldVal) {
-        if (oldVal != newVal) {
-          console.log('[DEBUG] Interview stopped by user, interviewStopped: ', this.interviewStopped);
-          this.stopRecording();
-        }
-    }
   },
   mounted() {
     this.startRecording();
@@ -72,12 +58,11 @@ export default {
             this.recordedChunks.push(e.data);
           }
         };
-        this.mediaRecorder.onstop = () => {
+        this.mediaRecorder.onstop = async () => {
           console.log('[DEBUG] MediaRecorder stopped, processing video...');
-          const blob = new Blob(this.recordedChunks);
-          this.recordedVideoUrl = URL.createObjectURL(blob);
-          console.log('[DEBUG] Recorded video URL:', this.recordedVideoUrl);
-          saveSetting('lastRecordedVideo', this.recordedVideoUrl);
+          const blob = new Blob(this.recordedChunks, { type: options.mimeType });
+          console.log('[DEBUG] Saving Generated video Blob:', blob);
+          await saveVideoRecording(blob); 
           if (this.videoPreview) this.videoPreview.srcObject = null;
           if (this.mediaStream) {
             this.mediaStream.getTracks().forEach(track => track.stop());
@@ -90,7 +75,6 @@ export default {
       }
     },
     stopRecording() {
-      console.log('[DEBUG] stopRecording called');
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         setTimeout(() => {
           this.mediaRecorder.stop();

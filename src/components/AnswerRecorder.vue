@@ -1,13 +1,12 @@
 <template>
   <div class="voice-recorder" style="display:none">
-    <!-- UI hidden, recording is triggered programmatically -->
     <div v-if="error" class="error">{{ error }}</div>
   </div>
 </template>
 
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
-import { saveRecording } from '@/store/audioStore';
+import { saveRecording } from '@/store/recordingStore';
 import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
 import { getSetting } from '@/store/settingStore';
 
@@ -105,6 +104,7 @@ export default {
       }
       const audioBlob = new Blob(this.audioChunks, mimeType ? { type: mimeType } : undefined);
       if (!audioBlob || audioBlob.size === 0) {
+        console.log("[DEBUG] No audio recorded or audio blob is empty, setting transcriptionStatus to false.");
         await saveTranscriptionStatus(false);
         return;
       }
@@ -113,7 +113,6 @@ export default {
       let transcript = '';
       try {
         transcript = await sendToAssemblyAI(audioBlob);
-        await saveTranscriptionStatus(false);
       } catch (err) {
         console.error('[AnswerRecorder] AssemblyAI transcription error:', err);
         transcript = '[Transcription error]';
@@ -128,6 +127,7 @@ export default {
       }
       transcripts[this.questionIndex] = transcript;
       await saveTranscripts(transcripts);
+      await saveTranscriptionStatus(false);
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;
