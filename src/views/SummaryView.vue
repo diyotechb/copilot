@@ -142,6 +142,7 @@ import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils'
 import { getSetting } from '@/store/settingStore';
 import { getVideoRecording } from '@/store/recordingStore.js';
 import FeedbackSection from '@/views/FeedbackSection.vue';
+import { createInterviewsBulk } from '@/services/backendService';
 
 
 export default {
@@ -167,10 +168,34 @@ export default {
     this.enableVideo = await getSetting('enableVideo');
     this.pollForVideoBlob(); 
     this.checkTranscriptionStatus();
+    this.submitBulk();
   },
   methods: {
     highlightTranscript,
     averageConfidence,
+    async submitBulk() {
+      if (this.transcripts.length === 0) return; // No transcripts to submit
+      //create interview items by mapping transcripts with questions and answers
+      const sessionId = localStorage.getItem('sessionId');
+      if (!sessionId) {
+        console.error('No sessionId found in localStorage. Cannot submit interviews.');
+        return;
+      }
+      const interviewItems = this.transcripts.map((t, idx) => ({
+        sessionId: sessionId,
+        question: this.localInterviewQA[idx]?.question || '',
+        answer: this.localInterviewQA[idx]?.answer || '',
+        transcript: t
+      }));
+      try {
+        const res = await createInterviewsBulk(interviewItems);
+        if (res.success) {
+          this.submitted = true;
+        }
+      } catch (e) {
+        console.error('Bulk submit failed:', e);
+      }
+    },
     async pollForVideoBlob(retries = 20, interval = 1000) {
       for (let i = 0; i < retries; i++) {
         const videoBlob = await getVideoRecording();

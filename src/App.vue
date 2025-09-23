@@ -4,6 +4,7 @@
       <!-- Remove any tab or navigation related to Otter Assistant -->
     </el-menu>
     <router-view class="router_view"/>
+    <SessionTracker v-if="isAuthenticated"/>
   </div>
 </template>
 
@@ -17,12 +18,24 @@
 
 </style>
 <script>
-import {mapGetters} from 'vuex';
+import SessionTracker from './components/SessionTracker.vue';
 
 export default {
   name: 'App',
   props: {},
-  computed: {},
+  components: { SessionTracker },
+  computed: {
+    isAuthenticated() {
+      const token = localStorage.getItem('otterAuthToken');
+      if (!token) return false;
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload && payload.sub;
+      } catch {
+        return false;
+      }
+    }
+  },
   beforeMount() {
   },
   mounted() {
