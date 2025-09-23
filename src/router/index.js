@@ -4,7 +4,6 @@ import Login from '@/views/Login.vue'
 import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
-import { getInterviewQA } from '@/store/interviewStore'
 
 Vue.use(VueRouter)
 
@@ -39,26 +38,27 @@ const router = new VueRouter({
     routes
 })
 
+function isTokenValid(token) {
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch (e) {
+    return false;
+  }
+}
+
 // Global navigation guard for authentication
-router.beforeEach(async (to, from, next) => {
-    const token = localStorage.getItem('otterAuthToken');
-    if (to.name === 'Login') {
-        if (token) {
-            return next({ name: 'ResumeSetup' });
-        }
-        return next();
-    }
-    if (!token) {
-        return next({ name: 'Login' });
-    }
-    if (to.name === 'InterviewView') {
-        const interviewQA = await getInterviewQA();
-        if (!interviewQA || interviewQA.length === 0) {
-            window.alert('Interview questions are not ready. Please complete setup first.');
-            return next({ name: 'ResumeSetup' });
-        }
-    }
+router.beforeEach((to, from, next) => {
+   const publicPages = ['/', '#/login']; // Add other public routes if needed
+  const authRequired = !publicPages.includes(to.path);
+  const token = localStorage.getItem('otterAuthToken');
+
+  if (authRequired && !isTokenValid(token)) {
+    next('/');
+  } else {
     next();
+  }
 });
 
 export default router
