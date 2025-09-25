@@ -6,7 +6,10 @@ export async function fetchVoices(subscriptionKey, region) {
   return await response.json();
 }
 
-export async function playVoiceSample(voiceName, subscriptionKey, region) {
+export async function playVoiceSample(voiceName) {
+  const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
+  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+  if (!subscriptionKey || !region) return;
   const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
@@ -15,22 +18,26 @@ export async function playVoiceSample(voiceName, subscriptionKey, region) {
       </voice>
     </speak>
   `;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': subscriptionKey,
-      'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
-      'User-Agent': 'ResumeSetupVue'
-    },
-    body: ssml
-  });
-  if (!response.ok) throw new Error('Azure TTS failed');
-  const audioData = await response.arrayBuffer();
-  const blob = new Blob([audioData], { type: 'audio/mp3' });
-  const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-  audio.play();
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': subscriptionKey,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
+        'User-Agent': 'ResumeSetupVue'
+      },
+      body: ssml
+    });
+    if (!response.ok) throw new Error('Azure TTS failed');
+    const audioData = await response.arrayBuffer();
+    const blob = new Blob([audioData], { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.play();
+  } catch (e) {
+    alert('Could not play sample for this voice.');
+  }
 }
 
 export async function speakWithAzureTTS(text, voice, onEnd) {

@@ -1,154 +1,43 @@
 <template>
+  <div>
+  <UserNavbar />
   <div class="summary-main">
-    <div v-if="loadingTranscripts" class="summary-loading">
-      <div class="loader"></div>
-      <div class="loading-text">Preparing transcripts...</div>
-    </div>
-    <div v-else-if="enableVideo && !recordedVideoUrl && !videoTimeout" class="summary-loading">
-      <div class="loader"></div>
-      <div class="loading-text">Processing video...</div>
-    </div>
-    <div v-else-if="enableVideo && videoTimeout" class="summary-warning">
-      <div class="warning-text" style="color:#ef4444; font-weight:600; margin-bottom:1rem;">
-        ⚠️ Video recording was not found. You can still review your interview summary below.
+   <div v-if="loadingTranscripts" class="summary-loading" style="margin-top:3rem; text-align:center;">
+        <div class="loader" style="margin-bottom:1.5rem;"></div>
+        <div class="loading-text" style="color:#2563eb; font-weight:600; font-size:1.2rem;">
+          Waiting for transcripts
+        </div>
+        <div style="color:#2563eb; font-weight:600; font-size:1.2rem;">
+          This may take a few moments
+        </div>
       </div>
-    </div>
     <div v-else>
-      <button class="home-btn" @click="$router.push({ name: 'ResumeSetup' })">
-        🏠 Home
-      </button>
-      <div v-if="enableVideo && recordedVideoUrl" class="summary-video-container" style="margin-bottom:2rem; text-align:center;">
-        <video
-          :src="recordedVideoUrl"
-          controls
-          style="max-width:100%; border-radius:12px; box-shadow:0 2px 8px rgba(59,130,246,0.07);"
-        ></video>
-        <div style="color:#2563eb; font-weight:600; margin-top:0.5rem;">Your Interview Recording</div>
-          <button class="btn download-btn" :disabled="!recordedVideoUrl" @click="handleDownload" style="width:220px; margin-top:8px;"
-            ref="downloadBtn">
-            <span style="font-size:1.5rem; margin-right:8px;">⬇️</span> Download
-        </button>
-      </div>
-    <h2 class="summary-title">Interview Summary</h2>
-    <div class="summary-legend">
-      <span>
-        <span class="legend-sample legend-positive"></span> Positive sentiment
-      </span>
-      <span>
-        <span class="legend-sample legend-neutral"></span> Neutral sentiment
-      </span>
-      <span>
-        <span class="legend-sample legend-negative"></span> Negative sentiment
-      </span>
-      <span>
-        <span class="legend-sample legend-filler">uh</span> Filler word
-      </span>
-      <span>
-        <span class="legend-sample legend-confidence-low"></span> &lt; 50% confidence
-      </span>
-      <span>
-        <span class="legend-sample legend-confidence-medium"></span> &lt; 70% confidence
-      </span>
-      </div>
-      <div
-        v-for="(transcriptObj, idx) in transcripts"
-        :key="idx"
-        class="section summary-section"
-      >
-        <h3 class="summary-question-title centered-title">Question {{ idx + 1 }}</h3>
-        <div class="summary-row">
-          <span class="summary-label">Question:</span>
-          <span class="summary-value">{{ localInterviewQA[idx]?.question || '(No question found)' }}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Your Transcript:</span>
-          <span class="summary-value" v-html="highlightTranscript(transcriptObj)"></span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Actual Answer:</span>
-          <span class="summary-value">{{ localInterviewQA[idx]?.answer || '(No answer found)' }}</span>
-        </div>
-        <div class="summary-row">
-        <span class="summary-label">Statistics:</span>
-        <table class="summary-stats-table">
-          <tr>
-            <td>Overall Confidence</td>
-            <td>
-              <template v-if="transcriptObj.words && transcriptObj.words.length">
-                {{ averageConfidence(transcriptObj.words) }}%
-              </template>
-              <template v-else>
-                N/A
-              </template>
-            </td>
-          </tr>
-          <tr>
-            <td>Filler Word Usage</td>
-            <td>
-              <template v-if="typeof transcriptObj._fillerWordCount !== 'undefined'">
-                {{ transcriptObj._fillerWordCount }}
-              </template>
-              <template v-else>
-                N/A
-              </template>
-            </td>
-          </tr>
-          <tr>
-            <td>Filler Words Percentage</td>
-            <td>
-              <template v-if="transcriptObj.words && transcriptObj.words.length && typeof transcriptObj._fillerWordCount !== 'undefined'">
-                {{ ((transcriptObj._fillerWordCount / transcriptObj.words.length) * 100).toFixed(1) }}%
-              </template>
-              <template v-else>
-                N/A
-              </template>
-            </td>
-          </tr>
-          <!-- Add more metrics here as needed -->
-        </table>
-        <FeedbackSection v-if="transcriptObj.words && transcriptObj.words.length" :transcript="transcriptObj" />
-        </div>
-        <div class="summary-row">
-        <span class="summary-label">Recording: </span>
-        <button
-          class="play-btn"
-          :disabled="!recordingUrls['Recording_' + idx]"
-          @click="playRecording(idx)"
-        >
-          ▶️ Play
-        </button>
-        <button
-          class="stop-btn"
-          :disabled="!recordingUrls['Recording_' + idx]"
-          @click="stopPlayback(idx)"
-        >
-          ⏹️ Stop
-        </button>
-        <audio
-          v-if="recordingUrls['Recording_' + idx]"
-          :src="recordingUrls['Recording_' + idx]"
-          :ref="'audio_' + idx"
-          style="display:none"
-        ></audio>
-        </div>
-      </div>
+      <h2 class="summary-title">Interview Summary</h2>
+      <InterviewSummaryList
+        :interviews="interviews"
+        :showBackButton="false"
+      />
     </div>
+  </div>
   </div>
 </template>
 
 <script>
-import { getTranscriptionStatus, getTranscripts, getInterviewQA } from '@/store/interviewStore';
+import UserNavbar from '@/components/UserNavbar.vue';
+import { getTranscripts, getInterviewQA } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
 import { getSetting } from '@/store/settingStore';
 import { getVideoRecording } from '@/store/recordingStore.js';
 import FeedbackSection from '@/views/FeedbackSection.vue';
 import { createInterviewsBulk } from '@/services/backendService';
-
+import InterviewSummaryList from '@/components/InterviewSummaryList.vue';
 
 export default {
   name: 'SummaryView',
   components: {
     FeedbackSection,
+    InterviewSummaryList,
+    UserNavbar
   },
   data() {
     return {
@@ -161,39 +50,54 @@ export default {
       videoTimeout: false,
     };
   },
+  computed: {
+    interviews() {
+      if (!Array.isArray(this.transcripts) || this.transcripts.length === 0) return [];
+      return this.transcripts.map((t, idx) => {
+        const result = highlightTranscript(t);
+        return {
+          question: this.localInterviewQA[idx]?.question || '',
+          answer: this.localInterviewQA[idx]?.answer || '',
+          highlightedHtml: result.highlightedHtml,
+          transcript: result.transcript,
+        };
+      });
+    }
+  },
   async mounted() {
     this.localInterviewQA = this.interviewQA && this.interviewQA.length
       ? this.interviewQA
       : await getInterviewQA() || '[]';
     this.enableVideo = await getSetting('enableVideo');
-    this.pollForVideoBlob(); 
-    this.checkTranscriptionStatus();
-    this.submitBulk();
+    if (this.enableVideo) {
+      this.pollForVideoBlob();
+    }
+    setTimeout(() => {
+      this.checkTranscriptionStatus();
+    }, 15000);
   },
   methods: {
     highlightTranscript,
     averageConfidence,
     async submitBulk() {
-      if (this.transcripts.length === 0) return; // No transcripts to submit
-      //create interview items by mapping transcripts with questions and answers
+      if (this.transcripts.length === 0) return;
       const sessionId = localStorage.getItem('sessionId');
       if (!sessionId) {
         console.error('No sessionId found in localStorage. Cannot submit interviews.');
         return;
       }
-      const interviewItems = this.transcripts.map((t, idx) => ({
+      // For backend, you may want to send only the transcript object, not the highlightedHtml
+      const interviewsForBackend = this.transcripts.map((t, idx) => ({
         sessionId: sessionId,
         question: this.localInterviewQA[idx]?.question || '',
         answer: this.localInterviewQA[idx]?.answer || '',
-        transcript: t
+        transcript: t,
       }));
       try {
-        const res = await createInterviewsBulk(interviewItems);
-        if (res.success) {
-          this.submitted = true;
-        }
+        const res = await createInterviewsBulk(interviewsForBackend);
+        console.log('Bulk submission response:', res);
       } catch (e) {
-        console.error('Bulk submit failed:', e);
+        console.error('Bulk submission failed:', e);
       }
     },
     async pollForVideoBlob(retries = 20, interval = 1000) {
@@ -205,145 +109,70 @@ export default {
         }
         await new Promise(resolve => setTimeout(resolve, interval));
       }
-      // If not found after retries, show a warning or fallback
       console.warn('Video recording not found after polling.');
       this.recordedVideoUrl = ''; 
       this.videoTimeout = true;
     },
-   async checkTranscriptionStatus() {
-        const inProcess = await getTranscriptionStatus();
-        console.log('[DEBUG] Transcription status:', inProcess);
-        if (inProcess === true) {
-          setTimeout(() => this.checkTranscriptionStatus(), 1000);
-        } else if (inProcess === false) {
-          this.pollForTranscripts();
-        } else {
-          // Handle undefined or error
-          console.warn('Transcription status is undefined, retrying...');
-          setTimeout(() => this.checkTranscriptionStatus(), 1000);
-        }
+    checkTranscriptionStatus() {
+      const inProcess = localStorage.getItem('transcriptionStatus');
+      if (inProcess === 'true') {
+        setTimeout(() => this.checkTranscriptionStatus(), 1000);
+      } else if (inProcess === 'false') {
+        this.pollForTranscripts();
+      } else {
+        setTimeout(() => this.checkTranscriptionStatus(), 1000);
+      }
     },
     async pollForTranscripts(retries = 10, interval = 1500) {
       for (let i = 0; i < retries; i++) {
         const stored = await getTranscripts();
         if (Array.isArray(stored) && stored.length > 0) {
           this.transcripts = stored;
-          console.log('[DEBUG] Loaded transcripts:', this.transcripts);
           this.loadingTranscripts = false;
+          console.log("Transcripts loaded:", this.transcripts);
+          console.log("Sending bulk request to backend...");
+          this.submitBulk();
           return;
         }
         await new Promise(resolve => setTimeout(resolve, interval));
       }
-      // If not found after retries, show a warning or fallback
-      console.warn('Transcripts not found after polling.');
       this.transcripts = [];
       this.loadingTranscripts = false;
     },
-     async playRecording(idx) {
-          let audioEl = this.$refs['audio_' + idx];
-          if (Array.isArray(audioEl)) audioEl = audioEl[0];
-          const url = this.recordingUrls[`Recording_${idx}`];
-          if (audioEl && typeof audioEl.play === 'function' && url) {
-            audioEl.src = url;
-            audioEl.currentTime = 0;
-            audioEl.play().catch(e => {
-              console.error('Audio play error:', e);
-            });
-          } else {
-            console.warn('No audio available to play.');
-          }
-        },
-        stopPlayback(idx) {
-          let audioEl = this.$refs['audio_' + idx];
-          if (Array.isArray(audioEl)) audioEl = audioEl[0];
-          if (audioEl && typeof audioEl.pause === 'function') {
-            audioEl.pause();
-            audioEl.currentTime = 0;
-          }
-        },
-        handleDownload() {
-          if (!this.recordedVideoUrl) return;
-          console.log("[DEBUG] Initiating video download...");
-          const link = document.createElement('a');
-          link.href = this.recordedVideoUrl;
-          link.download = 'interview-recording.webm'; // or .mp4 if that's your format
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }
+    async playRecording(idx) {
+      let audioEl = this.$refs['audio_' + idx];
+      if (Array.isArray(audioEl)) audioEl = audioEl[0];
+      const url = this.recordingUrls[`Recording_${idx}`];
+      if (audioEl && typeof audioEl.play === 'function' && url) {
+        audioEl.src = url;
+        audioEl.currentTime = 0;
+        audioEl.play().catch(e => {
+          console.error('Audio play error:', e);
+        });
       }
+    },
+    stopPlayback(idx) {
+      let audioEl = this.$refs['audio_' + idx];
+      if (Array.isArray(audioEl)) audioEl = audioEl[0];
+      if (audioEl && typeof audioEl.pause === 'function') {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+      }
+    },
+    handleDownload() {
+      if (!this.recordedVideoUrl) return;
+      const link = document.createElement('a');
+      link.href = this.recordedVideoUrl;
+      link.download = 'interview-recording.webm';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }
 };
 </script>
 
 <style scoped>
-.summary-main {
-  padding: 2rem 2vw;
-  max-width: 700px;
-  margin: 0 auto;
-  box-sizing: border-box;
-}
-.summary-title {
-  margin-bottom: 1.5rem;
-  color: #22223b;
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-}
-.section.summary-section {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  background: #f6f8fa;
-  margin-bottom: 2.5rem; /* Increased from 1.5rem to 2.5rem */
-  width: 100%;
-  box-sizing: border-box;
-  padding: 1.25rem 1rem;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.summary-question-title {
-  margin-bottom: 1rem;
-  color: #2563eb;
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-.summary-row {
-  margin-bottom: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.play-btn,
-.stop-btn {
-  padding-left: 1rem;      /* Add left padding */
-  padding-right: 1rem;     /* Keep right padding for balance */
-  min-width: 90px;
-  margin-left: 0.5rem;
-  text-align: center;
-  display: inline-block;
-}
-.summary-label {
-  font-weight: 600;
-  color: #22223b;
-  min-width: 120px;
-}
-.summary-value {
-  color: #3a3a3a;
-  flex: 1 1 0;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.summary-loading {
-  text-align: center;
-  margin-top: 2rem;
-}
-.loading-text {
-  margin-top: 1rem;
-  color: #2563eb;
-  font-size: 1.2rem;
-}
-.centered-title {
-  text-align: center;
-}
 .loader {
   border: 6px solid #e5e7eb;
   border-top: 6px solid #2563eb;
@@ -352,99 +181,5 @@ export default {
   height: 48px;
   animation: spin 1s linear infinite;
   margin: 0 auto;
-}
-.play-btn {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.4rem 1rem;
-  font-size: 1rem;
-  cursor: pointer;
-  margin-left: 0.5rem;
-  transition: background 0.2s;
-}
-.play-btn:disabled {
-  background: #e5e7eb;
-  color: #888;
-  cursor: not-allowed;
-}
-.stop-btn {
-  background: #ef4444;
-}
-.stop-btn:hover {
-  background: #dc2626;
-}
-.summary-legend {
-  display: flex;
-  gap: 2rem;
-  margin: 0.5rem 0 2rem 0;
-  font-size: 0.95rem;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-.legend-sample {
-  display: inline-block;
-  width: 24px;
-  height: 20px;
-  vertical-align: middle;
-  margin-right: 6px;
-  border-radius: 4px;
-  padding: 0 4px;
-}
-.legend-positive {
-  background: rgba(34,197,94,0.15);
-  border: 1px solid #22c55e;
-}
-.legend-neutral {
-  background: rgba(59,130,246,0.10);
-  border: 1px solid #3b82f6;
-}
-.legend-negative {
-  background: rgba(239,68,68,0.15);
-  border: 1px solid #ef4444;
-}
-.legend-filler {
-  color: #a855f7;
-  font-weight: bold;
-  background: transparent;
-  border: none;
-  width: auto;
-  height: auto;
-  padding: 0;
-}
-.legend-confidence-low {
-  background: #fee2e2;
-  border: 1px solid #dc2626;
-}
-.legend-confidence-medium {
-  background: #fef9c3;
-  border: 1px solid #ca8a04;
-}
-.summary-stats-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-  background: #f6f8fa; /* Light background for the table */
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(59,130,246,0.07);
-  overflow: hidden;
-}
-.summary-stats-table td {
-  border: 1px solid #e5e7eb;
-  padding: 8px 14px;
-  font-size: 1rem;
-}
-.summary-stats-table tr td:first-child {
-  font-weight: 600;
-  background: #e0e7ff; /* Slightly different shade for labels */
-  width: 180px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 </style>

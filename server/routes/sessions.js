@@ -1,5 +1,6 @@
 import express from 'express';
 import db from '../models/db.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.get('/user/:userId', (req, res) => {
 });
 
 // Get all sessions (admin or for listing)
-router.get('/', (req, res) => {
+router.get('/', requireAdmin, (req, res) => {
   db.all('SELECT * FROM sessions', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);

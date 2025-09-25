@@ -94,7 +94,10 @@ export function highlightTranscript(transcriptObj) {
     html += `<span style="background:${color};padding:2px 4px;border-radius:4px;margin-right:2px;">${segmentHtml.trim()}</span> `;
   });
 
-  return html.trim();
+    return {
+    highlightedHtml: html.trim(),
+    transcript: transcriptObj,
+  };
 }
 
 

@@ -4,7 +4,7 @@
   </div>
 </template>
 <script>
-import { createSession, updateSessionLastActive, endSession } from '@/services/backendService';
+import { createSession, updateSessionLastActive } from '@/services/backendService';
 
 export default {
   name: 'SessionTracker',
@@ -14,10 +14,15 @@ export default {
       startTime: null,
       lastActive: null,
       intervalId: null,
-      userId: null 
+      userId: null,
+      API_BASE: null
     };
   },
   async created() {
+    this.API_BASE =
+      process.env.NODE_ENV === 'production'
+        ? process.env.VUE_APP_BACKEND_URL_PROD
+        : process.env.VUE_APP_BACKEND_URL_DEV;
     this.userId = this.getUserIdFromToken();
     const now = new Date().toISOString();
     console.log('[SessionTracker] Creating session for user:', this.userId);
@@ -43,9 +48,11 @@ export default {
     window.removeEventListener('beforeunload', this.handleUnload);
   },
   methods: {
-    async handleUnload() {
+    handleUnload() {
       if (this.sessionId) {
-        await endSession(this.sessionId, new Date().toISOString());
+        const url = `${this.API_BASE}/session/${this.sessionId}/end`;
+        const data = JSON.stringify({ endTime: new Date().toISOString() });
+        navigator.sendBeacon(url, data);
       }
     },
     getUserIdFromToken() {

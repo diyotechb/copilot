@@ -60,3 +60,10 @@ export async function createInterviewsBulk(interviews) {
   });
   return res.json();
 }
+
+export function createInterviewsBulkBeacon(interviews) {
+  const url = `${API_BASE}/interview/bulk`;
+  const data = JSON.stringify({ interviews });
+  const blob = new Blob([data], { type: 'application/json' });
+  navigator.sendBeacon(url, blob);
+}

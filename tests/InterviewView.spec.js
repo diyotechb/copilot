@@ -1,12 +1,3 @@
-// Suppress verbose logs during tests
-// beforeAll(() => {
-//   jest.spyOn(console, 'log').mockImplementation(() => {});
-//   jest.spyOn(console, 'error').mockImplementation(() => {});
-// });
-// afterAll(() => {
-//   console.log.mockRestore();
-//   console.error.mockRestore();
-// });
 process.env.VUE_APP_SILENCE_WAIT_MS = '3000';
 
 import { mount } from '@vue/test-utils';

@@ -7,7 +7,7 @@
 <script>
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import { saveRecording } from '@/store/recordingStore';
-import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
+import { getTranscripts, saveTranscripts } from '@/store/interviewStore';
 import { getSetting } from '@/store/settingStore';
 
 export default {
@@ -94,6 +94,8 @@ export default {
       }
     },
     async handleStop() {
+      console.log("[DEBUG] handleStop called in AnswerRecorder.vue, setting transcriptionStatus to true");
+      localStorage.setItem('transcriptionStatus', true);
       let mimeType = '';
       if (MediaRecorder.isTypeSupported('audio/webm')) {
         mimeType = 'audio/webm';
@@ -104,12 +106,11 @@ export default {
       }
       const audioBlob = new Blob(this.audioChunks, mimeType ? { type: mimeType } : undefined);
       if (!audioBlob || audioBlob.size === 0) {
-        console.log("[DEBUG] No audio recorded or audio blob is empty, setting transcriptionStatus to false.");
-        await saveTranscriptionStatus(false);
+        localStorage.setItem('transcriptionStatus', false);
         return;
       }
+
       await saveRecording(`Recording_${this.questionIndex}`, audioBlob);
-      await saveTranscriptionStatus(true);
       let transcript = '';
       try {
         transcript = await sendToAssemblyAI(audioBlob);
@@ -127,7 +128,8 @@ export default {
       }
       transcripts[this.questionIndex] = transcript;
       await saveTranscripts(transcripts);
-      await saveTranscriptionStatus(false);
+      console.log("Finished Transcripting, setting transcriptionStatus to false");
+      localStorage.setItem('transcriptionStatus', false);
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;

@@ -4,7 +4,7 @@ import { saveInterviewQA } from '@/store/interviewStore';
 export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
   const openaiModel = process.env.VUE_APP_OPENAI_MODEL;
-  const targetCount = parseInt(process.env.VUE_APP_INTERVIEW_Q_COUNT || '30', 10);
+  const targetCount = localStorage.getItem('selectedQuestionCount');
   const batchSize = parseInt(process.env.VUE_APP_INTERVIEW_Q_BATCH || '10', 10);
   const parallelBatches = parseInt(process.env.VUE_APP_INTERVIEW_Q_PARALLEL || '3', 10);
 
@@ -16,8 +16,14 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   async function fetchBatch(batchNum) {
     const prompt = `
       Generate ${batchSize} unique, non-repetitive, highly randomized interview questions 
-      with detailed answers based on the following resume and job description.
-      
+      with detailed, casual, and conversational answers based on the following resume and job description.
+
+      The questions should be a balanced mix of technical and behavioral topics.
+      Technical questions should focus on skills, tools, and problem-solving relevant to the resume and job description.
+      Behavioral questions should explore teamwork, communication, leadership, and personal experiences.
+
+      The answers should sound natural and conversational, as if spoken in a real interview, and avoid overly formal or scripted language.
+
       Resume:
       ${resumeText}
 

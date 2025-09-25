@@ -59,10 +59,8 @@ export default {
           }
         };
         this.mediaRecorder.onstop = async () => {
-          console.log('[DEBUG] MediaRecorder stopped, processing video...');
           const blob = new Blob(this.recordedChunks, { type: options.mimeType });
-          console.log('[DEBUG] Saving Generated video Blob:', blob);
-          await saveVideoRecording(blob); 
+          await saveVideoRecording(blob);
           if (this.videoPreview) this.videoPreview.srcObject = null;
           if (this.mediaStream) {
             this.mediaStream.getTracks().forEach(track => track.stop());

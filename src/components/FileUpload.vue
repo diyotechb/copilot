@@ -6,7 +6,12 @@
       <input ref="fileInput" type="file" :accept="accept" class="hidden" @change="onFileChange" />
       <button class="btn" @click="openFilePicker">Choose file</button>
     </div>
-    <textarea v-model="text" @paste="onPasteText" :placeholder="`Or paste your ${label.toLowerCase()} text here...`" class="textarea" />
+    <textarea
+      v-model="text"
+      @paste="onPasteText"
+      :placeholder="`Or paste your ${label.toLowerCase()} text here...`"
+      class="textarea"
+    />
     <div class="resume-info" v-if="file">
       <span>{{ file.name }} ({{ (file.size/1024).toFixed(1) }} KB)</span>
   <button class="clear-btn" @click="clearFile">Clear file</button>
@@ -33,7 +38,10 @@ export default {
       dragging: false
     };
   },
-  watch: {
+ watch: {
+    value(newVal) {
+      this.text = newVal;
+    },
     text(val) {
       this.$emit('input', val);
     }

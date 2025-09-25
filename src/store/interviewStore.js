@@ -27,6 +27,16 @@ export async function getInterviewQA() {
   return [];
 }
 
+export async function getResumeText() {
+  const result = await getItem(QA_STORE, 'resumeText');
+  if (result) return result;
+  return '';
+}
+
+export async function saveResumeText(value) {
+  await saveItem(QA_STORE, 'resumeText', value);
+}
+
 export async function deleteInterviewQA(key) {
   await deleteItem(QA_STORE, key);
 }
@@ -59,19 +69,3 @@ export async function deleteTranscript() {
   await deleteItem(TRANSCRIPT_STORE, "transcripts");
 }
 
-export async function saveTranscriptionStatus(value) {
-  await saveItem(QA_STORE, 'transcriptionInProcess', value);
-}
-
-// Get transcriptionInProcess flag
-export async function getTranscriptionStatus() {
-  const result = await getItem(QA_STORE, 'transcriptionInProcess');
-  // Always return true or false
-  if (typeof result === 'boolean') return result;
-  if (typeof result === 'string') {
-    if (result === 'true') return true;
-    if (result === 'false') return false;
-  }
-  console.log("[DEBUG] Transcription status is undefined, defaulting to true");
-  return true; 
-}

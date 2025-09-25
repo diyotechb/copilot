@@ -4,6 +4,8 @@ import Login from '@/views/Login.vue'
 import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
+import UserSessionsView from '@/views/UserSessionsView.vue'
+import SummarySessionView from '@/views/SummarySessionView.vue'
 
 Vue.use(VueRouter)
 
@@ -31,6 +33,16 @@ const routes = [
     {
         path: '/setting',
         component: ResumeSetup
+    },
+    {
+      path: '/userSession',
+      name: 'UserSessionsView',
+      component: UserSessionsView
+    },
+    {
+      path: '/summarySession/:sessionId',
+      name: 'SummarySessionView',
+      component: SummarySessionView
     }
 ]
 

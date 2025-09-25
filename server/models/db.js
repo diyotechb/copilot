@@ -8,7 +8,6 @@ const db = new sqlite3.Database(join(__dirname, '../db.sqlite'), (err) => {
   if (err) {
     console.error('Could not connect to SQLite database:', err.message);
   } else {
-    console.log('Connected to SQLite database.');
     // Read and execute schema.sql
     const schemaPath = join(__dirname, '../schema.sql');
     if (existsSync(schemaPath)) {

@@ -37,7 +37,6 @@ export async function sendToAssemblyAI(audioBlob) {
   }
   // Step 3: Poll for transcript
   let status = transcriptData.status;
-  let transcript = '';
   for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
     await new Promise(res => setTimeout(res, 2000));
     const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptData.id}`, {

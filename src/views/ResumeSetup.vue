@@ -1,13 +1,17 @@
 <template>
+  <div>
+    <UserNavbar />
   <div class="resume-setup-container">
     <template v-if="!loadingQA && !qaReady">
       <h2>Resume & Interviewer Voice Setup</h2>
       <FileUpload
         label="Resume"
+        :value="resumeText"
         @input="resumeText = $event"
       />
       <FileUpload
         label="Job Description"
+        :value="jobDescriptionText"
         @input="jobDescriptionText = $event"
       />
       <div class="section">
@@ -21,10 +25,22 @@
       </div>
       <div class="section">
         <h3>Interview Difficulty</h3>
-        <select v-model="interviewDifficulty" class="difficulty-select" @change="onDifficultyChange">
+        <select v-model="interviewDifficulty" class="difficulty-select">
           <option value="Beginner">Beginner</option>
           <option value="Intermediate">Intermediate</option>
         </select>
+      </div>
+      <div class="section">
+        <h3>Number of Interview Questions</h3>
+        <input
+          type="number"
+          min="1"
+          :max="targetCount"
+          v-model.number="targetCount"
+          @change="onQuestionCountChange"
+          style="width: 100px; padding: 0.5rem; border-radius: 6px; border: 1px solid #e5e7eb;"
+        />
+        <span style="margin-left: 1rem;">(Default: {{ targetCount }})</span>
       </div>
       <div class="section">
         <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
@@ -68,12 +84,14 @@
     <template v-else-if="loadingQA">
       <div style="margin-top:3rem; text-align:center;">
         <div class="loader" style="margin-bottom:1.5rem;"></div>
-        <div style="color:#2563eb; font-weight:600; font-size:1.2rem;">Waiting for interview questions...</div>
+        <div style="color:#2563eb; font-weight:600; font-size:1.2rem;">Waiting for interview questions</div>
+        <div style="color:#2563eb; font-weight:600; font-size:1.2rem;">This may take a few moments</div>
       </div>
     </template>
     <template v-else-if="qaReady">
       <InterviewInstructions @startInterview="handleStartInterview" />
     </template>
+  </div>
   </div>
 </template>
 
@@ -83,11 +101,14 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
 import { clearRecordingsStore } from '@/store/recordingStore.js';
-import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
+import { clearTranscriptsStore } from '@/store/interviewStore';
+import { getResumeText, saveResumeText } from '@/store/interviewStore';
+import { playVoiceSample } from '@/services/azureSpeechService.js';
+import UserNavbar from '@/components/UserNavbar.vue';
 
 export default {
   name: 'ResumeSetup',
-  components: { FileUpload, InterviewInstructions },
+  components: { FileUpload, InterviewInstructions, UserNavbar },
   data() {
     return {
       resumeText: '',
@@ -103,13 +124,14 @@ export default {
       enableVideo: false,
       interviewDifficulty: 'Beginner',
       voicesLoading: false,
+      targetCount: parseInt(process.env.VUE_APP_INTERVIEW_Q_COUNT || '30', 10),
     };
   },
   async mounted() {
     this.fetchVoices();
     clearRecordingsStore();
-    clearInterviewQAStore();
     clearTranscriptsStore();
+    this.resumeText = await getResumeText();
     this.enableVideo = await getSetting('enableVideo');
     const savedVoice = await getSetting('selectedVoice');
       if (savedVoice) {
@@ -119,19 +141,20 @@ export default {
     if (savedDifficulty) {
       this.interviewDifficulty = savedDifficulty;
     }
+    localStorage.setItem('selectedQuestionCount', this.targetCount);
   },
   methods: {
+    onQuestionCountChange() {
+      localStorage.setItem('selectedQuestionCount', this.targetCount);
+    },
     toggleVideo() {
       this.enableVideo = !this.enableVideo;
       saveSetting('enableVideo', this.enableVideo);
     },
     onVoiceChange() {
       if (this.selectedVoice) {
-        this.playVoiceSample(this.selectedVoice);
+        playVoiceSample(this.selectedVoice);
       }
-    },
-    onDifficultyChange() {
-      saveSetting('interviewDifficulty', this.interviewDifficulty);
     },
     async fetchVoices() {
       this.voicesLoading = true;
@@ -153,45 +176,13 @@ export default {
         this.voicesLoading = false;
       }
     },
-    async playVoiceSample(voiceName) {
-      const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-      if (!subscriptionKey || !region) return;
-      const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
-      const ssml = `
-        <speak version='1.0' xml:lang='en-US'>
-          <voice xml:lang='en-US' name='${voiceName}'>
-            This is a sample of the selected Azure voice.
-          </voice>
-        </speak>
-      `;
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Ocp-Apim-Subscription-Key': subscriptionKey,
-            'Content-Type': 'application/ssml+xml',
-            'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
-            'User-Agent': 'ResumeSetupVue'
-          },
-          body: ssml
-        });
-        if (!response.ok) throw new Error('Azure TTS failed');
-        const audioData = await response.arrayBuffer();
-        const blob = new Blob([audioData], { type: 'audio/mp3' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play();
-      } catch (e) {
-        alert('Could not play sample for this voice.');
-      }
-    },
     async submitSetup() {
       this.submitSent = true;
       this.loadingQA = true;
       this.qaReady = false;
-
       await saveSetting('selectedVoice', this.selectedVoice);
+      await saveSetting('interviewDifficulty', this.interviewDifficulty);
+      await saveResumeText(this.resumeText);
       try {
         this.interviewQA = await generateInterviewQA({
           resumeText: this.resumeText,
