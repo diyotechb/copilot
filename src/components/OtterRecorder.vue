@@ -1,10 +1,7 @@
 <template>
     <div class="otter-recorder">
         <button @click="toggleRecording">{{ recording ? 'Stop' : 'Start' }} Recording</button>
-        <div class="transcript" v-if="segments.length || partial">
-            <div v-for="(seg, i) in segments" :key="i" class="transcript-final">{{ seg }}</div>
-            <div v-if="partial" class="transcript-partial">{{ partial }}</div>
-        </div>
+        <!-- Transcripts are emitted to parent; rendering removed to avoid duplicate/raw output -->
     </div>
 </template>
 
@@ -225,10 +222,14 @@ export default {
             }
 
             if (end_of_turn) {
-                if (text) this.segments.push(text);
+                if (text) {
+                    this.segments.push(text);
+                    this.$emit('final-transcript', text);
+                }
                 this.partial = '';
             } else {
                 this.partial = text || '';
+                this.$emit('partial', this.partial);
             }
 
             // Update combined status (finalized lines followed by current partial)
