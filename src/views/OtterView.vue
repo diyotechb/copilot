@@ -55,7 +55,8 @@ export default {
       transcripts: [],
       ownerName: "Mahesh Gaire",
       sessionStart: null,
-      mergeThresholdMs: 2000      // merge very short finals
+      mergeThresholdMs: 2000,     // merge very short finals
+      // ASR experiment knobs removed; recorder defaults to 48k
     };
   },
 

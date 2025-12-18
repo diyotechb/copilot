@@ -9,6 +9,10 @@
 export default {
     name: 'OtterRecorder',
     components: { RecorderControls: () => import('@/components/RecorderControls.vue') },
+    props: {
+        sampleRate: { type: Number, default: 48000 },
+        model: { type: String, default: '' }
+    },
     data() {
         return {
             recording: false,
@@ -21,7 +25,6 @@ export default {
             segments: [],
             partial: '',
             bufferSize: 4096,
-            sampleRate: 16000, // must match proxy query param
             // Default to explicit server port 3001 when running the dev server on 3002
             baseUrl: (function () {
                 const env = process.env.VUE_APP_SERVER_URL;
@@ -65,7 +68,8 @@ export default {
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
-            const wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
+            let wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
+            if (this.model) wsUrl += `&model=${encodeURIComponent(this.model)}`;
             console.log('[OtterRecorder] connecting websocket ->', wsUrl);
             this.ws = new WebSocket(wsUrl);
             // prefer arraybuffer for binary handling
@@ -122,8 +126,14 @@ export default {
                 this.stop();
             };
 
-            // Start microphone capture
-            this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Start microphone capture with recommended audio constraints (improves clarity)
+            const constraints = { audio: { noiseSuppression: true, echoCancellation: true, sampleRate: this.sampleRate } };
+            try {
+                this.audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (err) {
+                // Fallback to generic audio if constraints not supported
+                this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: this.sampleRate });
             this.audioContext = audioCtx;
             this.source = audioCtx.createMediaStreamSource(this.audioStream);

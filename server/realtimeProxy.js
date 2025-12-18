@@ -3,6 +3,9 @@ import WebSocket, { WebSocketServer } from 'ws';
 export function setupRealtimeProxy(server) {
   const wss = new WebSocketServer({ noServer: true });
 
+  // Enable verbose upstream logging when REALTIME_DEBUG is 'true'
+  const UPSTREAM_DEBUG = String(process.env.REALTIME_DEBUG || '').toLowerCase() === 'true';
+
   server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     if (pathname === '/realtime') {
@@ -67,6 +70,22 @@ export function setupRealtimeProxy(server) {
           // non-JSON message from upstream: forward as text
           try { wsClient.send(text); } catch {}
           return;
+        }
+
+        // Optional verbose logging of raw upstream payloads for debugging endpointing
+        if (UPSTREAM_DEBUG) {
+          try {
+            const safe = (obj) => {
+              try {
+                return JSON.stringify(obj, (k, v) => {
+                  if (Array.isArray(v) && v.length > 50) return `[Array(${v.length})]`;
+                  if (typeof v === 'string' && v.length > 1000) return v.slice(0, 1000) + '...[truncated]';
+                  return v;
+                }, 2);
+              } catch (e) { return String(obj); }
+            };
+            console.log('[Proxy][UPSTREAM RAW]', safe(parsed));
+          } catch (e) { /* ignore logging errors */ }
         }
 
         if (parsed.type === 'message' || parsed.text) {
