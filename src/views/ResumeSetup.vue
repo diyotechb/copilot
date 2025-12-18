@@ -1,5 +1,8 @@
 <template>
   <div class="resume-setup-container">
+    <div class="top-actions">
+      <button class="btn otter-btn" @click="$router.push({ name: 'OtterView' })">Open Otter Live</button>
+    </div>
     <template v-if="!loadingQA && !qaReady">
       <h2>Resume & Interviewer Voice Setup</h2>
       <FileUpload
@@ -253,6 +256,10 @@ export default {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 2rem;
 }
+/* Top actions */
+.top-actions { display:flex; justify-content:flex-start; margin-bottom: 1rem; }
+.btn.otter-btn { background:#0ea5e9; color:#fff; border:none; padding:0.65rem 1.25rem; border-radius:12px; cursor:pointer; font-weight:700; margin-right: 0.75rem; font-size:1.05rem; box-shadow: 0 6px 18px rgba(2,132,199,0.16); min-width:160px; text-align:center; }
+.btn.otter-btn:hover { background:#0284c7; transform: translateY(-1px); }
 .section { margin-bottom: 2rem; }
 .uploader { border: 2px dashed #e5e7eb; border-radius: 0.75rem; padding: 1rem; text-align: center; background: #fafafa; }
 .uploader.dragging { background: #f0f9ff; border-color: #93c5fd; }

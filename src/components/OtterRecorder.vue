@@ -1,13 +1,14 @@
 <template>
-    <div class="otter-recorder">
-        <button @click="toggleRecording">{{ recording ? 'Stop' : 'Start' }} Recording</button>
-        <!-- Transcripts are emitted to parent; rendering removed to avoid duplicate/raw output -->
-    </div>
+        <div class="otter-recorder">
+            <RecorderControls :recording="recording" @toggle="toggleRecording" @go-home="goHome" />
+            <!-- Transcripts are emitted to parent; rendering removed to avoid duplicate/raw output -->
+        </div>
 </template>
 
 <script>
 export default {
     name: 'OtterRecorder',
+    components: { RecorderControls: () => import('@/components/RecorderControls.vue') },
     data() {
         return {
             recording: false,
@@ -45,6 +46,12 @@ export default {
             } else {
                 this.start();
             }
+        },
+
+        goHome() {
+            // stop recording if active and navigate back
+            if (this.recording) this.stop();
+            try { this.$router.push({ name: 'ResumeSetup' }); } catch (e) { /* ignore when router unavailable */ }
         },
 
         async start() {
@@ -255,21 +262,7 @@ export default {
 </script>
 
 <style scoped>
-.otter-recorder button {
-    padding: 0.5rem 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.transcript {
-    white-space: pre-wrap;
-    margin-top: 0.5rem;
-}
-.transcript-final {
-    color: #111;
-    margin-bottom: 0.25rem;
-}
-.transcript-partial {
-    color: #666;
-    font-style: italic;
-}
+.transcript { white-space: pre-wrap; margin-top: 0.5rem; }
+.transcript-final { color: #111; margin-bottom: 0.25rem; }
+.transcript-partial { color: #666; font-style: italic; }
 </style>

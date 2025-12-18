@@ -27,8 +27,14 @@ export function setupRealtimeProxy(server) {
       process.env.ASSEMBLY_AI_WS_URL ||
       'wss://streaming.assemblyai.com/v3/ws';
     const targetUrl = new URL(assemblyHost);
+    // Core params
     targetUrl.searchParams.set('sample_rate', sampleRate);
     targetUrl.searchParams.set('model', model);
+    // Enable AssemblyAI formatting/punctuation features for polished final transcripts
+    // These flags enable punctuation, casing, and inverse text normalization (numbers/currency)
+    targetUrl.searchParams.set('punctuate', 'true');
+    targetUrl.searchParams.set('format_text', 'true');
+    targetUrl.searchParams.set('itn', 'true');
 
     const apiKey = process.env.ASSEMBLY_AI_TOKEN || process.env.VUE_APP_ASSEMBLY_AI_TOKEN;
     if (!apiKey) {
