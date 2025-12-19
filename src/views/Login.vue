@@ -7,6 +7,7 @@
                 <input
                     id="username"
                     v-model="username"
+                    @input="errorMessage = ''"
                     type="text"
                     placeholder="Enter your username"
                     required
@@ -17,23 +18,32 @@
                 <input
                     id="password"
                     v-model="password"
+                    @input="errorMessage = ''"
                     type="password"
                     placeholder="Enter your password"
                     required
                 />
             </div>
-            <button type="submit">Login</button>
+            <p class="error-message" v-if="errorMessage" role="alert">{{ errorMessage }}</p>
+            <button type="submit" :disabled="isLoading">
+                <span class="spinner" v-if="isLoading" aria-hidden="true"></span>
+                {{ isLoading ? 'Logging in...' : 'Login' }}
+            </button>
         </form>
     </div>
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
     name: "Login",
     data() {
         return {
             username: "",
             password: "",
+            isLoading: false,
+            errorMessage: '',
         };
     },
     created() {
@@ -43,18 +53,40 @@ export default {
         }
     },
     methods: {
-        handleLogin() {
-            // Local credential check
-            const validUsername = 'mgaire@diyotech.net';
-            const validPassword = 'Test@123';
-            if (this.username === validUsername && this.password === validPassword) {
-                // Generate a simple token (base64 of username + timestamp)
-                const tokenPayload = `${this.username}:${Date.now()}`;
+        async handleLogin() {
+            // Temporary mock: API is currently unavailable. Replace this with a real POST to
+            // process.env.VUE_APP_LOGIN_ENDPOINT when the endpoint is back online.
+            this.errorMessage = '';
+
+            if (!this.username || !this.password) {
+                this.errorMessage = 'Please enter both email and password.';
+                return;
+            }
+
+            this.isLoading = true;
+
+            try {
+                // Simulate a short network delay
+                await new Promise((resolve) => setTimeout(resolve, 400));
+
+                // Generate a mock token (base64 of username + timestamp + random part)
+                const randomPart = Math.random().toString(36).slice(2);
+                const tokenPayload = `${this.username}:${Date.now()}:${randomPart}`;
                 const token = btoa(tokenPayload);
+
+                // The real API call is commented out while the endpoint is down:
+                // const endpoint = process.env.VUE_APP_LOGIN_ENDPOINT;
+                // const res = await axios.post(endpoint, { email: this.username, password: this.password });
+                // const data = res?.data || {};
+                // const token = data.token || data.accessToken || data?.data?.token;
+
                 localStorage.setItem('otterAuthToken', token);
                 this.$router.push({ name: 'ResumeSetup' });
-            } else {
-                alert('Login failed. Please check your credentials.');
+            } catch (err) {
+                console.error('Login mock error:', err);
+                this.errorMessage = 'Unexpected error during login. Please try again.';
+            } finally {
+                this.isLoading = false;
             }
         },
     },
@@ -91,6 +123,10 @@ export default {
     }
     .form-group input:focus {
         border-color: #7f9cf5;
+    }
+    .error-message {
+        color: #ffb4b4;
+        background: rgba(255,180,180,0.04);
     }
     button[type="submit"] {
         background: #7f9cf5;
@@ -144,7 +180,20 @@ export default {
     outline: none;
 }
 
+.error-message {
+    color: #b00020;
+    background: rgba(176,0,32,0.04);
+    padding: 0.5rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
 button[type="submit"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     background: #2193b0;
     color: #fff;
     border: none;
@@ -158,5 +207,24 @@ button[type="submit"] {
 
 button[type="submit"]:hover {
     background: #17668c;
+}
+
+button[type="submit"][disabled] {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.6);
+    border-top-color: rgba(255,255,255,1);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 </style>
