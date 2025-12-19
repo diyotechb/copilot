@@ -44,7 +44,7 @@
 </template>
 
 <script>
-import OtterRecorder from '@/components/OtterRecorder.vue';
+import OtterRecorder from '@/components/LiveTranscriptionRecorder.vue';
 
 export default {
   name: "LiveTranscriptView",

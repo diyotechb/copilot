@@ -4,7 +4,7 @@ import Login from '@/views/Login.vue'
 import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
-import OtterView from '@/views/OtterView.vue'
+import LiveTranscriptView from '@/views/LiveTranscription.vue'
 import { getInterviewQA } from '@/store/interviewStore'
 
 Vue.use(VueRouter)
@@ -14,7 +14,7 @@ const routes = [
   { path: '/setup', name: 'ResumeSetup', component: ResumeSetup },
   { path: '/summary', name: 'SummaryView', component: SummaryView },
   { path: '/interview', name: 'InterviewView', component: InterviewView },
-  { path: '/otter', name: 'OtterView', component: OtterView },
+  { path: '/liveTranscription', name: 'LiveTranscriptView', component: LiveTranscriptView },
   { path: '/setting', component: ResumeSetup }
 ]
 

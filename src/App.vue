@@ -1,8 +1,6 @@
 <template>
   <div id="app">
-    <el-menu :default-active="$router.currentRoute.path" mode="horizontal" :router="true">
-      <!-- Remove any tab or navigation related to Otter Assistant -->
-    </el-menu>
+    <NavBar v-if="showNav" />
     <router-view class="router_view"/>
   </div>
 </template>
@@ -17,12 +15,19 @@
 
 </style>
 <script>
-import {mapGetters} from 'vuex';
+import NavBar from '@/components/NavBar.vue';
 
 export default {
   name: 'App',
+  components: { NavBar },
   props: {},
-  computed: {},
+  computed: {
+    showNav() {
+      // Hide the navbar on Login and InterviewView routes
+      const hide = ['Login', 'InterviewView'];
+      return !hide.includes(this.$route.name);
+    }
+  },
   beforeMount() {
   },
   mounted() {
