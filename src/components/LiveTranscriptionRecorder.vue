@@ -7,11 +7,11 @@
 
 <script>
 export default {
-    name: 'OtterRecorder',
+    name: 'LiveTranscriptionRecorder',
     components: { RecorderControls: () => import('@/components/RecorderControls.vue') },
     props: {
         sampleRate: { type: Number, default: 48000 },
-        model: { type: String, default: '' }
+        model: { type: String, default: '' },
     },
     data() {
         return {
@@ -40,6 +40,7 @@ export default {
                     return 'http://localhost:3001';
                 }
             })(),
+            serverParams: null,
         };
     },
     methods: {
@@ -51,6 +52,7 @@ export default {
             }
         },
 
+
         goHome() {
             // stop recording if active and navigate back
             if (this.recording) this.stop();
@@ -61,7 +63,7 @@ export default {
             if (this.recording) return;
             this.recording = true;
             this.partial = '';
-            console.log('[OtterRecorder] starting recording');
+            console.log('[LiveTranscriptionRecorder] starting recording');
 
             // Build WebSocket URL (support http/https origins)
             let wsOrigin = this.baseUrl;
@@ -70,7 +72,9 @@ export default {
 
             let wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
             if (this.model) wsUrl += `&model=${encodeURIComponent(this.model)}`;
-            console.log('[OtterRecorder] connecting websocket ->', wsUrl);
+
+            // ASR parameters are enforced server-side; do not send them from client
+            console.log('[LiveTranscriptionRecorder] connecting websocket ->', wsUrl);
             this.ws = new WebSocket(wsUrl);
             // prefer arraybuffer for binary handling
             try { this.ws.binaryType = 'arraybuffer'; } catch (e) { /* not critical */ }
@@ -81,7 +85,7 @@ export default {
 
             // Wait until proxy confirms upstream is ready
             this.ws.onopen = () => {
-                console.log('[OtterRecorder] WebSocket open');
+                console.log('[LiveTranscriptionRecorder] WebSocket open');
                 if (!this.sending) this.sendAudioLoop().catch(() => {});
             };
 
@@ -97,18 +101,22 @@ export default {
                     case 'open':
                         break;
                     case 'proxy_open':
-                        console.log('[OtterRecorder] proxy connected');
+                        console.log('[LiveTranscriptionRecorder] proxy connected', msg);
+                        if (msg.params) {
+                            console.log('[LiveTranscriptionRecorder] server ASR params:', msg.params);
+                            try { this.$emit('server-asr', msg.params || {}); } catch (e) {}
+                        }
                         if (!this.sending) this.sendAudioLoop();
                         break;
                     case 'message':
                         this.handleTranscription(msg.data);
                         break;
                     case 'closed':
-                        console.log('[OtterRecorder] WebSocket closed', msg.code, msg.reason);
+                        console.log('[LiveTranscriptionRecorder] WebSocket closed', msg.code, msg.reason);
                         this.stop();
                         break;
                     case 'proxy_error':
-                        console.error('[OtterRecorder] proxy error', msg.message);
+                        console.error('[LiveTranscriptionRecorder] proxy error', msg.message);
                         this.stop();
                         break;
                     default:
@@ -117,12 +125,12 @@ export default {
             };
 
             this.ws.onerror = (err) => {
-                console.error('[OtterRecorder] WebSocket error', err && err.message);
+                console.error('[LiveTranscriptionRecorder] WebSocket error', err && err.message);
                 this.stop();
             };
 
             this.ws.onclose = (evt) => {
-                console.warn('[OtterRecorder] WebSocket closed', evt && evt.code);
+                console.warn('[LiveTranscriptionRecorder] WebSocket closed', evt && evt.code);
                 this.stop();
             };
 
@@ -172,7 +180,7 @@ export default {
                 // Ensure chunk >= 50ms
                 const minSamples = (this.sampleRate / 1000) * 50;
                 if (chunk.length < minSamples) {
-                    console.warn('[OtterRecorder] chunk too short, skipping');
+                    console.warn('[LiveTranscriptionRecorder] chunk too short, skipping');
                     continue;
                 }
 
@@ -180,7 +188,7 @@ export default {
                     const ab = chunk.buffer;
                     this.ws.send(ab);
                 } catch (e) {
-                    console.warn('[OtterRecorder] ws send failed', e && e.message);
+                    console.warn('[LiveTranscriptionRecorder] ws send failed', e && e.message);
                 }
             }
             this.sending = false;
@@ -253,7 +261,6 @@ export default {
             const combined = [...this.segments, this.partial].filter(Boolean).join('\n');
             this.status = combined;
             this.$emit('transcript', this.status);
-            if (text && end_of_turn) console.log('[OtterRecorder] transcript final:', text);
         },
 
         floatTo16BitPCM(float32Array) {

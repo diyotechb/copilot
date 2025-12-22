@@ -5,7 +5,15 @@
     <otter-recorder
       @partial="onPartial"
       @final-transcript="onFinalTranscript"
+      @server-asr="onServerASR"
     />
+
+    <div v-if="serverASR" class="server-asr">
+      <strong>Server ASR:</strong>
+      <span>end_of_turn_confidence_threshold: {{ serverASR.end_of_turn_confidence_threshold }}</span>
+      <span>min_end_of_turn_silence_when_confident: {{ serverASR.min_end_of_turn_silence_when_confident }}</span>
+      <span>max_turn_silence: {{ serverASR.max_turn_silence }}</span>
+    </div>
 
     <section class="transcripts">
       <header class="header">
@@ -56,89 +64,135 @@ export default {
       ownerName: "Mahesh Gaire",
       sessionStart: null,
       mergeThresholdMs: 2000,     // merge very short finals
-      // ASR experiment knobs removed; recorder defaults to 48k
+      serverASR: null,
     };
   },
 
   methods: {
-    onPartial(text) {
-      const ts = Date.now();
-      if (!this.sessionStart) this.sessionStart = ts;
 
-      // Check last segment
-      const last = this.transcripts[this.transcripts.length - 1];
-
-      // If last is final and the pause since it was finalized is short,
-      // show the new partial inline on the same bubble instead of creating a new one.
-      if (last && last.final) {
-        const dt = ts - (last.ts || ts);
-        if (dt <= this.mergeThresholdMs) {
-          // attach transient partial to previous final (keeps single bubble)
-          last.partial = text || '';
-          last.partialTs = ts;
-          this.transcripts.splice(this.transcripts.length - 1, 1, last);
-          this.scrollToBottom();
-          return;
-        }
-      }
-
-      // If there's an existing non-final partial, update it
-      if (last && !last.final) {
-        last.text = text || '';
-        last.ts = ts;
-        this.transcripts.splice(this.transcripts.length - 1, 1, last);
-      } else {
-        // Otherwise create a new partial segment
-        if (text) this.transcripts.push({ text, final: false, ts });
-      }
-
-      this.scrollToBottom();
+    onServerASR(payload) {
+      console.debug('[LiveTranscription] server ASR params confirmed', payload);
+      this.serverASR = payload && payload.params ? payload.params : payload;
     },
 
-    onFinalTranscript(text) {
-      if (!text) return;
-      const ts = Date.now();
-      if (!this.sessionStart) this.sessionStart = ts;
 
-      const last = this.transcripts[this.transcripts.length - 1];
 
-      // If last is final and it has a transient partial (we showed partial inline),
-      // finalize that inline partial by appending the final text to the same bubble.
-      if (last && last.final && last.partial) {
-        last.text = `${last.text} ${text}`.trim();
-        last.partial = null;
-        last.partialTs = null;
-        last.ts = ts;
-        this.transcripts.splice(this.transcripts.length - 1, 1, last);
-        this.scrollToBottom();
-        return;
-      }
+      onPartial(text) {
+        const ts = Date.now();
+        if (!this.sessionStart) this.sessionStart = ts;
 
-      // Merge short finals into previous final when appropriate
-      const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length;
-      if (last && last.final) {
-        const dt = ts - (last.ts || ts);
-        if (dt <= this.mergeThresholdMs || wordCount <= 2) {
-          last.text = `${last.text} ${text}`.trim();
+        const lastIndex = this.transcripts.length - 1;
+        const last = this.transcripts[lastIndex];
+
+        // If last is final and the pause since it was finalized is short,
+        // show the new partial inline on the same bubble instead of creating a new one.
+        if (last && last.final) {
+          const dt = ts - (last.ts || ts);
+          if (dt <= this.mergeThresholdMs) {
+            // attach transient partial to previous final (keeps single bubble)
+            last.partial = text || '';
+            last.partialTs = ts;
+            this.transcripts.splice(lastIndex, 1, last);
+            this.scrollToBottom();
+            return;
+          }
+        }
+
+        // If there's an existing non-final partial, update it
+        if (last && !last.final) {
+          last.text = text || '';
           last.ts = ts;
-          this.transcripts.splice(this.transcripts.length - 1, 1, last);
+          this.transcripts.splice(lastIndex, 1, last);
+        } else {
+          // Otherwise create a new partial segment
+          if (text) {
+            this.transcripts.push({ text, final: false, ts });
+          }
+        }
+
+        this.scrollToBottom();
+      },
+
+      onFinalTranscript(text) {
+        if (!text) return;
+        const ts = Date.now();
+        if (!this.sessionStart) this.sessionStart = ts;
+
+        const lastIndex = this.transcripts.length - 1;
+        const last = this.transcripts[lastIndex];
+
+
+        // Helper to safely append avoiding duplicates/overlap
+        const appendSmart = (base, addition, partial) => {
+          const a = String(addition || '').trim();
+          if (!a) return base.trim();
+          const p = String(partial || '').trim();
+          // If the base already ends with the addition, keep base
+          if (base.trim().endsWith(a)) return base.trim();
+          // If the addition starts with the partial we showed inline, only append the suffix
+          if (p && a.startsWith(p)) {
+            const suffix = a.slice(p.length).trim();
+            return suffix ? `${base} ${suffix}`.trim() : base.trim();
+          }
+          // Fallback: append whole addition
+          return `${base} ${a}`.trim();
+        };
+
+        // If last is final and it has a transient partial (we showed partial inline),
+        // replace the whole current bubble with the final transcript (final contains punctuation).
+        if (last && last.final && last.partial) {
+          last.text = text; // replace, do not append
+          last.partial = null;
+          last.partialTs = null;
+          last.ts = ts;
+          this.transcripts.splice(lastIndex, 1, last);
           this.scrollToBottom();
           return;
         }
-      }
 
-      // If last is a non-final partial, mark it final
-      if (last && !last.final) {
-        last.text = text;
-        last.final = true;
-        last.ts = ts;
-        this.transcripts.splice(this.transcripts.length - 1, 1, last);
-      } else {
-        this.transcripts.push({ text, final: true, ts });
-      }
+        // Merge short finals into previous final when appropriate (avoid duplicate append)
+        const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+        if (last && last.final) {
+          const dt = ts - (last.ts || ts);
 
-      this.scrollToBottom();
-    },
+          // normalize helper (strip punctuation, lower case, collapse spaces)
+          const normalize = (s) => String(s || '').replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const baseNorm = normalize(last.text);
+          const newNorm = normalize(text);
+
+          // If the new final appears to be an improved/expanded/punctuated version of the last final, replace it
+          if (dt <= this.mergeThresholdMs && (newNorm.includes(baseNorm) || baseNorm.includes(newNorm) || /[.!?]$/.test(String(text || '')))) {
+            last.text = text;
+            last.ts = ts;
+            this.transcripts.splice(lastIndex, 1, last);
+            this.scrollToBottom();
+            return;
+          }
+
+          // Small additions (1-2 words) should be appended
+          if (dt <= this.mergeThresholdMs || wordCount <= 2) {
+            last.text = appendSmart(last.text, text);
+            last.ts = ts;
+            this.transcripts.splice(lastIndex, 1, last);
+            this.scrollToBottom();
+            return;
+          }
+        }
+
+        // If there are trailing partials (one or more), replace the last partial with the final.
+        if (last && !last.final) {
+          // replace the trailing non-final with the final text
+          last.text = text;
+          last.final = true;
+          last.ts = ts;
+          this.transcripts.splice(lastIndex, 1, last);
+        } else {
+          this.transcripts.push({ text, final: true, ts });
+        }
+
+        this.scrollToBottom();
+      },
+
 
     clearTranscripts() {
       this.transcripts = [];
@@ -308,4 +362,13 @@ export default {
 @keyframes blink {
   50% { opacity: 0; }
 }
+
+.settings-bar { display:flex; gap:0.75rem; align-items:center; margin-bottom:0.75rem; }
+.settings-toggle { background:#eef2ff; border:1px solid #dbeafe; padding:0.4rem 0.6rem; border-radius:6px; cursor:pointer; }
+.settings-note { color:#64748b; font-size:0.9rem; }
+.settings { display:flex; gap:1rem; margin-bottom:1rem; align-items:center; }
+.setting { display:flex; flex-direction:column; gap:0.25rem; }
+.setting label { font-size:0.85rem; color:#334155; }
+.setting input[type="range"] { width:260px; }
+
 </style>

@@ -23,8 +23,36 @@ export function setupRealtimeProxy(server) {
     console.log(`[Proxy] client connected url=${request.url}`);
 
     const params = new URL(request.url, 'http://localhost').searchParams;
-    const sampleRate = params.get('sample_rate') || '16000';
-    const model = params.get('model') || process.env.ASSEMBLY_AI_MODEL || 'latest';
+    const sampleRate = params.get('sample_rate') || 16000;
+
+    // ASR thresholds must be provided by server environment variables only
+    const minSilenceEnv = process.env.MIN_SILENCE_THRESHOLD;
+    const maxSilenceEnv = process.env.MAX_SILENCE_THRESHOLD;
+    const endOfTurnEnv = process.env.END_OF_TURN_THRESHOLD;
+
+    if (!minSilenceEnv || !maxSilenceEnv || !endOfTurnEnv) {
+      console.error('[Proxy] missing server ASR environment variables. Please set MIN_SILENCE_THRESHOLD, MAX_SILENCE_THRESHOLD, and END_OF_TURN_THRESHOLD.');
+      try { wsClient.send(JSON.stringify({ type: 'proxy_error', message: 'Server misconfigured: missing ASR threshold env vars' })); } catch {}
+      wsClient.close();
+      return;
+    }
+
+    // Validate numeric values
+    const minSilenceThreshold = parseInt(minSilenceEnv, 10);
+    const maxSilenceThreshold = parseInt(maxSilenceEnv, 10);
+    const endOfTurnThreshold = parseFloat(endOfTurnEnv);
+
+    if (Number.isNaN(minSilenceThreshold) || Number.isNaN(maxSilenceThreshold) || Number.isNaN(endOfTurnThreshold)) {
+      console.error('[Proxy] invalid ASR env vars; must be numeric.');
+      try { wsClient.send(JSON.stringify({ type: 'proxy_error', message: 'Server misconfigured: ASR env vars must be numeric' })); } catch {}
+      wsClient.close();
+      return;
+    }
+
+    // If client supplied params, warn but ignore them
+    if (params.get('min_silence') || params.get('max_silence') || params.get('end_of_turn')) {
+      console.warn('[Proxy] client attempted to override ASR params; ignoring client-supplied values for security/configuration consistency');
+    }
 
     const assemblyHost =
       process.env.ASSEMBLY_AI_WS_URL ||
@@ -32,12 +60,19 @@ export function setupRealtimeProxy(server) {
     const targetUrl = new URL(assemblyHost);
     // Core params
     targetUrl.searchParams.set('sample_rate', sampleRate);
-    targetUrl.searchParams.set('model', model);
+    // targetUrl.searchParams.set('model', model);
     // Enable AssemblyAI formatting/punctuation features for polished final transcripts
     // These flags enable punctuation, casing, and inverse text normalization (numbers/currency)
     targetUrl.searchParams.set('punctuate', 'true');
-    targetUrl.searchParams.set('format_text', 'true');
+    targetUrl.searchParams.set('format_turns', 'true');
     targetUrl.searchParams.set('itn', 'true');
+    // targetUrl.searchParams.set('end_utterance_silence_threshold', silenceThreshold);
+    targetUrl.searchParams.set('end_of_turn_confidence_threshold', endOfTurnThreshold);
+    targetUrl.searchParams.set('min_end_of_turn_silence_when_confident', minSilenceThreshold);
+    targetUrl.searchParams.set('max_turn_silence', maxSilenceThreshold);
+
+    // Log the final upstream URL with params so clients can verify settings arrived
+    console.log('[Proxy] upstream URL with params:', targetUrl.toString());
 
     const apiKey = process.env.ASSEMBLY_AI_TOKEN || process.env.VUE_APP_ASSEMBLY_AI_TOKEN;
     if (!apiKey) {
@@ -55,7 +90,17 @@ export function setupRealtimeProxy(server) {
 
     wsServerConn.on('open', () => {
       console.log('[Proxy] upstream connection open');
-      try { wsClient.send(JSON.stringify({ type: 'proxy_open' })); } catch (e) { /* ignore */ }
+      try {
+        wsClient.send(JSON.stringify({
+          type: 'proxy_open',
+          params: {
+            end_of_turn_confidence_threshold: endOfTurnThreshold,
+            min_end_of_turn_silence_when_confident: minSilenceThreshold,
+            max_turn_silence: maxSilenceThreshold
+          },
+          upstream: targetUrl.toString()
+        }));
+      } catch (e) { /* ignore */ }
     });
 
     // Forward messages from AssemblyAI → browser

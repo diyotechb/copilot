@@ -70,8 +70,10 @@ export default class AssemblyAIRealtimeService {
           // AssemblyAI partial/final text
           if (data.text) {
             if (data.end_of_turn) {
+              console.log('[assemblyAIRealtimeService] final payload:', data);
               this.emit('final', data.text);
             } else {
+              // Log partials when debugging
               this.emit('partial', data.text);
             }
           }

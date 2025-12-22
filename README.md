@@ -37,6 +37,8 @@ In order to use GPT, you need an Open AI API Token: https://platform.openai.com
 
 To use Azure's speech recognition service, you can apply for a free token by referring to [this tutorial](./docs/azure_speech_service_tutorial.md).
 
+The server controls live-ASR endpointing parameters via environment variables: **MIN_SILENCE_THRESHOLD** (milliseconds), **MAX_SILENCE_THRESHOLD** (milliseconds), and **END_OF_TURN_THRESHOLD** (confidence threshold 0.0–1.0). These env vars are REQUIRED — the realtime proxy will refuse to start a connection and will report an error to the client if they are missing or invalid.
+
 
 ## Developing
 This project is based on Vue2. Just  `cd app`:
