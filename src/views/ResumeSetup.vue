@@ -253,6 +253,8 @@ export default {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 2rem;
 }
+/* Top actions */
+.top-actions { display:flex; justify-content:flex-start; margin-bottom: 1rem; }
 .section { margin-bottom: 2rem; }
 .uploader { border: 2px dashed #e5e7eb; border-radius: 0.75rem; padding: 1rem; text-align: center; background: #fafafa; }
 .uploader.dragging { background: #f0f9ff; border-color: #93c5fd; }
