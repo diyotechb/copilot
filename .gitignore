@@ -20,3 +20,6 @@ pnpm-debug.log*
 *.sln
 *.sw?
 .env
+
+#lock file
+package-lock.json
