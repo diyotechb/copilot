@@ -3,10 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start-server": "cross-env PORT=3001 node server/server.js",
-    "start:prod": "cross-env NODE_ENV=production PORT=3001 node server/server.js",
-    "serve-client": "cross-env PORT=3002 vue-cli-service serve",
-    "serve": "concurrently -k \"npm:start-server\" \"npm:serve-client\"",
+    "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "test": "jest"
   },

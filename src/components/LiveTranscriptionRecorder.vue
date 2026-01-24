@@ -28,17 +28,27 @@ export default {
             // Default to explicit server port 3001 when running the dev server on 3002
             baseUrl: (function () {
                 const env = process.env.VUE_APP_SERVER_URL;
-                if (env) return env;
-                try {
-                    const origin = window.location.origin;
-                    // If the app is served on :3002 (webpack dev), assume backend is on :3001
-                    if (window.location.port === '3002') {
-                        return `${window.location.protocol}//${window.location.hostname}:3001`;
+                let url = env || null;
+                if (!url) {
+                    try {
+                        const origin = window.location.origin;
+                        // If the app is served on :3002 (webpack dev), assume backend is on :3001
+                        if (window.location.port === '3002') {
+                            url = `${window.location.protocol}//${window.location.hostname}:3001`;
+                        } else {
+                            url = origin;
+                        }
+                    } catch (e) {
+                        url = 'http://localhost:3001';
                     }
-                    return origin;
-                } catch (e) {
-                    return 'http://localhost:3001';
                 }
+                // Trim any trailing slashes to avoid double-slash when building paths
+                if (url && /\/$/.test(url)) {
+                    console.debug('[LiveTranscriptionRecorder] trimming trailing slash from baseUrl', url);
+                    url = url.replace(/\/+$/, '');
+                }
+                console.debug('[LiveTranscriptionRecorder] computed baseUrl=', url, 'env=', env);
+                return url;
             })(),
             serverParams: null,
         };
@@ -66,7 +76,11 @@ export default {
             console.log('[LiveTranscriptionRecorder] starting recording');
 
             // Build WebSocket URL (support http/https origins)
-            let wsOrigin = this.baseUrl;
+            let wsOrigin = this.baseUrl || '';
+            console.debug('[LiveTranscriptionRecorder] baseUrl=', this.baseUrl);
+            // Defensive trim of any trailing slash
+            wsOrigin = wsOrigin.replace(/\/+$/, '');
+            console.debug('[LiveTranscriptionRecorder] wsOrigin after trim=', wsOrigin);
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
@@ -74,7 +88,7 @@ export default {
             if (this.model) wsUrl += `&model=${encodeURIComponent(this.model)}`;
 
             // ASR parameters are enforced server-side; do not send them from client
-            console.log('[LiveTranscriptionRecorder] connecting websocket ->', wsUrl);
+            console.debug('[LiveTranscriptionRecorder] connecting websocket ->', wsUrl);
             this.ws = new WebSocket(wsUrl);
             // prefer arraybuffer for binary handling
             try { this.ws.binaryType = 'arraybuffer'; } catch (e) { /* not critical */ }
@@ -90,10 +104,13 @@ export default {
             };
 
             this.ws.onmessage = async (event) => {
+                console.debug('[LiveTranscriptionRecorder] ws.onmessage raw', event && event.data);
                 let msg;
                 try {
                     msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-                } catch {
+                    console.debug('[LiveTranscriptionRecorder] ws.onmessage parsed', msg);
+                } catch (e) {
+                    console.warn('[LiveTranscriptionRecorder] failed to parse websocket message', e, event && event.data);
                     return;
                 }
 
@@ -162,6 +179,9 @@ export default {
                 }
 
                 this.audioQueue.push(pcm16);
+                if (this.debug && this.audioQueue.length % 50 === 0) {
+                    console.debug('[LiveTranscriptionRecorder] audioQueue.length=', this.audioQueue.length);
+                }
             };
         },
 
@@ -185,6 +205,7 @@ export default {
                 }
 
                 try {
+                    console.debug('[LiveTranscriptionRecorder] sendAudioLoop: sending chunk samples=', chunk.length, 'ws.readyState=', this.ws && this.ws.readyState);
                     const ab = chunk.buffer;
                     this.ws.send(ab);
                 } catch (e) {
@@ -234,6 +255,7 @@ export default {
 
         // Accumulate transcripts: finalized segments + current partial
         handleTranscription(data) {
+            console.debug('[LiveTranscriptionRecorder] handleTranscription incoming=', data);
             if (!data) return;
 
             // Normalize incoming payload
