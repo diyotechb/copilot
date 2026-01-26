@@ -35,15 +35,15 @@
                    </div>
                 </div>
                 <div class="card-body">
-                   <p v-if="getPreviewText(item)">{{ getPreviewText(item) }}</p>
-                   <p v-else class="empty-preview">Empty transcript</p>
+                  <p :class="{ 'empty-preview': !getPreviewText(item) }">
+                    {{ getPreviewText(item) || 'Empty transcript' }}
+                  </p>
                 </div>
              </div>
           </div>
        </div>
     </div>
 
-    <!-- DETAIL VIEW (New Layout) -->
     <div v-else class="detail-view">
       
       <div class="main_content">
@@ -139,27 +139,21 @@ export default {
   name: "OtterView",
   data() {
     return {
-      // View State
-      viewMode: 'dashboard', // 'dashboard' or 'detail'
-      
+      viewMode: 'dashboard',
       isListening: false,
       transcriptLines: [],
       currentInterim: "",
       recognition: null,
       lastFinalTime: null, 
       history: [], 
-      
       sessionId: null,      
       sessionTitle: "Note",
       sessionDate: null,
-      
-      isReadOnly: false,    
-      isSidebarVisible: true, 
+      isReadOnly: false
     };
   },
   mounted() {
     this.loadHistory();
-    // Do NOT auto-init session or speech on mount anymore. Wait for user action.
   },
   beforeDestroy() {
     this.stopRecognition();
@@ -174,7 +168,7 @@ export default {
     getPreviewText(item) {
       if (!item.lines || item.lines.length === 0) return '';
       const allText = item.lines.map(line => line.text).join(' ');
-      const words = allText.split(/\s+/);
+      const words = allText.split(/\s+/).filter(w => w);
       if (words.length > 75) {
         return words.slice(0, 75).join(' ') + '...';
       }
@@ -192,8 +186,6 @@ export default {
         
         this.saveCurrentTranscript(); 
         this.viewMode = 'dashboard';
-        
-        // Clear state
         this.transcriptLines = []; 
         this.currentInterim = "";
         this.sessionId = null;
@@ -211,26 +203,21 @@ export default {
     startNewSession() {
         this.viewMode = 'detail';
         this.stopRecognition(); 
-        
-        // Reset
         this.transcriptLines = [];
         this.currentInterim = "";
         this.lastFinalTime = null;
-        
-        // Init New Session
         this.sessionId = 'SID-' + Math.random().toString(36).substr(2, 9).toUpperCase();
         this.sessionDate = moment().format('MMM D, h:mm A');
         this.sessionTitle = `Note ${moment().format('MMM D')}`;
         this.isReadOnly = false;
         
-        // Auto-start recording
         this.$nextTick(() => {
             this.initSpeechRecognition();
             try {
                this.recognition.start();
                this.isListening = true;
             } catch (e) {
-               console.error("Auto-start failed", e);
+               this.isListening = false;
             }
         });
     },
@@ -241,29 +228,24 @@ export default {
        this.openDashboard();
     },
 
-    // --- Title Editing ---
     updateTitle(e) {
        const newTitle = e.target.innerText.trim();
        if (newTitle) {
           this.sessionTitle = newTitle;
           this.saveCurrentTranscript(); 
        } else {
-          e.target.innerText = this.sessionTitle; 
+          e.target.innerText = this.sessionTitle;
        }
     },
     
-    // --- History Logic ---
     loadHistory() {
       const saved = localStorage.getItem('otter_history');
       if (saved) {
         try {
           let parsed = JSON.parse(saved);
-          // Fixed: Show ALL recordings. No filtering by date or limit.
-          
           parsed.sort((a, b) => b.timestamp - a.timestamp);
           this.history = parsed;
         } catch (e) {
-          console.error("Failed to load history", e);
           this.history = [];
         }
       }
@@ -320,9 +302,8 @@ export default {
        }
     },
     
-    // --- Speech Logic ---
     initSpeechRecognition() {
-      if (this.recognition) return; // Already init
+      if (this.recognition) return;
 
       if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
         alert("Web Speech API is not supported in this browser. Please use Chrome.");
@@ -360,12 +341,10 @@ export default {
             const isNewParagraph = !this.lastFinalTime || (now - this.lastFinalTime > 3000);
             
             if (isNewParagraph || this.transcriptLines.length === 0) {
-              // Add new paragraph at the END (chronological order)
               this.transcriptLines.push({
                 time: this.getCurrentTime(),
                 text: transcript
               });
-              // Scroll to show the latest paragraph
               this.$nextTick(() => {
                 const lines = this.$refs.transcriptArea?.querySelectorAll('.transcript-line');
                 if (lines && lines.length > 0) {
@@ -373,7 +352,6 @@ export default {
                 }
               });
             } else {
-              // Append to the LAST item (most recent)
               const lastIdx = this.transcriptLines.length - 1;
               this.transcriptLines[lastIdx].text += ' ' + transcript;
             }
@@ -388,11 +366,10 @@ export default {
       };
       
       this.recognition.onerror = (event) => {
-          console.error("Speech recognition error", event.error);
-          if(event.error === 'not-allowed') {
-              this.isListening = false;
-              alert("Microphone access denied.");
-          }
+        if(event.error === 'not-allowed') {
+          this.isListening = false;
+          alert("Microphone access denied.");
+        }
       }
     },
     stopRecognition() {
@@ -416,9 +393,6 @@ export default {
           console.error("Error starting recognition:", e);
         }
       }
-    },
-    toggleSidebar() {
-      this.isSidebarVisible = !this.isSidebarVisible;
     },
 
   }
