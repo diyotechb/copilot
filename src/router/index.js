@@ -18,11 +18,15 @@ const routes = [
         path: '/new',
         component: () => import(/* webpackChunkName: "about" */ '../views/Homeview2.vue')
     },
-     {
+    {
         path: '/view3',
         component: () => import(/* webpackChunkName: "about" */ '../views/HomeView3.vue')
     },
-
+    {
+        path: '/otter',
+        name: 'otter',
+        component: () => import('../views/OtterView.vue')
+    },
 ]
 
 const router = new VueRouter({
