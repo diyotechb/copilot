@@ -1,21 +1,26 @@
 <template>
   <nav class="app-nav">
     <div class="nav-left">
-    
+
       <ul class="nav-items" role="menubar">
-      <li class="nav-item" :class="{ active: isActive('/setup') }" role="none">
-        <router-link to="/setup" role="menuitem" class="nav-link">
-          <svg class="icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-          <span>Home</span>
-        </router-link>
-      </li>
-      <li class="nav-item" :class="{ active: isActive('/liveTranscription') }" role="none">
-        <router-link to="/liveTranscription" role="menuitem" class="nav-link">
-          <svg class="icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3C8.13 3 5 6.13 5 10c0 2.71 1.67 5.01 4 5.8V20l3-2 3 2v-4.2c2.33-.79 4-3.09 4-5.8 0-3.87-3.13-7-7-7z"/></svg>
-          <span>Live Transcription</span>
-        </router-link>
-      </li>
-    </ul>
+        <li class="nav-item" :class="{ active: isActive('/setup') }" role="none">
+          <router-link to="/setup" role="menuitem" class="nav-link">
+            <svg class="icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            <span>Home</span>
+          </router-link>
+        </li>
+        <li class="nav-item" :class="{ active: isActive('/liveTranscription') }" role="none">
+          <router-link to="/liveTranscription" role="menuitem" class="nav-link">
+            <svg class="icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3C8.13 3 5 6.13 5 10c0 2.71 1.67 5.01 4 5.8V20l3-2 3 2v-4.2c2.33-.79 4-3.09 4-5.8 0-3.87-3.13-7-7-7z"/></svg>
+            <span>Live Transcription</span>
+          </router-link>
+        </li>
+        <li class="nav-item" :class="{ active: isActive('/otter') }" role="none">
+          <router-link to="/otter" role="menuitem" class="nav-link">
+            <span>Otter (Test)</span>
+          </router-link>
+        </li>
+      </ul>
     </div>
 
     <div class="nav-right">
