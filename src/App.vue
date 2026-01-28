@@ -45,8 +45,7 @@ export default {
   props: {},
   computed: {
     showNav() {
-      // Hide the navbar on Login and InterviewView routes
-      const hide = ['Login', 'InterviewView'];
+      const hide = ['Login', 'Signup', 'ResetPassword', 'InterviewView'];
       return !hide.includes(this.$route.name);
     }
   },
@@ -73,7 +72,7 @@ export default {
 }
 @media (max-width: 600px) {
   .router_view {
-      margin-top: 0; /* Less margin on mobile */
+      margin-top: 0;
   }
 }
 </style>
