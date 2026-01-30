@@ -33,6 +33,7 @@
                 <input
                     id="confirmationCode"
                     v-model="confirmationCode"
+                    @input="errorMessage = ''"
                     type="text"
                     placeholder="Enter the code"
                     required
@@ -58,6 +59,7 @@
                 <input
                     id="newPassword"
                     v-model="newPassword"
+                    @input="errorMessage = ''"
                     type="password"
                     placeholder="Min 8 characters"
                     required
@@ -68,6 +70,7 @@
                 <input
                     id="confirmNewPassword"
                     v-model="confirmNewPassword"
+                    @input="errorMessage = ''"
                     type="password"
                     placeholder="Confirm new password"
                     required
@@ -121,36 +124,42 @@ export default {
             document.removeEventListener('click', this.closePolicy);
         },
         async handleRequestReset() {
-            this.errorMessage = '';
-
+            if (!this.email) {
+                this.errorMessage = 'Please enter your email address.';
+                return;
+            }
             if (!validateEmail(this.email)) {
                 this.errorMessage = 'Please enter a valid email address.';
                 return;
             }
 
             this.isLoading = true;
+            this.errorMessage = '';
+            this.successMessage = '';
 
             try {
+                // Ensure email is sent as an object to match Backend DTO
                 await authService.resetPassword(this.email);
-                Message.success('Reset code sent to your email.');
                 this.step = 2;
+                this.successMessage = 'Reset code sent to your email.';
+                Message.success('Reset code sent successfully.');
             } catch (error) {
                 console.error('Reset request error:', error);
-                const errorMsg = error.response?.data || error.message || 'Failed to send reset code.';
+                const errorMsg = error.response?.data?.message || error.message || 'Failed to send reset code.';
                 this.errorMessage = errorMsg;
-                Message.error(errorMsg);
             } finally {
                 this.isLoading = false;
             }
         },
         async handleConfirmReset() {
-            this.errorMessage = '';
-
-            if (!validatePassword(this.newPassword)) {
-                this.errorMessage = 'Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.';
+            if (!this.confirmationCode || !this.newPassword || !this.confirmNewPassword) {
+                this.errorMessage = 'Please fill in all fields.';
                 return;
             }
-
+            if (!validatePassword(this.newPassword)) {
+                 this.errorMessage = 'Password must be at least 8 characters long and include uppercase, lowercase, number, and special character.';
+                 return;
+            }
             if (this.newPassword !== this.confirmNewPassword) {
                 this.errorMessage = 'Passwords do not match.';
                 return;
@@ -169,9 +178,8 @@ export default {
                 this.$router.push({ name: 'Login' });
             } catch (error) {
                 console.error('Password confirm error:', error);
-                const errorMsg = error.response?.data || error.message || 'Failed to update password.';
+                const errorMsg = error.response?.data?.message || error.message || 'Failed to update password.';
                 this.errorMessage = errorMsg;
-                Message.error(errorMsg);
             } finally {
                 this.isLoading = false;
             }

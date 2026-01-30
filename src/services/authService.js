@@ -27,13 +27,11 @@ class AuthService {
     }
 
     signup(user) {
-        return axios.post(`${API_URL}/register`, user, {
-            responseType: 'text'
-        });
+        return axios.post(`${API_URL}/register`, user);
     }
 
     resetPassword(email) {
-        return axios.post(`${API_URL}/resetPassword`, email);
+        return axios.post(`${API_URL}/resetPassword`, { email });
     }
 
     confirmReset(data) {
