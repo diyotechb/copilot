@@ -59,19 +59,17 @@ export default {
     },
     methods: {
         async handleLogin() {
-            this.errorMessage = '';
-
+            if (!this.email || !this.password) {
+                this.errorMessage = 'Please enter both email and password.';
+                return;
+            }
             if (!validateEmail(this.email)) {
                 this.errorMessage = 'Please enter a valid email address.';
                 return;
             }
 
-            if (!validateMinLength(this.password, 8)) {
-                this.errorMessage = 'Password must be at least 8 characters.';
-                return;
-            }
-
             this.isLoading = true;
+            this.errorMessage = '';
 
             try {
                 await authService.login(this.email, this.password);
@@ -79,9 +77,8 @@ export default {
                 this.$router.push({ name: 'ResumeSetup' });
             } catch (error) {
                 console.error('Login error:', error);
-                const errorMsg = error.response?.data || error.message || 'Login failed. Please check your credentials.';
+                const errorMsg = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';
                 this.errorMessage = errorMsg;
-                Message.error(errorMsg);
             } finally {
                 this.isLoading = false;
             }

@@ -6,17 +6,17 @@
       <div class="form-row">
         <div class="form-group">
           <label for="firstName">First name</label>
-          <input id="firstName" v-model="form.firstName" type="text" placeholder="First name" required />
+          <input id="firstName" v-model="form.firstName" @input="errorMessage = ''" type="text" placeholder="First name" required />
         </div>
         <div class="form-group">
           <label for="lastName">Last name</label>
-          <input id="lastName" v-model="form.lastName" type="text" placeholder="Last name" required />
+          <input id="lastName" v-model="form.lastName" @input="errorMessage = ''" type="text" placeholder="Last name" required />
         </div>
       </div>
 
       <div class="form-group">
         <label for="email">Email</label>
-        <input id="email" v-model="form.email" type="email" placeholder="Enter your email" required />
+        <input id="email" v-model="form.email" @input="errorMessage = ''" type="email" placeholder="Enter your email" required />
       </div>
 
       <div class="form-group">
@@ -36,12 +36,12 @@
             </div>
           </div>
         </div>
-        <input id="password" v-model="form.password" type="password" placeholder="Min 8 characters" required />
+        <input id="password" v-model="form.password" @input="errorMessage = ''" type="password" placeholder="Min 8 characters" required />
       </div>
 
       <div class="form-group">
         <label for="confirmPassword">Confirm Password</label>
-        <input id="confirmPassword" v-model="form.confirmPassword" type="password" placeholder="Confirm your password" required />
+        <input id="confirmPassword" v-model="form.confirmPassword" @input="errorMessage = ''" type="password" placeholder="Confirm your password" required />
       </div>
 
       <p class="error-message" v-if="errorMessage" role="alert">{{ errorMessage }}</p>
@@ -51,7 +51,7 @@
         {{ isLoading ? 'Creating account...' : 'Sign Up' }}
       </button>
 
-      <div class="form-footer">
+      <div class="form-footer centered">
         <span>Already have an account? <router-link to="/">Login</router-link></span>
       </div>
     </form>
@@ -96,37 +96,34 @@ export default {
       document.removeEventListener('click', this.closePolicy);
     },
     async handleSignup() {
-      this.errorMessage = '';
-      const { firstName, lastName, email, password, confirmPassword } = this.form;
-
-      if (!firstName || !lastName) {
-        this.errorMessage = 'Please provide both first and last names.';
-        return;
+      // Basic empty check
+      if (!this.form.firstName || !this.form.lastName || !this.form.email || !this.form.password || !this.form.confirmPassword) {
+          this.errorMessage = 'Please fill in all required fields.';
+          return;
       }
 
-      if (!validateEmail(email)) {
-        this.errorMessage = 'Please enter a valid email address.';
+      // Existing Validations
+      if (!validateEmail(this.form.email)) {
+        this.errorMessage = 'Invalid email format';
         return;
       }
-
-      if (!validatePassword(password)) {
-        this.errorMessage = 'Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.';
+      if (!validatePassword(this.form.password)) {
+        this.errorMessage = 'Password must be at least 8 characters long and contain uppercase, lowercase, number and special character';
         return;
       }
-
-      if (password !== confirmPassword) {
-        this.errorMessage = 'Passwords do not match.';
+      if (this.form.password !== this.form.confirmPassword) {
+        this.errorMessage = 'Passwords do not match';
         return;
       }
 
       this.isLoading = true;
       try {
         const signupData = {
-          userName: email,
-          email: email,
-          password: password,
-          firstName: firstName,
-          lastName: lastName,
+          userName: this.form.email,
+          email: this.form.email,
+          password: this.form.password,
+          firstName: this.form.firstName,
+          lastName: this.form.lastName,
           middleName: '',
           dateOfBirth: ''
         };
@@ -138,8 +135,7 @@ export default {
         }
       } catch (error) {
         console.error('Signup error:', error);
-        this.errorMessage = error.response?.data || error.message || 'Registration failed.';
-        Message.error(this.errorMessage);
+        this.errorMessage = error.response?.data?.message || error.message || 'Registration failed.';
       } finally {
         this.isLoading = false;
       }
