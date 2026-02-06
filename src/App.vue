@@ -6,27 +6,24 @@
 </template>
 
 <style>
+* {
+  box-sizing: border-box;
+}
+
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #2c3e50;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 body {
-    margin: 0;
-    padding: 0;
-}
-
-.nav-container {
-    overflow-x: auto; /* Scrollable menu on mobile */
-    -webkit-overflow-scrolling: touch;
-}
-
-.responsive-menu {
-    border-bottom: solid 1px #e6e6e6;
-    display: flex; /* Ensure items stay in row for scroll */
-    min-width: max-content; /* Force width to fit content */
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 /* Adjust element ui menu item padding for mobile */

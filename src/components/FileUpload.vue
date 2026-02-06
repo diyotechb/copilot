@@ -102,25 +102,92 @@ export default {
 
 <style scoped>
 .uploader {
+  border: 2px dashed #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  background: #fff;
+  transition: all 0.2s;
+  cursor: pointer;
   margin-bottom: 1rem;
 }
+
+.uploader.dragging {
+  background: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.uploader p {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
 .textarea {
   width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  font-size: 0.95rem;
   min-height: 120px;
-  margin-bottom: 0.5rem;
+  background: #fff;
+  transition: all 0.2s;
+  box-sizing: border-box;
 }
+
+.textarea:focus {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 .resume-info {
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  border-radius: 0.5rem;
+  color: #1e40af;
+  font-size: 0.875rem;
+  flex-wrap: wrap; /* Allow wrapping on small screens */
 }
+
+.resume-info span {
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
 .clear-btn {
-  background: #eee;
+  background: #fee2e2;
   border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.4rem;
+  color: #ef4444;
+  font-weight: 600;
   cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.clear-btn:hover {
+  background: #fecaca;
+}
+
+.btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: #e5e7eb;
 }
 </style>

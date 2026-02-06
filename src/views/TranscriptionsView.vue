@@ -181,18 +181,13 @@ export default {
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             final = event.results[i][0].transcript;
-            
-            // Fix: If final is empty but we have an interim shown, likely server finalized
-            // without repeating text. Commit the interim to not lose it.
-            if (!final && this.currentInterim) {
-                final = this.currentInterim;
-            }
-            
+            if (!final && this.currentInterim) final = this.currentInterim;
             this.onFinalTranscript(final);
           } else {
             interim += event.results[i][0].transcript;
           }
         }
+
         if (interim) {
            this.onPartial(interim);
         } else {
@@ -214,60 +209,77 @@ export default {
 
     onFinalTranscript(text) {
         if (!text) return;
-        const ts = Date.now();
-        if (!this.sessionStart) this.sessionStart = ts;
+        const timestamp = Date.now();
+        if (!this.sessionStart) this.sessionStart = timestamp;
 
         const lastIndex = this.transcriptLines.length - 1;
-        const last = this.transcriptLines[lastIndex];
+        const lastLine = this.transcriptLines[lastIndex];
 
-        // Helper to safely append avoiding duplicates/overlap
-        const appendSmart = (base, addition) => {
-          const a = String(addition || '').trim();
-          if (!a) return base.trim();
-          // If the base already ends with the addition, keep base
-          if (base.trim().endsWith(a)) return base.trim();
-          return `${base} ${a}`.trim();
-        };
-
-        const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length;
-
-        if (last) {
-            // Need to retrieve the raw timestamp if possible, but existing data might not have it.
-            // We'll trust 'last.ts' if we added it, otherwise fallback.
-            const lastTs = last.ts || ts; 
-            const dt = ts - lastTs;
-
-            const normalize = (s) => String(s || '').replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
-            const baseNorm = normalize(last.text);
-            const newNorm = normalize(text);
-
-            // 1. Merge logic: If new final is a better version of last final (correction)
-            if (dt <= this.mergeThresholdMs && (newNorm.includes(baseNorm) || baseNorm.includes(newNorm) || /[.!?]$/.test(String(text || '')))) {
-                // Replace the text of the last bubble
-                last.text = text;
-                last.ts = ts; 
-                this.transcriptLines.splice(lastIndex, 1, last);
-                this.saveCurrentTranscript();
+        if (lastLine) {
+            if (this.shouldMerge(lastLine, text, timestamp)) {
+                this.mergeWithLast(lastIndex, lastLine, text, timestamp, true); // true = replace
                 return;
             }
 
-            // 2. Short append logic: If short time diff or short phrase, append to same bubble
-            if (dt <= this.mergeThresholdMs || wordCount <= 2) {
-                last.text = appendSmart(last.text, text);
-                last.ts = ts;
-                this.transcriptLines.splice(lastIndex, 1, last);
-                this.saveCurrentTranscript();
+            if (this.shouldAppend(lastLine, text, timestamp)) {
+                this.mergeWithLast(lastIndex, lastLine, text, timestamp, false); // false = append
                 return;
             }
         }
 
-        // 3. New Bubble
+        this.addNewLine(text, timestamp);
+    },
+
+    shouldMerge(lastLine, newText, currentTimestamp) {
+        const lastTs = lastLine.ts || currentTimestamp;
+        const timeDiff = currentTimestamp - lastTs;
+        
+        if (timeDiff > this.mergeThresholdMs) return false;
+
+        const normalize = (s) => String(s || '').replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const baseNorm = normalize(lastLine.text);
+        const newNorm = normalize(newText);
+        const isCorrection = newNorm.includes(baseNorm) || baseNorm.includes(newNorm);
+        const endsWithPunctuation = /[.!?]$/.test(String(newText || ''));
+
+        return isCorrection || endsWithPunctuation;
+    },
+
+    shouldAppend(lastLine, newText, currentTimestamp) {
+        const lastTs = lastLine.ts || currentTimestamp;
+        const timeDiff = currentTimestamp - lastTs;
+        const wordCount = String(newText || '').trim().split(/\s+/).filter(Boolean).length;
+        
+        return timeDiff <= this.mergeThresholdMs || wordCount <= 2;
+    },
+
+    mergeWithLast(index, lastLine, text, timestamp, replace) {
+        const updatedLine = { ...lastLine };
+        updatedLine.ts = timestamp;
+        
+        if (replace) {
+            updatedLine.text = text;
+        } else {
+             const appendSmart = (base, addition) => {
+                const a = String(addition || '').trim();
+                const b = base.trim();
+                if (!a) return b;
+                if (b.endsWith(a)) return b;
+                return `${b} ${a}`;
+            };
+            updatedLine.text = appendSmart(updatedLine.text, text);
+        }
+
+        this.transcriptLines.splice(index, 1, updatedLine);
+        this.saveCurrentTranscript();
+    },
+
+    addNewLine(text, timestamp) {
         this.transcriptLines.push({
             time: this.getCurrentTime(),
             text: text,
-            ts: ts
+            ts: timestamp
         });
-        
         this.saveCurrentTranscript();
     },
 

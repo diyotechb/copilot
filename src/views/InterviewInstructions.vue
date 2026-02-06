@@ -44,21 +44,42 @@ export default {
 <style scoped>
 .instructions-container {
   max-width: 520px;
+  width: 100%;
   background: #fff;
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 2rem;
+  margin: 0 auto;
 }
+
+@media (max-width: 600px) {
+  .instructions-container {
+    padding: 1.5rem 1rem;
+  }
+  
+  .attention-banner {
+    font-size: 1rem;
+    padding: 0.5rem;
+  }
+  
+  .instructions-box {
+    padding-left: 1rem;
+    font-size: 0.95rem;
+  }
+}
+
 .instructions-box {
   background: #f6f8fa;
   border-radius: 12px;
   color: #333;
   font-size: 1rem;
   margin-bottom: 1.5rem;
-  padding-left: 2rem;
+  padding: 1.5rem 1rem 1.5rem 2rem;
 }
+
 .instructions-box ul {
-  margin-left: 1.5rem;
+  margin-left: 0.5rem;
+  padding-left: 1rem;
 }
 .instructions-note {
   margin-top: 1rem;

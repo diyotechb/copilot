@@ -1,6 +1,5 @@
 <template>
     <div class="auth-container">
-        <!-- Step 1: Request Reset Code -->
         <form v-if="step === 1" class="auth-form" @submit.prevent="handleRequestReset">
             <h2>Reset Password</h2>
             <p class="description">Enter your account email to receive a password reset code.</p>
@@ -25,7 +24,6 @@
             </div>
         </form>
 
-        <!-- Step 2: Confirm Reset with Code and New Password -->
         <form v-else class="auth-form" @submit.prevent="handleConfirmReset">
             <h2>New Password</h2>
             <div class="form-group">
@@ -42,19 +40,7 @@
             <div class="form-group">
                 <div class="label-with-icon">
                     <label for="newPassword">New Password</label>
-                    <div class="info-button" @click.stop="togglePolicy" title="View password policy">
-                        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-                        <div class="policy-popup" v-if="showPolicy" @click.stop>
-                            <strong>Password Policy:</strong>
-                            <ul>
-                                <li>Minimum 8 characters</li>
-                                <li>At least 1 uppercase letter</li>
-                                <li>At least 1 lowercase letter</li>
-                                <li>At least 1 number</li>
-                                <li>At least 1 special character</li>
-                            </ul>
-                        </div>
-                    </div>
+                    <PasswordPolicy />
                 </div>
                 <input
                     id="newPassword"
@@ -91,38 +77,16 @@
 <script>
 import authService from '@/services/authService';
 import { validateEmail, validatePassword } from '@/utils/validation';
+import PasswordPolicy from './components/PasswordPolicy.vue';
 import { Message } from 'element-ui';
 
 export default {
-    name: "ResetPassword",
+    components: { PasswordPolicy },
     data() {
         return {
-            step: 1, // 1: Request code, 2: Reset password
-            email: "",
-            confirmationCode: "",
-            newPassword: "",
-            confirmNewPassword: "",
-            showPolicy: false,
-            isLoading: false,
-            errorMessage: '',
         };
     },
-    beforeDestroy() {
-        document.removeEventListener('click', this.closePolicy);
-    },
     methods: {
-        togglePolicy() {
-            this.showPolicy = !this.showPolicy;
-            if (this.showPolicy) {
-                document.addEventListener('click', this.closePolicy);
-            } else {
-                document.removeEventListener('click', this.closePolicy);
-            }
-        },
-        closePolicy() {
-            this.showPolicy = false;
-            document.removeEventListener('click', this.closePolicy);
-        },
         async handleRequestReset() {
             if (!this.email) {
                 this.errorMessage = 'Please enter your email address.';
@@ -135,13 +99,10 @@ export default {
 
             this.isLoading = true;
             this.errorMessage = '';
-            this.successMessage = '';
 
             try {
-                // Ensure email is sent as an object to match Backend DTO
                 await authService.resetPassword(this.email);
                 this.step = 2;
-                this.successMessage = 'Reset code sent to your email.';
                 Message.success('Reset code sent successfully.');
             } catch (error) {
                 console.error('Reset request error:', error);
@@ -157,7 +118,7 @@ export default {
                 return;
             }
             if (!validatePassword(this.newPassword)) {
-                 this.errorMessage = 'Password must be at least 8 characters long and include uppercase, lowercase, number, and special character.';
+                 this.errorMessage = 'Password does not meet requirements';
                  return;
             }
             if (this.newPassword !== this.confirmNewPassword) {

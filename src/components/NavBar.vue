@@ -12,7 +12,9 @@
             </svg>
           </button>
           
-          <span class="brand-text">Copilot</span>
+          <router-link to="/" class="brand-link">
+            <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="brand-logo" />
+          </router-link>
 
           <!-- Desktop Navigation -->
           <ul class="nav-items desktop-only" role="menubar">
@@ -31,13 +33,23 @@
         </div>
 
         <div class="nav-right">
-          <div v-if="userEmail" class="user-info desktop-only">
-            <span class="user-email">{{ userEmail }}</span>
+          <div v-if="userEmail" class="user-menu-container">
+            <div class="user-avatar" @click="toggleUserMenu" :title="userEmail">
+              {{ userInitials }}
+            </div>
+            
+            <transition name="fade">
+              <div v-if="isUserMenuOpen" class="user-dropdown">
+                <div class="dropdown-header">
+                  <span class="user-email-full">{{ userEmail }}</span>
+                </div>
+                <button class="dropdown-item logout" @click="handleLogout">
+                  <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
+                  <span>Logout</span>
+                </button>
+              </div>
+            </transition>
           </div>
-          <button class="logout-btn desktop-only" @click="handleLogout" aria-label="Logout">
-            <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
-            <span>Logout</span>
-          </button>
         </div>
       </div>
 
@@ -45,7 +57,10 @@
       <transition name="slide">
         <div v-if="isMenuOpen" class="mobile-sidebar">
           <div class="mobile-user-info" v-if="userEmail">
-            <span class="mobile-email">{{ userEmail }}</span>
+            <div class="user-avatar" title="userEmail">
+              {{ userInitials }}
+            </div>
+            <span class="mobile-email-hint">{{ userEmail }}</span>
           </div>
           
           <ul class="mobile-nav-items">
@@ -84,17 +99,23 @@ export default {
   data() {
     return {
       isMenuOpen: false,
-      navItems: NAVIGATION_ITEMS
+      isUserMenuOpen: false,
+      navItems: NAVIGATION_ITEMS.filter(item => item.routeName) 
     };
   },
   computed: {
     userEmail() {
       return authService.getUserEmail();
+    },
+    userInitials() {
+      if (!this.userEmail) return '?';
+      return this.userEmail.charAt(0).toUpperCase();
     }
   },
   methods: {
     handleLogout() {
       this.isMenuOpen = false;
+      this.isUserMenuOpen = false;
       authService.logout();
       this.$router.push({ name: 'Login' });
     },
@@ -103,7 +124,23 @@ export default {
     },
     toggleMenu() {
       this.isMenuOpen = !this.isMenuOpen;
+      if (this.isMenuOpen) this.isUserMenuOpen = false;
+    },
+    toggleUserMenu() {
+      this.isUserMenuOpen = !this.isUserMenuOpen;
+    },
+    closeMenus(e) {
+      if (!this.$el.contains(e.target)) {
+        this.isMenuOpen = false;
+        this.isUserMenuOpen = false;
+      }
     }
+  },
+  mounted() {
+    document.addEventListener('click', this.closeMenus);
+  },
+  beforeDestroy() {
+    document.removeEventListener('click', this.closeMenus);
   }
 };
 </script>
@@ -139,11 +176,21 @@ export default {
   gap: 2rem;
 }
 
-.brand-text {
-  font-size: 1.25rem;
-  font-weight: 800;
-  color: #111827;
-  letter-spacing: -0.025em;
+.brand-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.brand-logo {
+  height: 48px;
+  width: auto;
+  border-radius: 4px;
+  transition: transform 0.2s;
+}
+
+.brand-logo:hover {
+  transform: scale(1.05);
 }
 
 .nav-items {
@@ -182,32 +229,96 @@ export default {
   flex-shrink: 0;
 }
 
-.user-info {
-  margin-right: -1rem;
+.user-menu-container {
+  position: relative;
 }
 
-.user-email {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-.logout-btn {
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  background: none;
-  border: 1px solid #e5e7eb;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  color: #ef4444;
+  justify-content: center;
   font-weight: 600;
+  font-size: 0.9rem;
   cursor: pointer;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
   transition: all 0.2s;
+  user-select: none;
 }
 
-.logout-btn:hover {
+.user-avatar:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+}
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 200px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  z-index: 1001;
+}
+
+.dropdown-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  margin-bottom: 0.5rem;
+}
+
+.user-email-full {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #4b5563;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.dropdown-item.logout {
+  color: #ef4444;
+}
+
+.dropdown-item.logout:hover {
   background-color: #fef2f2;
-  border-color: #fecaca;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+.fade-enter, .fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 /* Mobile Specific */
@@ -242,13 +353,18 @@ export default {
   padding: 0.5rem 0.75rem 1.5rem;
   border-bottom: 1px solid #f3f4f6;
   margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.mobile-email {
+.mobile-email-hint {
   display: block;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: #6b7280;
   word-break: break-all;
+  text-align: center;
 }
 
 .mobile-nav-items {

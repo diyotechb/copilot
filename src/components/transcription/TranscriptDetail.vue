@@ -1,6 +1,5 @@
 <template>
   <div class="main_content">
-    <!-- Combined Scroll Container -->
     <div class="scroll-container" ref="scrollContainer">
       <div class="header">
         <div class="header-left">
@@ -45,10 +44,7 @@
       </div>
     </div>
 
-    <!-- Fixed Control Bar at Bottom -->
     <div class="control_bar" v-if="!isReadOnly">
-      <!-- Status & Visualizer Area -->
-      <!-- Status & Visualizer Area -->
       <div class="control-status">
          <div class="audio-wave" v-if="isListening">
             <div class="bar"></div>
@@ -108,7 +104,6 @@ export default {
     handleScroll() {
       const container = this.$refs.scrollContainer;
       if (container) {
-        // Scroll to the very bottom of the container
         container.scrollTo({
           top: container.scrollHeight,
           behavior: 'smooth'
@@ -160,8 +155,6 @@ export default {
   border-bottom: 1px solid #f0f2f5;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  /* Remove fixed height constraint or let it flow, effectively it will scroll */
   min-height: 60px;
   flex-shrink: 0;
 }

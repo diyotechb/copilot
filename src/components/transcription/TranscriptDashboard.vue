@@ -7,7 +7,6 @@
       </div>
     </div>
     
-    <div class="dashboard-content">
       <div v-if="history.length === 0" class="empty-dashboard">
         <i class="el-icon-microphone empty-icon"></i>
         <h3>No transcripts yet</h3>
@@ -21,7 +20,7 @@
         </div>
 
         <div class="storage-info">
-          <i class="el-icon-info"></i> Only the 10 most recent recordings are saved locally and will be replaced by new ones.
+          <i class="el-icon-info"></i> Only the 10 most recent recordings are saved locally.
         </div>
 
         <transcript-card 
@@ -31,7 +30,6 @@
           @click="$emit('open-detail', item)"
           @delete="$emit('delete-item', { item, index })"
         />
-      </div>
     </div>
   </div>
 </template>

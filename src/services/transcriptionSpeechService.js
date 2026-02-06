@@ -60,11 +60,10 @@ class TranscriptionSpeechService {
         if (this.isListening) return;
 
         try {
-            console.log('[TranscriptionSpeechService] Starting recording...');
+            console.log('Starting recording...');
             this.isListening = true;
             if (this.callbacks.onStart) this.callbacks.onStart();
 
-            // 1. Setup Audio
             const constraints = {
                 audio: {
                     noiseSuppression: true,
@@ -76,7 +75,7 @@ class TranscriptionSpeechService {
             try {
                 this.audioStream = await navigator.mediaDevices.getUserMedia(constraints);
             } catch (err) {
-                console.warn('[TranscriptionSpeechService] Fallback to default audio', err);
+                console.warn('Fallback to default audio', err);
                 this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
 
@@ -94,7 +93,6 @@ class TranscriptionSpeechService {
                 if (!this.isListening) return;
                 const input = event.inputBuffer.getChannelData(0);
 
-                // Float32 -> PCM16
                 const pcm16 = new Int16Array(input.length);
                 for (let i = 0; i < input.length; i++) {
                     pcm16[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
@@ -102,19 +100,18 @@ class TranscriptionSpeechService {
                 this.audioQueue.push(pcm16);
             };
 
-            // 2. Setup WebSocket
             let wsOrigin = this.baseUrl.replace(/\/+$/, '');
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
             const wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
-            console.log('[TranscriptionSpeechService] Connecting to', wsUrl);
+            console.log('Connecting to', wsUrl);
 
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';
 
             this.ws.onopen = () => {
-                console.log('[TranscriptionSpeechService] WebSocket open');
+                console.log('WebSocket open');
                 this.sendAudioLoop();
             };
 
@@ -124,26 +121,26 @@ class TranscriptionSpeechService {
                     if (msg.type === 'message') {
                         this.handleServerMessage(msg.data);
                     } else if (msg.type === 'proxy_error') {
-                        console.error('[TranscriptionSpeechService] Server Error:', msg.message);
+                        console.error('Server Error:', msg.message);
                         this.handleError(msg.message);
                     }
                 } catch (e) {
-                    console.warn('[TranscriptionSpeechService] Failed to parse message', e);
+                    console.warn('Failed to parse message', e);
                 }
             };
 
             this.ws.onerror = (err) => {
-                console.error('[TranscriptionSpeechService] WebSocket Error', err);
+                console.error('WebSocket Error', err);
                 this.handleError('WebSocket connection error');
             };
 
             this.ws.onclose = () => {
-                console.log('[TranscriptionSpeechService] WebSocket closed');
+                console.log('WebSocket closed');
                 this.stop();
             };
 
         } catch (e) {
-            console.error('[TranscriptionSpeechService] Start failed', e);
+            console.error('Start failed', e);
             this.handleError(e.message);
             this.stop();
         }
@@ -158,13 +155,12 @@ class TranscriptionSpeechService {
             }
 
             const chunk = this.audioQueue.shift();
-            // Minimum size check (approx 50ms)
             if (chunk.length < (this.sampleRate / 1000) * 50) continue;
 
             try {
                 this.ws.send(chunk.buffer);
             } catch (e) {
-                console.warn('[TranscriptionSpeechService] Send failed', e);
+                console.warn('Send failed', e);
             }
         }
         this.sending = false;
@@ -173,7 +169,6 @@ class TranscriptionSpeechService {
     handleServerMessage(data) {
         if (!data) return;
 
-        // Normalize
         let text = '';
         let isFinal = false;
 
@@ -212,7 +207,6 @@ class TranscriptionSpeechService {
     stop() {
         this.isListening = false;
 
-        // Cleanup Audio
         if (this.processor) {
             try { this.processor.disconnect(); } catch (e) { }
             this.processor = null;
@@ -230,7 +224,6 @@ class TranscriptionSpeechService {
             this.audioStream = null;
         }
 
-        // Cleanup WS
         if (this.ws) {
             try { this.ws.close(); } catch (e) { }
             this.ws = null;

@@ -22,19 +22,7 @@
       <div class="form-group">
         <div class="label-with-icon">
           <label for="password">Password</label>
-          <div class="info-button" @click.stop="togglePolicy" title="View password policy">
-            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-            <div class="policy-popup" v-if="showPolicy" @click.stop>
-              <strong>Password Policy:</strong>
-              <ul>
-                <li>Minimum 8 characters</li>
-                <li>At least 1 uppercase letter</li>
-                <li>At least 1 lowercase letter</li>
-                <li>At least 1 number</li>
-                <li>At least 1 special character</li>
-              </ul>
-            </div>
-          </div>
+          <PasswordPolicy />
         </div>
         <input id="password" v-model="form.password" @input="errorMessage = ''" type="password" placeholder="Min 8 characters" required />
       </div>
@@ -61,10 +49,11 @@
 <script>
 import authService from '@/services/authService';
 import { validateEmail, validatePassword } from '@/utils/validation';
+import PasswordPolicy from './components/PasswordPolicy.vue';
 import { Message } from 'element-ui';
 
 export default {
-  name: 'Signup',
+  components: { PasswordPolicy },
   data() {
     return {
       form: {
@@ -74,41 +63,23 @@ export default {
         password: '',
         confirmPassword: ''
       },
-      showPolicy: false,
       isLoading: false,
       errorMessage: ''
     }
   },
-  beforeDestroy() {
-    document.removeEventListener('click', this.closePolicy);
-  },
   methods: {
-    togglePolicy() {
-      this.showPolicy = !this.showPolicy;
-      if (this.showPolicy) {
-        document.addEventListener('click', this.closePolicy);
-      } else {
-        document.removeEventListener('click', this.closePolicy);
-      }
-    },
-    closePolicy() {
-      this.showPolicy = false;
-      document.removeEventListener('click', this.closePolicy);
-    },
     async handleSignup() {
-      // Basic empty check
       if (!this.form.firstName || !this.form.lastName || !this.form.email || !this.form.password || !this.form.confirmPassword) {
           this.errorMessage = 'Please fill in all required fields.';
           return;
       }
 
-      // Existing Validations
       if (!validateEmail(this.form.email)) {
         this.errorMessage = 'Invalid email format';
         return;
       }
       if (!validatePassword(this.form.password)) {
-        this.errorMessage = 'Password must be at least 8 characters long and contain uppercase, lowercase, number and special character';
+        this.errorMessage = 'Password does not meet requirements';
         return;
       }
       if (this.form.password !== this.form.confirmPassword) {
