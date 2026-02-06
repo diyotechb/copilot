@@ -217,7 +217,13 @@ export default {
   border: none;
   padding: 0.5rem;
   cursor: pointer;
-  color: #4b5563;
+  color: #000000; /* Force black for visibility */
+}
+
+.menu-toggle .icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
 }
 
 .mobile-sidebar {
@@ -299,6 +305,10 @@ export default {
   .desktop-only { display: none !important; }
   .menu-toggle { display: block; }
   .nav-header { padding: 0 1rem; }
+  /* Reduce gap on mobile for better proximity */
+  .nav-left { gap: 0.5rem; }
+  /* Ensure button padding doesn't offset it weirdly */
+  .menu-toggle { padding: 0.25rem; margin-left: -0.25rem; } 
 }
 
 .slide-enter-active, .slide-leave-active {

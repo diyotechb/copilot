@@ -6,12 +6,12 @@ const MAX_HISTORY = 10;
 
 class TranscriptService {
     loadHistory() {
-        const history = storageService.getItem(KEYS.OTTER_HISTORY, true) || [];
+        const history = storageService.getItem(KEYS.TRANSCRIPTIONS_HISTORY, true) || [];
         return history.sort((a, b) => b.timestamp - a.timestamp);
     }
 
     saveHistory(history) {
-        storageService.setItem(KEYS.OTTER_HISTORY, history);
+        storageService.setItem(KEYS.TRANSCRIPTIONS_HISTORY, history);
     }
 
     saveTranscript(session) {

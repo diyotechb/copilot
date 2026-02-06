@@ -2,7 +2,7 @@ const KEYS = {
     ACCESS_TOKEN: 'accessToken',
     USER_EMAIL: 'email',
     USER_ROLES: 'roles',
-    OTTER_HISTORY: 'otter_history'
+    TRANSCRIPTIONS_HISTORY: 'transcriptions_history'
 };
 
 class StorageService {

@@ -1,5 +1,5 @@
 <template>
-  <div class="otter_container">
+  <div class="transcriptions_container">
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
       :history="history"
@@ -30,12 +30,12 @@
 <script>
 import moment from 'moment';
 import transcriptService from '@/services/transcriptService';
-import speechRecognitionService from '@/services/speechRecognitionService';
-import TranscriptDashboard from '@/components/otter/TranscriptDashboard.vue';
-import TranscriptDetail from '@/components/otter/TranscriptDetail.vue';
+import speechRecognitionService from '@/services/transcriptionSpeechService';
+import TranscriptDashboard from '@/components/transcription/TranscriptDashboard.vue';
+import TranscriptDetail from '@/components/transcription/TranscriptDetail.vue';
 
 export default {
-  name: "OtterView",
+  name: "TranscriptionsView",
   components: { TranscriptDashboard, TranscriptDetail },
   data() {
     return {
@@ -48,7 +48,9 @@ export default {
       sessionId: null,      
       sessionTitle: "Note",
       sessionDate: null,
-      isReadOnly: false
+      isReadOnly: false,
+      mergeThresholdMs: 3500,
+      sessionStart: null
     };
   },
   mounted() {
@@ -82,6 +84,7 @@ export default {
       this.sessionTitle = "";
       this.isReadOnly = false;
       this.lastFinalTime = null;
+      this.sessionStart = null;
     },
     openDetail(item) {
       this.viewMode = 'detail';
@@ -162,6 +165,7 @@ export default {
 
       speechRecognitionService.setCallback('onStart', () => {
         this.isListening = true;
+        if (!this.sessionStart) this.sessionStart = Date.now();
       });
 
       speechRecognitionService.setCallback('onEnd', () => {
@@ -172,31 +176,28 @@ export default {
 
       speechRecognitionService.setCallback('onResult', (event) => {
         let interim = '';
+        let final = '';
+
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-            const transcript = event.results[i][0].transcript.trim();
-            if (!transcript) continue;
-
-            const now = new Date();
-            const isNewParagraph = !this.lastFinalTime || (now - this.lastFinalTime > 3000);
+            final = event.results[i][0].transcript;
             
-            if (isNewParagraph || this.transcriptLines.length === 0) {
-              this.transcriptLines.push({
-                time: this.getCurrentTime(),
-                text: transcript
-              });
-            } else {
-              const lastIdx = this.transcriptLines.length - 1;
-              this.transcriptLines[lastIdx].text += ' ' + transcript;
+            // Fix: If final is empty but we have an interim shown, likely server finalized
+            // without repeating text. Commit the interim to not lose it.
+            if (!final && this.currentInterim) {
+                final = this.currentInterim;
             }
             
-            this.lastFinalTime = now;
-            this.saveCurrentTranscript();
+            this.onFinalTranscript(final);
           } else {
             interim += event.results[i][0].transcript;
           }
         }
-        this.currentInterim = interim;
+        if (interim) {
+           this.onPartial(interim);
+        } else {
+           this.currentInterim = '';
+        }
       });
       
       speechRecognitionService.setCallback('onError', (event) => {
@@ -205,6 +206,69 @@ export default {
           alert("Microphone access denied.");
         }
       });
+    },
+
+    onPartial(text) {
+        this.currentInterim = text || '';
+    },
+
+    onFinalTranscript(text) {
+        if (!text) return;
+        const ts = Date.now();
+        if (!this.sessionStart) this.sessionStart = ts;
+
+        const lastIndex = this.transcriptLines.length - 1;
+        const last = this.transcriptLines[lastIndex];
+
+        // Helper to safely append avoiding duplicates/overlap
+        const appendSmart = (base, addition) => {
+          const a = String(addition || '').trim();
+          if (!a) return base.trim();
+          // If the base already ends with the addition, keep base
+          if (base.trim().endsWith(a)) return base.trim();
+          return `${base} ${a}`.trim();
+        };
+
+        const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+
+        if (last) {
+            // Need to retrieve the raw timestamp if possible, but existing data might not have it.
+            // We'll trust 'last.ts' if we added it, otherwise fallback.
+            const lastTs = last.ts || ts; 
+            const dt = ts - lastTs;
+
+            const normalize = (s) => String(s || '').replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const baseNorm = normalize(last.text);
+            const newNorm = normalize(text);
+
+            // 1. Merge logic: If new final is a better version of last final (correction)
+            if (dt <= this.mergeThresholdMs && (newNorm.includes(baseNorm) || baseNorm.includes(newNorm) || /[.!?]$/.test(String(text || '')))) {
+                // Replace the text of the last bubble
+                last.text = text;
+                last.ts = ts; 
+                this.transcriptLines.splice(lastIndex, 1, last);
+                this.saveCurrentTranscript();
+                return;
+            }
+
+            // 2. Short append logic: If short time diff or short phrase, append to same bubble
+            if (dt <= this.mergeThresholdMs || wordCount <= 2) {
+                last.text = appendSmart(last.text, text);
+                last.ts = ts;
+                this.transcriptLines.splice(lastIndex, 1, last);
+                this.saveCurrentTranscript();
+                return;
+            }
+        }
+
+        // 3. New Bubble
+        this.transcriptLines.push({
+            time: this.getCurrentTime(),
+            text: text,
+            ts: ts
+        });
+        
+        this.saveCurrentTranscript();
     },
 
     togglePause() {
@@ -222,7 +286,7 @@ export default {
 </script>
 
 <style scoped>
-.otter_container {
+.transcriptions_container {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px); 

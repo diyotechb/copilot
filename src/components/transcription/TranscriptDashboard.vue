@@ -21,7 +21,7 @@
         </div>
 
         <div class="storage-info">
-          <i class="el-icon-info"></i> Only the 10 most recent recordings are saved and will be replaced by new ones.
+          <i class="el-icon-info"></i> Only the 10 most recent recordings are saved locally and will be replaced by new ones.
         </div>
 
         <transcript-card 
