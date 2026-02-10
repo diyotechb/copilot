@@ -18,6 +18,7 @@
       :is-read-only="isReadOnly"
       :lines="transcriptLines"
       :current-interim="currentInterim"
+      :is-interim-inline="isInterimInActiveParagraph"
       :current-time="getCurrentTime()"
       @back="openDashboard"
       @update-title="updateTitle"
@@ -50,6 +51,7 @@ export default {
       sessionDate: null,
       isReadOnly: false,
       mergeThresholdMs: 3500,
+      isInterimInActiveParagraph: false,
       sessionStart: null
     };
   },
@@ -95,20 +97,28 @@ export default {
       this.isReadOnly = true;
       this.lastFinalTime = null;
     },
-    startNewSession() {
-      this.viewMode = 'detail';
-      speechRecognitionService.stop(); 
-      this.resetActiveSession();
-      
-      this.sessionId = transcriptService.generateId();
-      this.sessionDate = moment().format('MMM D, h:mm A');
-      this.sessionTitle = `Note ${moment().format('MMM D')}`;
-      this.isReadOnly = false;
-      
-      this.$nextTick(() => {
-        speechRecognitionService.start();
-        this.isListening = true;
-      });
+    async startNewSession() {
+      try {
+        // Force permission check before changing view state
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        this.viewMode = 'detail';
+        speechRecognitionService.stop(); 
+        this.resetActiveSession();
+        
+        this.sessionId = transcriptService.generateId();
+        this.sessionDate = moment().format('MMM D, h:mm A');
+        this.sessionTitle = `Note ${moment().format('MMM D')}`;
+        this.isReadOnly = false;
+        
+        this.$nextTick(() => {
+          speechRecognitionService.start();
+          this.isListening = true;
+        });
+      } catch (err) {
+        console.warn("[TranscriptionsView] Microphone access denied or failed:", err);
+        alert("Microphone access is required to start a new recording. Please check your browser settings and try again.");
+      }
     },
     
     finishRecording() {
@@ -205,10 +215,36 @@ export default {
 
     onPartial(text) {
         this.currentInterim = text || '';
+        
+        const last = this.transcriptLines[this.transcriptLines.length - 1];
+        const now = Date.now();
+        if (last && this.currentInterim) {
+          const timeDiff = now - (last.ts || now);
+          this.isInterimInActiveParagraph = timeDiff <= this.mergeThresholdMs;
+          
+          // Keep paragraph alive while speaking
+          if (this.isInterimInActiveParagraph) {
+            last.ts = now;
+          }
+        } else {
+          this.isInterimInActiveParagraph = false;
+        }
+    },
+
+    cleanupText(text) {
+        if (!text) return "";
+        let t = text.trim();
+        const words = t.split(/\s+/).filter(Boolean);
+        // Only strip trailing period for absolute single words
+        if (words.length === 1) {
+            t = t.replace(/[.,!?]$/, "");
+        }
+        return t;
     },
 
     onFinalTranscript(text) {
         if (!text) return;
+        const cleaned = this.cleanupText(text);
         const timestamp = Date.now();
         if (!this.sessionStart) this.sessionStart = timestamp;
 
@@ -216,58 +252,47 @@ export default {
         const lastLine = this.transcriptLines[lastIndex];
 
         if (lastLine) {
-            if (this.shouldMerge(lastLine, text, timestamp)) {
-                this.mergeWithLast(lastIndex, lastLine, text, timestamp, true); // true = replace
-                return;
-            }
-
-            if (this.shouldAppend(lastLine, text, timestamp)) {
-                this.mergeWithLast(lastIndex, lastLine, text, timestamp, false); // false = append
+            const timeDiff = timestamp - (lastLine.ts || timestamp);
+            if (timeDiff <= this.mergeThresholdMs) {
+                this.mergeWithLast(lastIndex, lastLine, cleaned, timestamp);
+                this.isInterimInActiveParagraph = false;
                 return;
             }
         }
 
-        this.addNewLine(text, timestamp);
+        this.addNewLine(cleaned, timestamp);
+        this.isInterimInActiveParagraph = false;
     },
 
-    shouldMerge(lastLine, newText, currentTimestamp) {
-        const lastTs = lastLine.ts || currentTimestamp;
-        const timeDiff = currentTimestamp - lastTs;
-        
-        if (timeDiff > this.mergeThresholdMs) return false;
-
-        const normalize = (s) => String(s || '').replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
-        const baseNorm = normalize(lastLine.text);
-        const newNorm = normalize(newText);
-        const isCorrection = newNorm.includes(baseNorm) || baseNorm.includes(newNorm);
-        const endsWithPunctuation = /[.!?]$/.test(String(newText || ''));
-
-        return isCorrection || endsWithPunctuation;
-    },
-
-    shouldAppend(lastLine, newText, currentTimestamp) {
-        const lastTs = lastLine.ts || currentTimestamp;
-        const timeDiff = currentTimestamp - lastTs;
-        const wordCount = String(newText || '').trim().split(/\s+/).filter(Boolean).length;
-        
-        return timeDiff <= this.mergeThresholdMs || wordCount <= 2;
-    },
-
-    mergeWithLast(index, lastLine, text, timestamp, replace) {
+    mergeWithLast(index, lastLine, text, timestamp) {
         const updatedLine = { ...lastLine };
         updatedLine.ts = timestamp;
         
-        if (replace) {
-            updatedLine.text = text;
+        const numMap = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
+        const normalize = (s) => String(s || '')
+            .replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase()
+            .split(' ')
+            .map(w => numMap[w] || w)
+            .join(' ');
+
+        const baseNorm = normalize(lastLine.text);
+        const newNorm = normalize(text);
+
+        if (newNorm.includes(baseNorm) || baseNorm.includes(newNorm)) {
+            if (text.length >= lastLine.text.length) {
+                updatedLine.text = text;
+            }
         } else {
-             const appendSmart = (base, addition) => {
-                const a = String(addition || '').trim();
-                const b = base.trim();
-                if (!a) return b;
-                if (b.endsWith(a)) return b;
-                return `${b} ${a}`;
-            };
-            updatedLine.text = appendSmart(updatedLine.text, text);
+            const b = lastLine.text.trim();
+            const a = text.trim();
+            if (normalize(b).endsWith(normalize(a))) {
+                updatedLine.text = b;
+            } else {
+                updatedLine.text = `${b} ${a}`;
+            }
         }
 
         this.transcriptLines.splice(index, 1, updatedLine);

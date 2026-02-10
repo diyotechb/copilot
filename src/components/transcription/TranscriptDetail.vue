@@ -34,10 +34,15 @@
         
         <div v-for="(line, index) in lines" :key="index" class="transcript-line">
           <span class="time-stamp">{{ line.time }}</span>
-          <span class="text">{{ line.text }}</span>
+          <div class="text-container">
+            <span class="text">{{ line.text }}</span>
+            <span v-if="index === lines.length - 1 && currentInterim && isInterimInline" class="text interim-inline">
+              {{ currentInterim }}
+            </span>
+          </div>
         </div>
         
-        <div v-if="currentInterim" class="transcript-line interim">
+        <div v-if="currentInterim && !isInterimInline" class="transcript-line interim">
           <span class="time-stamp">{{ currentTime }}</span>
           <span class="text">{{ currentInterim }}</span>
         </div>
@@ -98,6 +103,7 @@ export default {
     isReadOnly: Boolean,
     lines: Array,
     currentInterim: String,
+    isInterimInline: Boolean,
     currentTime: String
   },
   methods: {
@@ -241,10 +247,23 @@ export default {
   font-variant-numeric: tabular-nums;
 }
 
-.text {
+.text-container {
   flex-grow: 1;
+}
+
+.text {
   font-size: 1.15em;
   color: #000;
+}
+
+.interim-inline {
+  color: #000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .control_bar {
