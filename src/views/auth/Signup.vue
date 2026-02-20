@@ -1,48 +1,106 @@
 <template>
   <div class="auth-container">
-    <form class="auth-form" @submit.prevent="handleSignup">
-      <h2>Create Account</h2>
+    <div class="auth-form">
+      <div class="auth-header">
+        <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+        <h2>Create Account</h2>
+        <p class="auth-subtitle">Join the AI Interview Simulator</p>
+      </div>
 
-      <div class="form-row">
+      <form @submit.prevent="handleSignup" style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <div class="input-with-icon">
+              <i class="el-icon-user input-icon"></i>
+              <input 
+                id="firstName" 
+                v-model="form.firstName" 
+                @input="errorMessage = ''" 
+                type="text" 
+                placeholder="First" 
+                required 
+              />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <div class="input-with-icon">
+              <i class="el-icon-user input-icon"></i>
+              <input 
+                id="lastName" 
+                v-model="form.lastName" 
+                @input="errorMessage = ''" 
+                type="text" 
+                placeholder="Last" 
+                required 
+              />
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
-          <label for="firstName">First name</label>
-          <input id="firstName" v-model="form.firstName" @input="errorMessage = ''" type="text" placeholder="First name" required />
+          <label for="email">Email Address</label>
+          <div class="input-with-icon">
+            <i class="el-icon-message input-icon"></i>
+            <input 
+              id="email" 
+              v-model="form.email" 
+              @input="errorMessage = ''" 
+              type="email" 
+              placeholder="Enter your email" 
+              required 
+            />
+          </div>
         </div>
+
         <div class="form-group">
-          <label for="lastName">Last name</label>
-          <input id="lastName" v-model="form.lastName" @input="errorMessage = ''" type="text" placeholder="Last name" required />
+          <div class="label-with-icon">
+            <label for="password">Password</label>
+            <PasswordPolicy />
+          </div>
+          <div class="input-with-icon">
+            <i class="el-icon-lock input-icon"></i>
+            <input 
+              id="password" 
+              v-model="form.password" 
+              @input="errorMessage = ''" 
+              type="password" 
+              placeholder="Enter your password" 
+              required 
+            />
+          </div>
         </div>
-      </div>
 
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input id="email" v-model="form.email" @input="errorMessage = ''" type="email" placeholder="Enter your email" required />
-      </div>
-
-      <div class="form-group">
-        <div class="label-with-icon">
-          <label for="password">Password</label>
-          <PasswordPolicy />
+        <div class="form-group">
+          <label for="confirmPassword">Confirm Password</label>
+          <div class="input-with-icon">
+            <i class="el-icon-check input-icon"></i>
+            <input 
+              id="confirmPassword" 
+              v-model="form.confirmPassword" 
+              @input="errorMessage = ''" 
+              type="password" 
+              placeholder="Confirm your password" 
+              required 
+            />
+          </div>
         </div>
-        <input id="password" v-model="form.password" @input="errorMessage = ''" type="password" placeholder="Min 8 characters" required />
-      </div>
 
-      <div class="form-group">
-        <label for="confirmPassword">Confirm Password</label>
-        <input id="confirmPassword" v-model="form.confirmPassword" @input="errorMessage = ''" type="password" placeholder="Confirm your password" required />
-      </div>
+        <div class="error-message" v-if="errorMessage" role="alert">
+          <i class="el-icon-warning"></i> {{ errorMessage }}
+        </div>
 
-      <p class="error-message" v-if="errorMessage" role="alert">{{ errorMessage }}</p>
+        <button type="submit" class="auth-button" :disabled="isLoading">
+          <div class="spinner" v-if="isLoading" aria-hidden="true"></div>
+          {{ isLoading ? 'Creating account...' : 'Create Account' }}
+        </button>
 
-      <button type="submit" class="auth-button" :disabled="isLoading">
-        <span class="spinner" v-if="isLoading" aria-hidden="true"></span>
-        {{ isLoading ? 'Creating account...' : 'Sign Up' }}
-      </button>
-
-      <div class="form-footer centered">
-        <span>Already have an account? <router-link to="/">Login</router-link></span>
-      </div>
-    </form>
+        <div class="form-footer centered">
+          <span class="footer-text">Already have an account? <router-link to="/login">Log in</router-link></span>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 

@@ -4,34 +4,34 @@
       <div class="header">
         <div class="header-left">
           <el-button icon="el-icon-back" circle size="small" @click="$emit('back')" title="Back to Dashboard"></el-button>
-          
+
           <div class="session-info">
             <div class="title-row">
-              <h2 
-                contenteditable="true" 
-                @blur="onTitleBlur" 
-                @keydown.enter.prevent="$event.target.blur()"
-                class="editable-title"
-                ref="titleHeading"
+              <h2
+                  contenteditable="true"
+                  @blur="onTitleBlur"
+                  @keydown.enter.prevent="$event.target.blur()"
+                  class="editable-title"
+                  ref="titleHeading"
               >{{ title }}</h2>
               <i class="el-icon-edit edit-icon" title="Edit Title"></i>
             </div>
-            
+
             <div class="meta-row">
               <span class="meta-item"><i class="el-icon-date"></i> {{ dateStr || 'Just now' }}</span>
               <span class="meta-item ml-2" v-if="sessionId">ID: {{ sessionId }}</span>
             </div>
           </div>
-          
+
         </div>
       </div>
-      
+
       <div class="transcript_area">
         <div v-if="lines.length === 0 && !currentInterim" class="empty-state">
           <div v-if="!isReadOnly">Your transcription will appear here...</div>
           <div v-else>No text recorded.</div>
         </div>
-        
+
         <div v-for="(line, index) in lines" :key="index" class="transcript-line">
           <span class="time-stamp">{{ line.time }}</span>
           <div class="text-container">
@@ -41,7 +41,7 @@
             </span>
           </div>
         </div>
-        
+
         <div v-if="currentInterim && !isInterimInline" class="transcript-line interim">
           <span class="time-stamp">{{ currentTime }}</span>
           <span class="text">{{ currentInterim }}</span>
@@ -51,41 +51,41 @@
 
     <div class="control_bar" v-if="!isReadOnly">
       <div class="control-status">
-         <div class="audio-wave" v-if="isListening">
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
-         </div>
-         <span class="recording-text" :class="{ 'paused-text': !isListening }">
+        <div class="audio-wave" v-if="isListening">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+        <span class="recording-text" :class="{ 'paused-text': !isListening }">
             {{ isListening ? 'Recording...' : 'Recording Paused' }}
          </span>
       </div>
-      
+
       <div class="controls-group">
         <div class="controls">
-            <el-button 
-            type="primary" 
-            circle 
-            class="record-btn" 
-            :class="{ 'is-recording': isListening, 'is-paused': !isListening }"
-            @click="$emit('toggle-pause')"
-            >
+          <el-button
+              type="primary"
+              circle
+              class="record-btn"
+              :class="{ 'is-recording': isListening, 'is-paused': !isListening }"
+              @click="$emit('toggle-pause')"
+          >
             <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-microphone'"></i>
-            </el-button>
-            <div class="control-text">{{ isListening ? 'Pause' : 'Resume' }}</div>
+          </el-button>
+          <div class="control-text">{{ isListening ? 'Pause' : 'Resume' }}</div>
         </div>
-        
+
         <div class="controls">
-            <el-button type="success" circle class="record-btn done-btn" @click="$emit('finish')">
+          <el-button type="success" circle class="record-btn done-btn" @click="$emit('finish')">
             <i class="el-icon-check"></i>
-            </el-button>
-            <div class="control-text">Done</div>
+          </el-button>
+          <div class="control-text">Done</div>
         </div>
       </div>
     </div>
-    
+
     <div class="control_bar read-only-bar" v-else>
       <span>Viewing History. <a @click="$emit('back')" style="cursor:pointer; color:#409EFF;">Back to Dashboard</a></span>
     </div>
@@ -218,7 +218,7 @@ export default {
   padding: 30px 60px;
   background: white;
   margin: 0; /* Align left instead of center */
-  padding-bottom: 65vh; 
+  padding-bottom: 55vh;
 }
 
 .empty-state {
@@ -285,40 +285,40 @@ export default {
 }
 
 .control-status {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .recording-text {
-    color: #f56c6c;
-    font-weight: 600;
-    font-size: 0.95em;
-    animation: flash 2s infinite;
+  color: #f56c6c;
+  font-weight: 600;
+  font-size: 0.95em;
+  animation: flash 2s infinite;
 }
 
 @keyframes flash {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .paused-text {
-    color: #e6a23c;
-    animation: none;
+  color: #e6a23c;
+  animation: none;
 }
 
 .audio-wave {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
 }
 
 .bar {
-    width: 3px;
-    background-color: #f56c6c;
-    border-radius: 2px;
-    animation: wave 1s ease-in-out infinite;
+  width: 3px;
+  background-color: #f56c6c;
+  border-radius: 2px;
+  animation: wave 1s ease-in-out infinite;
 }
 
 .bar:nth-child(1) { height: 60%; animation-delay: 0.0s; }
@@ -328,13 +328,13 @@ export default {
 .bar:nth-child(5) { height: 50%; animation-delay: 0.4s; }
 
 @keyframes wave {
-    0%, 100% { transform: scaleY(1); }
-    50% { transform: scaleY(0.4); }
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.4); }
 }
 
 .controls-group {
-    display: flex;
-    gap: 30px;
+  display: flex;
+  gap: 30px;
 }
 
 .controls {
@@ -376,5 +376,40 @@ export default {
 
 .control-text {
   font-size: 0.75em;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .transcript-line {
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 18px;
+  }
+  .time-stamp {
+    min-width: 0;
+    font-size: 0.7em;
+    color: #b0b7c3;
+    padding-top: 0;
+    display: block;
+  }
+  .text { font-size: 1.05em; line-height: 1.55; }
+  .transcript_area { padding: 14px 14px; padding-bottom: 55vh; }
+
+  .control_bar {
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .controls-group { gap: 16px; }
+  .record-btn, .done-btn { width: 44px; height: 44px; font-size: 20px; }
+}
+
+@media (max-width: 480px) {
+  .transcript_area { padding: 10px; padding-bottom: 55vh; }
+  .text { font-size: 1em; }
+  .control_bar { padding: 8px 10px; gap: 8px; }
+  .controls-group { gap: 10px; }
+  .record-btn, .done-btn { width: 40px; height: 40px; font-size: 18px; }
+  .control-text { font-size: 0.65em; }
 }
 </style>

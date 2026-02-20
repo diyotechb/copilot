@@ -1,77 +1,114 @@
 <template>
-    <div class="auth-container">
-        <form v-if="step === 1" class="auth-form" @submit.prevent="handleRequestReset">
-            <h2>Reset Password</h2>
-            <p class="description">Enter your account email to receive a password reset code.</p>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input
-                    id="email"
-                    v-model="email"
-                    @input="errorMessage = ''"
-                    type="email"
-                    placeholder="Enter your email"
-                    required
-                />
-            </div>
-            <p class="error-message" v-if="errorMessage" role="alert">{{ errorMessage }}</p>
-            <button type="submit" class="auth-button" :disabled="isLoading">
-                <span class="spinner" v-if="isLoading" aria-hidden="true"></span>
-                {{ isLoading ? 'Sending...' : 'Send Reset Code' }}
-            </button>
-            <div class="form-footer centered">
-                <router-link to="/">Back to Login</router-link>
-            </div>
-        </form>
+  <div class="auth-container">
+    <div class="auth-form">
+      <!-- Step 1: Request Reset -->
+      <form v-if="step === 1" @submit.prevent="handleRequestReset" style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="auth-header">
+          <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+          <h2>Reset Password</h2>
+          <p class="auth-subtitle">Enter your email to receive a reset code</p>
+        </div>
 
-        <form v-else class="auth-form" @submit.prevent="handleConfirmReset">
-            <h2>New Password</h2>
-            <div class="form-group">
-                <label for="confirmationCode">Reset Code</label>
-                <input
-                    id="confirmationCode"
-                    v-model="confirmationCode"
-                    @input="errorMessage = ''"
-                    type="text"
-                    placeholder="Enter the code"
-                    required
-                />
-            </div>
-            <div class="form-group">
-                <div class="label-with-icon">
-                    <label for="newPassword">New Password</label>
-                    <PasswordPolicy />
-                </div>
-                <input
-                    id="newPassword"
-                    v-model="newPassword"
-                    @input="errorMessage = ''"
-                    type="password"
-                    placeholder="Min 8 characters"
-                    required
-                />
-            </div>
-            <div class="form-group">
-                <label for="confirmNewPassword">Confirm New Password</label>
-                <input
-                    id="confirmNewPassword"
-                    v-model="confirmNewPassword"
-                    @input="errorMessage = ''"
-                    type="password"
-                    placeholder="Confirm new password"
-                    required
-                />
-            </div>
-            <p class="error-message" v-if="errorMessage" role="alert">{{ errorMessage }}</p>
-            <button type="submit" class="auth-button" :disabled="isLoading">
-                <span class="spinner" v-if="isLoading" aria-hidden="true"></span>
-                {{ isLoading ? 'Updating...' : 'Update Password' }}
-            </button>
-            <div class="form-footer centered">
-                 <router-link to="/">Back to Login</router-link>
-            </div>
-        </form>
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <div class="input-with-icon">
+            <i class="el-icon-message input-icon"></i>
+            <input
+              id="email"
+              v-model="email"
+              @input="errorMessage = ''"
+              type="email"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="error-message" v-if="errorMessage" role="alert">
+          <i class="el-icon-warning"></i> {{ errorMessage }}
+        </div>
+
+        <button type="submit" class="auth-button" :disabled="isLoading">
+          <div class="spinner" v-if="isLoading" aria-hidden="true"></div>
+          {{ isLoading ? 'Sending Code...' : 'Send Reset Code' }}
+        </button>
+
+        <div class="form-footer centered">
+          <router-link to="/login">Back to Login</router-link>
+        </div>
+      </form>
+
+      <!-- Step 2: Confirm Reset -->
+      <form v-else @submit.prevent="handleConfirmReset" style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="auth-header">
+          <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+          <h2>New Password</h2>
+          <p class="auth-subtitle">Set your new workspace credentials</p>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmationCode">Reset Code</label>
+          <div class="input-with-icon">
+            <i class="el-icon-key input-icon"></i>
+            <input
+              id="confirmationCode"
+              v-model="confirmationCode"
+              @input="errorMessage = ''"
+              type="text"
+              placeholder="Enter the 6-digit code"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-icon">
+            <label for="newPassword">New Password</label>
+            <PasswordPolicy />
+          </div>
+          <div class="input-with-icon">
+            <i class="el-icon-lock input-icon"></i>
+            <input
+              id="newPassword"
+              v-model="newPassword"
+              @input="errorMessage = ''"
+              type="password"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmNewPassword">Confirm New Password</label>
+          <div class="input-with-icon">
+            <i class="el-icon-check input-icon"></i>
+            <input
+              id="confirmNewPassword"
+              v-model="confirmNewPassword"
+              @input="errorMessage = ''"
+              type="password"
+              placeholder="Confirm your password"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="error-message" v-if="errorMessage" role="alert">
+          <i class="el-icon-warning"></i> {{ errorMessage }}
+        </div>
+
+        <button type="submit" class="auth-button" :disabled="isLoading">
+          <div class="spinner" v-if="isLoading" aria-hidden="true"></div>
+          {{ isLoading ? 'Updating Password...' : 'Update Password' }}
+        </button>
+
+        <div class="form-footer centered">
+          <router-link to="/login">Back to Login</router-link>
+        </div>
+      </form>
     </div>
+  </div>
 </template>
 
 <script>
@@ -84,6 +121,13 @@ export default {
     components: { PasswordPolicy },
     data() {
         return {
+            step: 1,
+            email: '',
+            confirmationCode: '',
+            newPassword: '',
+            confirmNewPassword: '',
+            errorMessage: '',
+            isLoading: false
         };
     },
     methods: {
@@ -151,13 +195,6 @@ export default {
 
 <style scoped>
 @import '@/assets/styles/auth.css';
-
-.description {
-    text-align: center;
-    color: #666;
-    font-size: 0.9rem;
-    margin-bottom: 0.5rem;
-}
 
 .centered {
     justify-content: center;

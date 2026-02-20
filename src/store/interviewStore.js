@@ -63,6 +63,15 @@ export async function saveTranscriptionStatus(value) {
   await saveItem(QA_STORE, 'transcriptionInProcess', value);
 }
 
+export async function saveQuestionTimestamps(value) {
+  await saveItem(QA_STORE, 'questionTimestamps', value);
+}
+
+export async function getQuestionTimestamps() {
+  const result = await getItem(QA_STORE, 'questionTimestamps');
+  return Array.isArray(result) ? result : [];
+}
+
 // Get transcriptionInProcess flag
 export async function getTranscriptionStatus() {
   const result = await getItem(QA_STORE, 'transcriptionInProcess');
@@ -73,5 +82,5 @@ export async function getTranscriptionStatus() {
     if (result === 'false') return false;
   }
   console.log("[DEBUG] Transcription status is undefined, defaulting to true");
-  return true; 
+  return true;
 }
