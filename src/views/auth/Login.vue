@@ -1,40 +1,59 @@
 <template>
-    <div class="auth-container">
-        <form class="auth-form" @submit.prevent="handleLogin">
-            <h2>Login</h2>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input
-                    id="email"
-                    v-model="email"
-                    @input="errorMessage = ''"
-                    type="email"
-                    placeholder="Enter your email"
-                    required
-                />
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input
-                    id="password"
-                    v-model="password"
-                    @input="errorMessage = ''"
-                    type="password"
-                    placeholder="Enter your password"
-                    required
-                />
-            </div>
-            <p class="error-message" v-if="errorMessage" role="alert">{{ errorMessage }}</p>
-            <button type="submit" class="auth-button" :disabled="isLoading">
-                <span class="spinner" v-if="isLoading" aria-hidden="true"></span>
-                {{ isLoading ? 'Logging in...' : 'Login' }}
-            </button>
-            <div class="form-footer">
-                <router-link to="/signup">Create an account</router-link>
-                <router-link to="/reset-password">Forgot password?</router-link>
-            </div>
-        </form>
+  <div class="auth-container">
+    <div class="auth-form">
+      <div class="auth-header">
+        <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+        <h2>Welcome Back</h2>
+        <p class="auth-subtitle">Log in to your AI Interview Simulator</p>
+      </div>
+
+      <form @submit.prevent="handleLogin" style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <div class="input-with-icon">
+            <i class="el-icon-message input-icon"></i>
+            <input
+              id="email"
+              v-model="email"
+              @input="errorMessage = ''"
+              type="email"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <div class="input-with-icon">
+            <i class="el-icon-lock input-icon"></i>
+            <input
+              id="password"
+              v-model="password"
+              @input="errorMessage = ''"
+              type="password"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="error-message" v-if="errorMessage" role="alert">
+          <i class="el-icon-warning"></i> {{ errorMessage }}
+        </div>
+
+        <button type="submit" class="auth-button" :disabled="isLoading">
+          <div class="spinner" v-if="isLoading" aria-hidden="true"></div>
+          {{ isLoading ? 'Entering Workspace...' : 'Login to Workspace' }}
+        </button>
+
+        <div class="form-footer">
+          <span class="footer-text">Don't have an account? <router-link to="/signup">Sign up</router-link></span>
+          <router-link to="/reset-password">Forgot password?</router-link>
+        </div>
+      </form>
     </div>
+  </div>
 </template>
 
 <script>

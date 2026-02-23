@@ -9,12 +9,14 @@ import InterviewView from '@/views/InterviewView.vue'
 import LiveTranscriptView from '@/views/LiveTranscription.vue'
 import { getInterviewQA } from '@/store/interviewStore'
 import TranscriptionsView from '@/views/TranscriptionsView.vue';
+import HomeView from '@/views/HomeView.vue';
 import authService from '@/services/authService';
 
 Vue.use(VueRouter)
 
 const routes = [
-  { path: '/', name: 'Login', component: Login },
+  { path: '/', name: 'Home', component: HomeView },
+  { path: '/login', name: 'Login', component: Login },
   { path: '/signup', name: 'Signup', component: Signup },
   { path: '/reset-password', name: 'ResetPassword', component: ResetPassword },
   { path: '/setup', name: 'ResumeSetup', component: ResumeSetup },
@@ -30,7 +32,7 @@ const router = new VueRouter({ routes })
 // Global navigation guard for authentication
 router.beforeEach(async (to, from, next) => {
   const isLoggedIn = authService.isLoggedIn();
-  const publicPages = ['Login', 'Signup', 'ResetPassword'];
+  const publicPages = ['Login', 'Signup', 'ResetPassword', 'Home'];
   const authRequired = !publicPages.includes(to.name);
 
   if (to.name === 'Login' && isLoggedIn) {
