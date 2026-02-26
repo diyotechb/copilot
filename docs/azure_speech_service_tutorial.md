@@ -40,6 +40,6 @@
 
 
 
-7. Copy the **KEY 1** and **Location/Region** to Interview Copilot :
+7. Copy the **KEY 1** and **Location/Region** to Interview Simulator :
 
 ![10_get_keys](./imgs/1_azure_speech/10_get_keys.png)

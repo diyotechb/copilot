@@ -24,49 +24,77 @@
               v-show="item.type === 'user' || showQuestionSection"
               :class="['transcript-line', item.type]"
           >
-            <span class="time-stamp">{{ item.time }}</span>
-            <div class="text-container">
-              <div class="speaker-label">{{ item.type === 'user' ? 'YOU' : 'INTERVIEWER' }}</div>
-              <span class="text">{{ item.text }}</span>
+            <!-- Avatar Column -->
+            <div class="avatar-column">
+              <div v-if="item.type === 'user'" class="user-avatar-small">Y</div>
+              <div v-else class="user-avatar-small interviewer-avatar">I</div>
+            </div>
+
+            <!-- Content Column -->
+            <div class="content-column">
+              <div class="meta-header">
+                <span class="speaker-label">{{ item.type === 'user' ? 'YOU' : 'INTERVIEWER' }}</span>
+                <span class="time-stamp">{{ item.time }}</span>
+              </div>
+              <div class="text-container">
+                <span class="text">{{ item.text }}</span>
+              </div>
             </div>
           </div>
 
-          <!-- Live status rows — only shown when questions are HIDDEN (no text in transcript) -->
-          <!-- When questions are visible, the transcript entry itself shows the text/dots inline -->
+          <!-- Live status rows -->
           <template v-if="!showQuestionSection">
-            <!-- INTERVIEWER Speaking + YOU Listening -->
             <template v-if="isReading">
               <div class="transcript-line interviewer thinking">
-                <span class="time-stamp">{{ nowTime }}</span>
-                <div class="text-container">
-                  <div class="speaker-label">INTERVIEWER</div>
-                  <div class="status-pill speaking-pill">
-                    <span class="pill-dot"></span> Speaking…
+                <div class="avatar-column">
+                  <div class="user-avatar-small interviewer-avatar">I</div>
+                </div>
+                <div class="content-column">
+                  <div class="meta-header">
+                    <span class="speaker-label">INTERVIEWER</span>
+                    <span class="time-stamp">{{ nowTime }}</span>
+                  </div>
+                  <div class="text-container">
+                    <div class="status-pill speaking-pill">
+                      <span class="pill-dot"></span> Speaking…
+                    </div>
                   </div>
                 </div>
               </div>
               <div class="transcript-line user thinking">
-                <span class="time-stamp">{{ nowTime }}</span>
-                <div class="text-container">
-                  <div class="speaker-label">YOU</div>
-                  <div class="status-pill listening-pill">
-                    <span class="pill-dot"></span> Listening…
+                <div class="avatar-column">
+                  <div class="user-avatar-small">Y</div>
+                </div>
+                <div class="content-column">
+                  <div class="meta-header">
+                    <span class="speaker-label">YOU</span>
+                    <span class="time-stamp">{{ nowTime }}</span>
+                  </div>
+                  <div class="text-container">
+                    <div class="status-pill listening-pill">
+                      <span class="pill-dot"></span> Listening…
+                    </div>
                   </div>
                 </div>
               </div>
             </template>
-
-            <!-- INTERVIEWER Listening removed — no status shown when user is answering -->
           </template>
 
-          <!-- When questions ARE visible: show typing dots on the last interviewer entry inline -->
+          <!-- When questions ARE visible -->
           <template v-if="showQuestionSection && isReading">
             <div class="transcript-line user thinking">
-              <span class="time-stamp">{{ nowTime }}</span>
-              <div class="text-container">
-                <div class="speaker-label">YOU</div>
-                <div class="status-pill listening-pill">
-                  <span class="pill-dot"></span> Listening…
+              <div class="avatar-column">
+                <div class="user-avatar-small">Y</div>
+              </div>
+              <div class="content-column">
+                <div class="meta-header">
+                  <span class="speaker-label">YOU</span>
+                  <span class="time-stamp">{{ nowTime }}</span>
+                </div>
+                <div class="text-container">
+                  <div class="status-pill listening-pill">
+                    <span class="pill-dot"></span> Listening…
+                  </div>
                 </div>
               </div>
             </div>
@@ -77,45 +105,77 @@
       <!-- Control Bar -->
       <div class="control_bar">
 
-        <!-- Status Left -->
+        <!-- 1. Left: Status & Timer -->
         <div class="control-status">
           <div class="status-indicator-wrap">
-            <!-- Silence countdown bar -->
-            <template v-if="silenceProgress > 0 && !isPaused">
-              <div class="silence-countdown">
-                <div class="cbar-track">
-                  <div class="cbar-fill" :style="{ width: silenceProgress * 100 + '%' }"></div>
-                </div>
-                <span class="cbar-secs">{{ countdownSecsLeft }}s</span>
-              </div>
-            </template>
-            <!-- Recording wave -->
-            <template v-else-if="interviewing && !isPaused">
-              <div class="audio-wave">
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div>
-              </div>
-            </template>
-            <!-- Paused: show same-size pause icon so layout doesn't jump -->
-            <template v-else-if="isPaused">
-              <div class="audio-wave paused-wave">
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div>
-              </div>
-            </template>
-            <span class="status-label" :class="isPaused ? 'paused-text' : 'recording-text'">
-              {{ isPaused ? 'Paused' : 'Recording...' }}
+            <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': !isPaused && interviewing && !isReading }"></i>
+            <span class="status-label" :class="{ 'recording-text': !isPaused && !isReading, 'paused-text': isPaused || isReading }">
+              {{ (isPaused || isReading) ? 'PAUSED' : 'RECORDING' }}
             </span>
           </div>
-          <span class="session-timer">{{ formatDuration(currentMediaTime) }}</span>
         </div>
 
-        <!-- Progress Centre -->
+        <!-- 2. Center: Action Buttons -->
+        <div class="controls-group">
+          <!-- Timers Section in Center -->
+          <div class="center-timers">
+            <div class="silence-indicator-wrap">
+              <!-- Silence Countdown replaces Clock Icon -->
+              <div v-if="silenceProgress > 0 && !isPaused" class="circular-timer-wrap mini-timer">
+                <svg class="circular-timer" viewBox="0 0 36 36">
+                  <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path class="circle-fill" :style="{ strokeDasharray: (silenceProgress * 100) + ', 100' }" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+                <span class="timer-countdown mini-count">{{ countdownSecsLeft }}</span>
+              </div>
+              <i v-else class="el-icon-time timer-icon"></i>
+            </div>
+            
+            <div class="recording-duration">
+              {{ formatDuration(currentMediaTime) }}
+            </div>
+          </div>
+
+          <div class="controls">
+            <el-button circle class="record-btn minimal-control-btn" title="Stop Session" @click="stopInterview">
+              <i class="el-icon-close"></i>
+            </el-button>
+          </div>
+
+          <div class="controls video-control-wrap" v-if="enableVideo">
+            <transition name="video-pop">
+              <div v-if="showVideoPreview" class="video-popup">
+                <div class="video-popup-header">
+                  <span>Camera Preview</span>
+                  <i class="el-icon-close" @click="showVideoPreview = false"></i>
+                </div>
+                <div class="video-popup-body">
+                  <video ref="localVideo" class="inline-preview-video" autoplay muted playsinline></video>
+                </div>
+              </div>
+            </transition>
+            <el-button circle class="record-btn minimal-control-btn" :class="{ 'active-video': showVideoPreview }" @click="toggleVideoPreview">
+              <i class="el-icon-video-camera"></i>
+            </el-button>
+          </div>
+
+          <div class="controls">
+            <el-button circle class="record-btn minimal-control-btn" :class="{ 'is-active': !isPaused }" @click="togglePause">
+              <i :class="isPaused ? 'el-icon-video-play' : 'el-icon-video-pause'"></i>
+            </el-button>
+          </div>
+
+          <div class="controls">
+            <el-button circle class="record-btn minimal-control-btn" title="Next Question" @click="nextQuestion">
+              <i class="el-icon-right"></i>
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 3. Right: Compact Progress -->
         <div class="bar-progress-group">
           <div class="progress-info-row">
-            <span class="progress-text">Question {{ turn }} of {{ interviewQA.length }}</span>
+            <span class="progress-text">{{ turn }} / {{ interviewQA.length }}</span>
             <span class="progress-percent">{{ Math.round((turn / interviewQA.length) * 100) }}%</span>
           </div>
           <div class="footer-progress-bar">
@@ -123,57 +183,6 @@
           </div>
         </div>
 
-        <!-- Controls Right -->
-        <div class="controls-group">
-          <div class="controls">
-            <el-button type="danger" circle class="record-btn" title="Stop Session" @click="stopInterview">
-              <i class="el-icon-close"></i>
-            </el-button>
-            <div class="control-text">Stop</div>
-          </div>
-
-          <div class="controls video-control-wrap" v-if="enableVideo">
-            <!-- Video popup anchored above the button -->
-            <transition name="video-pop">
-              <div v-if="showVideoPreview" class="video-popup">
-                <div class="video-popup-header">
-                  <span>Live Preview</span>
-                  <button class="video-popup-close" @click.stop="showVideoPreview = false">
-                    <i class="el-icon-close"></i>
-                  </button>
-                </div>
-                <div class="video-popup-body">
-                  <video ref="inlinePreviewVideo" autoplay muted playsinline class="inline-preview-video"></video>
-                </div>
-              </div>
-            </transition>
-            <el-button type="info" circle class="record-btn" :class="{ 'video-active': showVideoPreview }" title="Toggle Video" @click="toggleVideoPreview">
-              <i class="el-icon-video-camera"></i>
-            </el-button>
-            <div class="control-text">Video</div>
-          </div>
-
-          <div class="controls">
-            <el-button
-                :type="isPaused ? 'primary' : 'warning'"
-                circle class="record-btn"
-                :class="{ 'is-recording': !isPaused, 'is-paused': isPaused }"
-                @click="togglePause">
-              <i :class="isPaused ? 'el-icon-microphone' : 'el-icon-video-pause'"></i>
-            </el-button>
-            <div class="control-text">{{ isPaused ? 'Resume' : 'Pause' }}</div>
-          </div>
-
-          <div class="controls">
-            <el-button
-                type="success" circle class="record-btn done-btn"
-                :disabled="!interviewing || isPaused"
-                @click="nextQuestion">
-              <i class="el-icon-arrow-right"></i>
-            </el-button>
-            <div class="control-text">Next</div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -346,14 +355,11 @@ export default {
 
     highlightTranscript,
     averageConfidence,
-
-    // ── Video Preview Popup ───────────────────────────────────────────────
     toggleVideoPreview() {
       this.showVideoPreview = !this.showVideoPreview;
       if (this.showVideoPreview) {
-        // Wire the video stream to our inline preview element after DOM update
         this.$nextTick(() => {
-          const videoEl = this.$refs.inlinePreviewVideo;
+          const videoEl = this.$refs.localVideo;
           const recorderStream = this.$refs.videoRecorder && this.$refs.videoRecorder.mediaStream;
           if (videoEl && recorderStream) {
             videoEl.srcObject = recorderStream;
@@ -366,20 +372,17 @@ export default {
       this.videoRecordingStartTime = wallClockMs;
     },
 
-    // ── Called every 100ms by AnswerRecorder while silent ─────────────────
     onSilenceProgress(progress) {
       if (this.isPaused || this.transitioning) return;
       this.silenceProgress = progress;
     },
 
-    // ── Called exactly once by AnswerRecorder when threshold exceeded ──────
     onSilenceDetected() {
       if (this.isPaused || this.transitioning) return;
       this.silenceProgress = 0;
       this.nextQuestion();
     },
 
-    // ── Core flow ─────────────────────────────────────────────────────────
     nextQuestion() {
       // Hard guard — only one advance at a time
       if (this.transitioning || !this.interviewing || this.interviewStopping) return;
@@ -414,7 +417,6 @@ export default {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
       this.isReading = true;
-      this.scrollTranscript();
 
       // Timestamp = video offset at the moment the question starts being read aloud
       const videoOffsetMs = this.videoRecordingStartTime
@@ -466,7 +468,6 @@ export default {
         }
         entry.text += (i === 0 ? '' : ' ') + words[i];
         i++;
-        this.scrollTranscript();
         const lastChar = words[i - 1].slice(-1);
         const delay = ['.', '!', '?'].includes(lastChar)
             ? BASE_DELAY * 2.5 + Math.random() * 200
@@ -485,12 +486,6 @@ export default {
       this._pausedStreamTimer = false;
     },
 
-    scrollTranscript() {
-      this.$nextTick(() => {
-        const el = this.$refs.transcriptScroller;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
-    },
 
     handleTranscriptReady(transcript) {
       this.currentTranscript = transcript;
@@ -498,7 +493,6 @@ export default {
       this.transcriptLoading = false;
     },
 
-    // ── Stop ──────────────────────────────────────────────────────────────
     async stopInterview() {
       this.transitioning = true; // prevent any queued advance
       this.clearStream();
@@ -510,30 +504,18 @@ export default {
       this.$router.push({ name: 'SummaryView' });
     },
 
-    // ── Pause / Resume ────────────────────────────────────────────────────
+
     togglePause() {
       this.isPaused = !this.isPaused;
-
       if (this.isPaused) {
-        // ── PAUSE ──
-
-        // 1. Pause TTS audio
         if (this.activeInterviewerAudio) {
           if (typeof this.activeInterviewerAudio.pause === 'function') this.activeInterviewerAudio.pause();
           else if (window.speechSynthesis) window.speechSynthesis.pause();
         }
-
-        // 2. Freeze streaming answer — cancel pending timeout
-        //    typeWord() checks isPaused on its next tick and self-parks as _streamResumeCallback
         if (this.streamTimer) {
           clearTimeout(this.streamTimer);
           this.streamTimer = null;
         }
-
-        // 3. Pause mic + video recording
-        if (this.$refs.answerRecorder) this.$refs.answerRecorder.pauseRecording();
-        if (this.$refs.videoRecorder)  this.$refs.videoRecorder.pauseRecording();
-
       } else {
         // ── RESUME ──
 
@@ -556,7 +538,6 @@ export default {
       }
     },
 
-    // ── Timer ─────────────────────────────────────────────────────────────
     startTimer() {
       // Set up shared AudioContext for TTS + mic mixing into video recording
       this.sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -611,7 +592,7 @@ export default {
   flex-direction: column;
   overflow: hidden;
   height: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 .interview-main {
@@ -671,31 +652,80 @@ export default {
 
 .transcript-line {
   display: flex;
-  margin-bottom: 28px;
-  line-height: 1.7;
+  gap: 12px;
+  margin: 1.25rem 0;
+  align-items: flex-start;
 }
-.time-stamp {
-  min-width: 75px;
-  color: #c0c4cc;
-  font-size: 0.8em;
-  padding-top: 4px;
-  font-variant-numeric: tabular-nums;
+
+.avatar-column {
+  flex-shrink: 0;
+  width: 24px;
+}
+
+.content-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-avatar-small {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #94a3b8;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
   flex-shrink: 0;
 }
-.text-container { flex-grow: 1; }
+
+.interviewer-avatar {
+  background: #64748b;
+}
+
+.time-stamp {
+  font-size: 0.65rem;
+  color: #b0b7c3;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 24px; /* Match avatar height */
+  margin-bottom: 2px;
+}
+
 .speaker-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #94a3b8;
-  margin-bottom: 3px;
 }
-.transcript-line.user .speaker-label { color: #2563eb; }
+
+.transcript-line.user .speaker-label {
+  color: #2563eb;
+  opacity: 0.8;
+}
+
+.text-container {
+  flex: 1;
+  margin-top: -2px; /* Pull text closer to time */
+}
+
 .text {
-  font-size: 1.15em;
-  color: #000;
-  line-height: 1.65;
+  font-size: 1.1em;
+  color: #0f172a;
+  line-height: 1.6;
+  font-weight: 400;
 }
 
 /* Typing indicator */
@@ -716,87 +746,189 @@ export default {
 /* ── Control Bar ── */
 .control_bar {
   background: white;
-  padding: 15px 30px;
+  padding: 10px 25px;
   border-top: 1px solid #f0f2f5;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20px;
+  gap: 15px;
   flex-shrink: 0;
   z-index: 20;
+  min-height: 65px;
 }
+
 .control-status {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 200px;
+  gap: 12px;
+  flex: 0 0 220px; /* Fixed width to prevent flickering */
 }
 
-/* Silence countdown bar (replaces wave in footer) */
-.silence-countdown {
+.status-indicator-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  width: 170px; /* Adjusted for circular timer and icon */
 }
-.cbar-track {
-  width: 100px;
-  height: 4px;
-  background: #f1f5f9;
-  border-radius: 2px;
-  overflow: hidden;
+
+/* Circular Timer Styles */
+.circular-timer-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.cbar-fill {
+
+.circular-timer-wrap.mini-timer {
+  width: 24px;
+  height: 24px;
+}
+
+.circular-timer {
+  width: 100%;
   height: 100%;
-  background: #f59e0b;
-  border-radius: 2px;
-  transition: width 0.1s linear;
 }
-.cbar-secs {
-  font-size: 0.82rem;
+
+.circle-bg {
+  fill: none;
+  stroke: #f1f5f9;
+  stroke-width: 3.8;
+}
+
+.circle-fill {
+  fill: none;
+  stroke: #059669;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.1s linear;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.timer-countdown {
+  position: absolute;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #059669;
+}
+
+.mini-count {
+  font-size: 0.6rem !important;
+}
+
+.center-timers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f8fafc;
+  padding: 6px 16px;
+  border-radius: 24px;
+  border: 1px solid #f1f5f9;
+  margin-right: 12px;
+}
+
+.silence-indicator-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+}
+
+.timer-icon {
+  font-size: 1.1rem;
+  color: #64748b;
+}
+
+.status-mic-icon {
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  color: #94a3b8; /* Default dimmed color */
+}
+
+.status-mic-icon.is-recording {
+  color: #dc2626;
+  animation: mic-pulse 1.5s infinite;
+}
+
+@keyframes mic-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.status-label {
   font-weight: 700;
-  color: #f59e0b;
-  min-width: 18px;
+  font-size: 0.72rem;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
-.recording-text {
-  color: #f56c6c;
-  font-weight: 600;
-  font-size: 0.9em;
-  animation: flash 2s infinite;
-}
-.paused-text { color: #e6a23c; animation: none; }
-@keyframes flash {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.55; }
-}
-.session-timer {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
-  color: #94a3b8;
-  font-weight: 500;
+.recording-text { color: #dc2626; }
+
+.recording-duration {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  border-left: 1px solid #e2e8f0;
+  padding-left: 12px;
 }
 
-.bar-progress-group { flex: 1; max-width: 420px; }
+.controls-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.bar-progress-group {
+  flex: 0 0 130px; /* More compact */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
 .progress-info-row {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 5px;
+  width: 100%;
 }
-.progress-text    { font-size: 0.78rem; font-weight: 700; color: #475569; }
-.progress-percent { font-size: 0.78rem; font-weight: 700; color: #2563eb; }
+
+.progress-text { font-size: 0.75rem; font-weight: 700; color: #64748b; }
+.progress-percent { font-size: 0.75rem; font-weight: 700; color: #2563eb; }
+
 .footer-progress-bar {
+  width: 100%;
   height: 4px;
   background: #f1f5f9;
   border-radius: 2px;
   overflow: hidden;
 }
+
 .progress-fill {
   height: 100%;
   background: #2563eb;
-  transition: width 0.35s ease;
+  transition: width 0.3s ease;
 }
 
-.controls-group { display: flex; gap: 24px; }
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.3s ease;
+}
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex: 1; /* Center section takes available space */
+}
 .controls {
   text-align: center;
   display: flex;
@@ -813,7 +945,7 @@ export default {
   bottom: calc(100% + 14px);
   left: 50%;
   transform: translateX(-50%);
-  width: 260px;
+  width: clamp(200px, 15vw, 260px);
   background: white;
   border-radius: 16px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
@@ -858,8 +990,9 @@ export default {
 }
 .video-popup-close:hover { color: #475569; }
 .video-popup-body {
-  aspect-ratio: 16/9;
+  aspect-ratio: 1 / 1;
   background: #000;
+  overflow: hidden;
 }
 .inline-preview-video {
   width: 100%;
@@ -887,30 +1020,26 @@ export default {
 }
 
 .record-btn {
-  width: 52px;
-  height: 52px;
-  font-size: 22px;
-  margin-bottom: 5px;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
 }
-.record-btn.is-recording {
-  background-color: #f56c6c;
-  border-color: #f56c6c;
-  box-shadow: 0 4px 12px rgba(245, 108, 108, 0.4);
+.record-btn i {
+  margin: 0 !important;
+  line-height: normal !important;
 }
-.record-btn.is-paused {
-  background-color: #e6a23c;
-  border-color: #e6a23c;
-  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.4);
-  color: white;
-}
-.done-btn { box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3); }
-.control-text { font-size: 0.72em; color: #64748b; font-weight: 600; }
+.done-btn { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02); }
+.control-text { display: none; }
 
 /* Audio Wave */
-.audio-wave { display: flex; align-items: center; gap: 3px; height: 20px; }
+.audio-wave { display: flex; align-items: center; gap: 2px; height: 12px; }
 .bar { width: 3px; background-color: #f56c6c; border-radius: 2px; animation: wave 1s ease-in-out infinite; }
+.paused-wave .bar { background-color: #e6a23c; animation: none; }
 .bar:nth-child(1) { height: 60%; animation-delay: 0.0s; }
 .bar:nth-child(2) { height: 80%; animation-delay: 0.1s; }
 .bar:nth-child(3) { height: 100%; animation-delay: 0.2s; }
@@ -920,6 +1049,8 @@ export default {
   0%, 100% { transform: scaleY(1); }
   50%       { transform: scaleY(0.4); }
 }
+.recording-text { color: #f56c6c; transition: color 0.3s; }
+.paused-text { color: #e6a23c; transition: color 0.3s; }
 
 .summary-wrapper, .setup-status-view {
   flex-grow: 1;
@@ -969,20 +1100,15 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 120px;
+  width: 130px; /* Fixed width for pill area */
 }
-.status-label {
-  font-weight: 600;
-  font-size: 0.88em;
-  white-space: nowrap;
-}
-
-/* Paused wave bars — static, muted */
-.audio-wave.paused-wave .bar {
-  background-color: #e6a23c;
-  animation: none;
-  height: 60% !important;
-  opacity: 0.6;
+.session-timer {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+  width: 50px; /* Fixed width for timer */
 }
 
 /* ── Responsive ── */
@@ -1002,40 +1128,39 @@ export default {
 
   /* Transcript: timestamp on its own line above text */
   .transcript_area  { padding: 14px 14px; padding-bottom: 55vh; }
-  .transcript-line  {
-    flex-direction: column;
-    gap: 3px;
-    margin-bottom: 20px;
+  .transcript-line {
+    gap: 10px;
   }
+  .avatar-column, .user-avatar-small {
+    width: 22px;
+    height: 22px;
+  }
+  .user-avatar-small { font-size: 0.6rem; }
   .time-stamp {
-    min-width: 0;
-    font-size: 0.7em;
-    color: #b0b7c3;
-    padding-top: 0;
+    font-size: 0.6rem;
+    line-height: 22px;
   }
   .text { font-size: 1em; }
-  .speaker-label { font-size: 0.68rem; }
 
-  /* Control bar */
+  /* Control bar - forced ultra-slim */
   .control_bar {
-    padding: 10px 14px;
-    gap: 8px;
-    flex-wrap: wrap;
+    height: 15px !important;
+    overflow: visible !important;
   }
   .control-status   { min-width: 0; flex: 1 1 auto; order: 1; }
   .bar-progress-group { flex: 1 1 100%; order: 3; max-width: 100%; }
   .controls-group   { order: 2; gap: 12px; }
   .status-indicator-wrap { min-width: 0; }
 
-  .record-btn   { width: 44px; height: 44px; font-size: 18px; }
-  .control-text { font-size: 0.65em; }
+  .record-btn   { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control-text { display: none !important; }
 
   /* Video popup: anchor to right edge */
   .video-popup {
     left: auto;
     right: 0;
     transform: none;
-    width: 220px;
+    width: clamp(180px, 40vw, 220px);
   }
   .video-popup::after {
     left: auto;
@@ -1054,10 +1179,10 @@ export default {
   .transcript_area { padding: 10px 10px; padding-bottom: 55vh; }
   .text { font-size: 0.95em; }
 
-  .control_bar { padding: 8px 10px; gap: 6px; }
+  .control_bar { height: 15px !important; padding: 0 10px !important; gap: 6px; }
   .controls-group { gap: 8px; }
-  .record-btn { width: 40px; height: 40px; font-size: 16px; }
-  .control-text { font-size: 0.6em; }
+  .record-btn { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control-text { display: none !important; }
   .bar-progress-group { display: none; }
   .silence-countdown .cbar-track { width: 50px; }
   .status-label { font-size: 0.8em; }

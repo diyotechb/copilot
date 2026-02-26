@@ -1,14 +1,27 @@
 <template>
   <div class="info-button" @click.stop="toggle" title="View password policy">
-    <svg viewBox="0 0 24 24" width="16" height="16">
-      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-    </svg>
+    <i class="el-icon-info"></i>
     <div class="policy-popup" v-if="isOpen" @click.stop>
-      <strong>Password Policy:</strong>
-      <ul>
-        <li>Minimum 8 characters</li>
-        <li>Uppercase, lowercase, number, and special character</li>
-      </ul>
+      <div class="policy-header">Password Requirements</div>
+      
+      <div class="requirement-list">
+        <div class="requirement-item">
+          <i class="el-icon-check check-icon"></i>
+          <span>Minimum 8 characters</span>
+        </div>
+        <div class="requirement-item">
+          <i class="el-icon-check check-icon"></i>
+          <span>At least one: uppercase, lowercase, number, and special character</span>
+        </div>
+      </div>
+
+      <div class="special-chars-section">
+        <div class="section-label">Accepted Special Characters:</div>
+        <div class="special-chars-grid">
+          ^ $ * . [ ] { } ( ) ? - " ! @ # % & / \ , > < ' : ; | _ ~ ` + =
+        </div>
+        <div class="space-note">Non-boundary spaces are also accepted.</div>
+      </div>
     </div>
   </div>
 </template>
@@ -52,28 +65,78 @@ export default {
 
 .policy-popup {
   position: absolute;
-  bottom: 120%;
-  right: 0;
+  top: 22px; /* Position below the icon */
+  left: 0;   /* Align with the left edge of the icon */
   background: #fff;
-  border: 1px solid #b0c4de;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  width: 250px;
+  padding: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  width: 230px; /* Reduced width */
   z-index: 100;
+  text-align: left;
 }
 
-.policy-popup strong {
-  display: block;
+.policy-header {
+  font-size: 0.7rem; /* Smaller text */
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.4px;
   margin-bottom: 0.5rem;
-  color: #2193b0;
-  font-size: 0.9rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.policy-popup ul {
-  margin: 0;
-  padding-left: 1.2rem;
-  font-size: 0.85rem;
-  color: #555;
+.requirement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem; /* Tighter gap */
+  margin-bottom: 0.6rem;
+}
+
+.requirement-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.75rem; /* Smaller text */
+  color: #334155;
+  line-height: 1.3;
+}
+
+.check-icon {
+  color: #2563eb;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.special-chars-section {
+  padding-top: 0.3rem;
+}
+
+.section-label {
+  font-size: 0.65rem; /* Smaller text */
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.3rem;
+}
+
+.special-chars-grid {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem; /* Smaller text */
+  color: #2563eb;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.space-note {
+  font-size: 0.6rem; /* Smaller text */
+  color: #64748b;
+  margin-top: 0.3rem;
+  font-style: italic;
 }
 </style>

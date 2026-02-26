@@ -4,7 +4,7 @@
       <!-- Step 1: Request Reset -->
       <form v-if="step === 1" @submit.prevent="handleRequestReset" style="display: flex; flex-direction: column; gap: 20px;">
         <div class="auth-header">
-          <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+          <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="auth-brand-logo" />
           <h2>Reset Password</h2>
           <p class="auth-subtitle">Enter your email to receive a reset code</p>
         </div>

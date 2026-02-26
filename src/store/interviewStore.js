@@ -81,6 +81,5 @@ export async function getTranscriptionStatus() {
     if (result === 'true') return true;
     if (result === 'false') return false;
   }
-  console.log("[DEBUG] Transcription status is undefined, defaulting to true");
   return true;
 }

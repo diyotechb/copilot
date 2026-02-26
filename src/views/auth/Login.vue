@@ -2,9 +2,9 @@
   <div class="auth-container">
     <div class="auth-form">
       <div class="auth-header">
-        <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+        <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="auth-brand-logo" />
         <h2>Welcome Back</h2>
-        <p class="auth-subtitle">Log in to your AI Interview Simulator</p>
+        <p class="auth-subtitle">Log in to your Interview Simulator</p>
       </div>
 
       <form @submit.prevent="handleLogin" style="display: flex; flex-direction: column; gap: 20px;">
@@ -47,10 +47,11 @@
           {{ isLoading ? 'Entering Workspace...' : 'Login to Workspace' }}
         </button>
 
-        <div class="form-footer">
+        <!-- Links hidden per user request; functional via direct URL only -->
+        <!-- <div class="form-footer">
           <span class="footer-text">Don't have an account? <router-link to="/signup">Sign up</router-link></span>
           <router-link to="/reset-password">Forgot password?</router-link>
-        </div>
+        </div> -->
       </form>
     </div>
   </div>

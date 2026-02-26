@@ -171,7 +171,6 @@ export default {
       }
       const audioBlob = new Blob(this.audioChunks, mimeType ? { type: mimeType } : undefined);
       if (!audioBlob || audioBlob.size === 0) {
-        console.log("[DEBUG] No audio recorded or audio blob is empty, setting transcriptionStatus to false.");
         await saveTranscriptionStatus(false);
         return;
       }

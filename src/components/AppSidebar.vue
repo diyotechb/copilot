@@ -11,7 +11,7 @@
       <div class="sidebar-header">
         <router-link to="/" class="branding-link">
           <div class="logo-wrapper" v-if="!isCollapsed">
-            <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="sidebar-logo" />
+            <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="sidebar-logo" />
           </div>
           <div class="logo-mini-text" v-else title="Diyo Tech">
             DT
@@ -31,7 +31,7 @@
             :title="isCollapsed ? item.name : ''"
           >
             <div class="icon-box">
-              <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" :d="item.icon"/></svg>
+              <i :class="item.icon" class="nav-icon"></i>
             </div>
             <span v-if="!isCollapsed" class="link-label">{{ item.name }}</span>
           </router-link>
@@ -61,15 +61,25 @@ export default {
     isMobileOpen: {
       type: Boolean,
       default: false
+    },
+    isCollapsed: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
     return {
-      isCollapsed: false,
-      navItems: NAVIGATION_ITEMS
+      // navItems is now a computed property for dynamic filtering
     };
   },
   computed: {
+    navItems() {
+      const userRoles = authService.getUserRoles();
+      return NAVIGATION_ITEMS.filter(item => {
+        if (!item.allowedRoles) return true; // Public or all-logged-in
+        return userRoles.some(role => item.allowedRoles.includes(role));
+      });
+    },
     userEmail() {
       return authService.getUserEmail();
     },
@@ -83,8 +93,7 @@ export default {
       return this.$route.name === routeName;
     },
     toggleCollapse() {
-      this.isCollapsed = !this.isCollapsed;
-      this.$emit('toggle', this.isCollapsed);
+      this.$emit('toggle', !this.isCollapsed);
     },
     handleLogout() {
       authService.logout();
@@ -219,8 +228,10 @@ export default {
 }
 
 .nav-icon {
-  width: 20px;
-  height: 20px;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .link-label {

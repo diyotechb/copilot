@@ -21,7 +21,6 @@ export async function deleteRecording(key) {
 
 export async function saveVideoRecording(blob) {
   await saveItem(STORE_NAME, VIDEO_KEY, blob);
-  console.log('[DEBUG] Video Blob saved to IndexedDB with key:', VIDEO_KEY);
 }
 
 export async function getVideoRecording() {

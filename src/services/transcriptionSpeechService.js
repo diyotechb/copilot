@@ -8,7 +8,7 @@ class TranscriptionSpeechService {
             onError: null
         };
 
-        // Websocket and Audio Context
+
         this.ws = null;
         this.audioContext = null;
         this.processor = null;
@@ -20,7 +20,7 @@ class TranscriptionSpeechService {
         this.sending = false;
         this.debug = true;
 
-        // Determine Base URL
+
         this.baseUrl = (function () {
             const env = process.env.VUE_APP_SERVER_URL;
             let url = env || null;
@@ -28,8 +28,7 @@ class TranscriptionSpeechService {
                 try {
                     const origin = window.location.origin;
                     if (window.location.port === '3002') {
-                        // Dev scenario: app on 3002, api on 3001
-                        url = `${window.location.protocol}//${window.location.hostname}:3001`;
+
                     } else {
                         url = origin;
                     }
@@ -60,7 +59,6 @@ class TranscriptionSpeechService {
         if (this.isListening) return;
 
         try {
-            console.log('Starting recording...');
             this.isListening = true;
             if (this.callbacks.onStart) this.callbacks.onStart();
 
@@ -105,13 +103,11 @@ class TranscriptionSpeechService {
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
             const wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
-            console.log('Connecting to', wsUrl);
 
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';
 
             this.ws.onopen = () => {
-                console.log('WebSocket open');
                 this.sendAudioLoop();
             };
 
@@ -135,7 +131,6 @@ class TranscriptionSpeechService {
             };
 
             this.ws.onclose = () => {
-                console.log('WebSocket closed');
                 this.stop();
             };
 
@@ -180,6 +175,7 @@ class TranscriptionSpeechService {
         }
 
         if (!text && !isFinal) return;
+
 
         const mockEvent = {
             resultIndex: 0,

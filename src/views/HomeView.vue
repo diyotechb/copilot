@@ -2,24 +2,24 @@
   <div class="home-container">
     <div class="hero-section">
       <div class="hero-content">
-        <div class="badge">AI INTERVIEW SIMULATOR</div>
+        <div class="badge">INTERVIEW SIMULATOR</div>
         <h1>Master Your Next <span class="highlight">Interview</span></h1>
         <p class="hero-description">
-          Practice with our AI-powered interviewer tailored to your resume and target role.
+          Practice with our automated interviewer tailored to your resume and target role.
           Get real-time feedback and video analysis to boost your confidence.
         </p>
         <div class="hero-actions">
-          <el-button type="primary" class="primary-hero-btn" @click="startNewInterview">
+          <el-button v-if="canStartInterview" type="primary" class="primary-hero-btn" @click="startNewInterview">
             Practice Interview Now <i class="el-icon-right"></i>
           </el-button>
-          <el-button class="secondary-hero-btn" @click="$router.push({name: 'TranscriptionsView'})">
+          <el-button v-if="canViewTranscriptions" class="secondary-hero-btn" @click="$router.push({name: 'TranscriptionsView'})">
             <i class="el-icon-document"></i> View Transcriptions
           </el-button>
         </div>
       </div>
       <div class="hero-visual">
         <div class="visual-card">
-          <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="visual-logo" />
+          <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="visual-logo" />
           <div class="card-dots"></div>
         </div>
       </div>
@@ -29,7 +29,7 @@
       <div class="feature-card">
         <div class="feature-icon"><i class="el-icon-document"></i></div>
         <h3>Resume Matching</h3>
-        <p>AI analyzes your resume to generate relevant industry-specific questions.</p>
+        <p>The system analyzes your resume to generate relevant industry-specific questions.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="el-icon-video-camera"></i></div>
@@ -38,7 +38,7 @@
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="el-icon-cpu"></i></div>
-        <h3>AI Feedback</h3>
+        <h3>Detailed Evaluation</h3>
         <p>Instant analysis of filler words, confidence, and response quality.</p>
       </div>
     </div>
@@ -50,6 +50,22 @@ import authService from '@/services/authService';
 
 export default {
   name: 'HomeView',
+  computed: {
+    canStartInterview() {
+      const allowed = ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL'];
+      const rawRoles = authService.getUserRoles();
+      const roles = Array.isArray(rawRoles) ? rawRoles : (typeof rawRoles === 'string' ? [rawRoles] : []);
+      const normalizedRoles = roles.map(r => String(r).trim().toUpperCase());
+      return normalizedRoles.some(role => allowed.includes(role));
+    },
+    canViewTranscriptions() {
+      const allowed = ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP'];
+      const rawRoles = authService.getUserRoles();
+      const roles = Array.isArray(rawRoles) ? rawRoles : (typeof rawRoles === 'string' ? [rawRoles] : []);
+      const normalizedRoles = roles.map(r => String(r).trim().toUpperCase());
+      return normalizedRoles.some(role => allowed.includes(role));
+    }
+  },
   methods: {
     startNewInterview() {
       if (authService.isLoggedIn()) {
@@ -67,7 +83,7 @@ export default {
   min-height: calc(100vh - 70px);
   padding: 60px 40px;
   background-color: #f9fafe;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 .hero-section {
@@ -122,21 +138,6 @@ export default {
   align-items: center;
   gap: 20px;
   margin-top: 10px;
-}
-
-.primary-hero-btn {
-  padding: 16px 40px !important;
-  font-size: 1.1rem !important;
-  font-weight: 700 !important;
-  border-radius: 12px !important;
-  height: auto !important;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
-  transition: all 0.3s;
-}
-
-.primary-hero-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
 }
 
 .secondary-hero-btn {

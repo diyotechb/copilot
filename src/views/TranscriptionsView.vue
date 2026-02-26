@@ -52,7 +52,9 @@ export default {
       isReadOnly: false,
       mergeThresholdMs: 3500,
       isInterimInActiveParagraph: false,
-      sessionStart: null
+      sessionStart: null,
+      recordingDurationMs: 0,
+      durationTimer: null
     };
   },
   mounted() {
@@ -64,7 +66,17 @@ export default {
   },
   methods: {
     getCurrentTime() {
+      if (!this.isReadOnly) {
+        return this.formatDuration(this.recordingDurationMs);
+      }
       return moment().format('h:mm A');
+    },
+
+    formatDuration(ms) {
+      const totalSeconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     },
     
     openDashboard() {
@@ -76,6 +88,7 @@ export default {
       }
       
       this.saveCurrentTranscript(); 
+      this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
     },
@@ -87,8 +100,11 @@ export default {
       this.isReadOnly = false;
       this.lastFinalTime = null;
       this.sessionStart = null;
+      this.recordingDurationMs = 0;
+      this.stopDurationTimer();
     },
     openDetail(item) {
+      this.$root.$emit('toggle-sidebar', true);
       this.viewMode = 'detail';
       this.transcriptLines = JSON.parse(JSON.stringify(item.lines));
       this.sessionId = item.id;
@@ -102,6 +118,7 @@ export default {
         // Force permission check before changing view state
         await navigator.mediaDevices.getUserMedia({ audio: true });
         
+        this.$root.$emit('toggle-sidebar', true);
         this.viewMode = 'detail';
         speechRecognitionService.stop(); 
         this.resetActiveSession();
@@ -122,8 +139,10 @@ export default {
     },
     
     finishRecording() {
+      this.stopDurationTimer();
       speechRecognitionService.stop();
       this.saveCurrentTranscript();
+      this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
     },
@@ -175,7 +194,10 @@ export default {
 
       speechRecognitionService.setCallback('onStart', () => {
         this.isListening = true;
-        if (!this.sessionStart) this.sessionStart = Date.now();
+        if (!this.sessionStart) {
+          this.sessionStart = Date.now();
+          this.startDurationTimer();
+        }
       });
 
       speechRecognitionService.setCallback('onEnd', () => {
@@ -312,12 +334,29 @@ export default {
       if (this.isListening) {
         speechRecognitionService.stop(); 
         this.isListening = false;
+        this.stopDurationTimer();
       } else {
         if (this.isReadOnly) return; 
         speechRecognitionService.start();
         this.isListening = true;
+        this.startDurationTimer();
       }
     },
+
+    startDurationTimer() {
+      if (this.durationTimer) return;
+      const startTime = Date.now() - this.recordingDurationMs;
+      this.durationTimer = setInterval(() => {
+        this.recordingDurationMs = Date.now() - startTime;
+      }, 100);
+    },
+
+    stopDurationTimer() {
+      if (this.durationTimer) {
+        clearInterval(this.durationTimer);
+        this.durationTimer = null;
+      }
+    }
   }
 };
 </script>
@@ -328,7 +367,7 @@ export default {
   flex-direction: column;
   height: calc(100vh - 60px); 
   background-color: #f9fafe;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--font-family);
   color: #333;
 }
 </style>

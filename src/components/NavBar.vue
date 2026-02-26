@@ -5,29 +5,26 @@
       <div class="nav-header">
         <div class="nav-left">
           <!-- Hamburger for Mobile -->
-          <button class="menu-toggle" @click="toggleMenu" aria-label="Toggle menu">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path v-if="!isMenuOpen" fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
-              <path v-else fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
+            <button class="menu-toggle" @click="toggleMenu" aria-label="Toggle menu">
+              <i :class="isMenuOpen ? 'el-icon-close' : 'el-icon-menu'" class="mobile-toggle-icon"></i>
+            </button>
           
           <router-link to="/" class="brand-link">
-            <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="brand-logo" />
+            <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="brand-logo" />
           </router-link>
 
           <!-- Desktop Navigation -->
           <ul class="nav-items desktop-only" role="menubar">
             <li v-for="item in navItems" :key="item.routeName" role="none">
-              <router-link 
-                :to="{ name: item.routeName }" 
-                class="nav-link" 
-                :class="{ active: isActive(item.routeName) }"
-                role="menuitem"
-              >
-                <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" :d="item.icon"/></svg>
-                <span>{{ item.name }}</span>
-              </router-link>
+                <router-link 
+                  :to="{ name: item.routeName }" 
+                  class="nav-link" 
+                  :class="{ active: isActive(item.routeName) }"
+                  role="menuitem"
+                >
+                  <i :class="item.icon" class="nav-icon"></i>
+                  <span>{{ item.name }}</span>
+                </router-link>
             </li>
           </ul>
         </div>
@@ -44,7 +41,7 @@
                   <span class="user-email-full">{{ userEmail }}</span>
                 </div>
                 <button class="dropdown-item logout" @click="handleLogout">
-                  <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
+                  <i class="el-icon-switch-button nav-icon"></i>
                   <span>Logout</span>
                 </button>
               </div>
@@ -71,13 +68,13 @@
                 :class="{ active: isActive(item.routeName) }"
                 @click.native="isMenuOpen = false"
               >
-                <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" :d="item.icon"/></svg>
+                <i :class="item.icon" class="nav-icon"></i>
                 <span>{{ item.name }}</span>
               </router-link>
             </li>
             <li class="mobile-logout-item">
               <button class="mobile-nav-link logout-link" @click="handleLogout">
-                <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
+                <i class="el-icon-switch-button nav-icon"></i>
                 <span>Logout</span>
               </button>
             </li>
@@ -224,8 +221,10 @@ export default {
 }
 
 .nav-icon {
-  width: 20px;
-  height: 20px;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -331,10 +330,9 @@ export default {
   color: #000000; /* Force black for visibility */
 }
 
-.menu-toggle .icon {
-  width: 24px;
-  height: 24px;
-  fill: currentColor;
+.mobile-toggle-icon {
+  font-size: 1.75rem;
+  color: #1e293b;
 }
 
 .mobile-sidebar {

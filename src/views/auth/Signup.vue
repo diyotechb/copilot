@@ -2,9 +2,9 @@
   <div class="auth-container">
     <div class="auth-form">
       <div class="auth-header">
-        <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+        <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="auth-brand-logo" />
         <h2>Create Account</h2>
-        <p class="auth-subtitle">Join the AI Interview Simulator</p>
+        <p class="auth-subtitle">Join the Interview Simulator</p>
       </div>
 
       <form @submit.prevent="handleSignup" style="display: flex; flex-direction: column; gap: 20px;">

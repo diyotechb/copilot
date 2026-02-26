@@ -5,7 +5,7 @@
       <div class="status-content">
         <div class="main-loader"></div>
         <h3>{{ loadingTranscripts ? 'Preparing Transcripts' : 'Processing Video' }}</h3>
-        <p>Our AI is finalizing your interview review. This will only take a moment.</p>
+        <p>The system is finalizing your interview review. This will only take a moment.</p>
       </div>
     </div>
 
@@ -14,7 +14,7 @@
       <div class="setup-view-header">
         <div class="header-main">
           <h2>Interview Performance Summary</h2>
-          <p class="header-subtitle">Review your recordings, transcripts, and AI-powered feedback.</p>
+          <p class="header-subtitle">Review your recordings, transcripts, and automated feedback.</p>
         </div>
         <div class="header-actions">
           <el-button
@@ -180,7 +180,6 @@ export default {
 
     // Fetch question timestamps for seeking
     this.questionTimestamps = await getQuestionTimestamps();
-    console.log('[DEBUG] Loaded question timestamps:', this.questionTimestamps);
 
     this.pollForVideoBlob();
     this.checkTranscriptionStatus();
@@ -217,7 +216,6 @@ export default {
     },
     async checkTranscriptionStatus() {
       const inProcess = await getTranscriptionStatus();
-      console.log('[DEBUG] Transcription status:', inProcess);
       if (inProcess === true) {
         setTimeout(() => this.checkTranscriptionStatus(), 1000);
       } else if (inProcess === false) {
@@ -233,7 +231,6 @@ export default {
         const stored = await getTranscripts();
         if (Array.isArray(stored) && stored.length > 0) {
           this.transcripts = stored;
-          console.log('[DEBUG] Loaded transcripts:', this.transcripts);
           await this.loadRecordingUrls();
           this.loadingTranscripts = false;
           return;
@@ -328,7 +325,7 @@ export default {
   overflow-y: auto;
   height: calc(100vh - 60px);
   background-color: #f9fafe;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 .setup-view-header {

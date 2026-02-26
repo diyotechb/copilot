@@ -33,52 +33,65 @@
         </div>
 
         <div v-for="(line, index) in lines" :key="index" class="transcript-line">
-          <span class="time-stamp">{{ line.time }}</span>
-          <div class="text-container">
-            <span class="text">{{ line.text }}</span>
-            <span v-if="index === lines.length - 1 && currentInterim && isInterimInline" class="text interim-inline">
-              {{ currentInterim }}
-            </span>
+          <div class="avatar-column">
+            <div class="user-avatar-small">{{ userInitials }}</div>
+          </div>
+          <div class="content-column">
+            <span class="time-stamp">{{ line.time }}</span>
+            <div class="text-container">
+              <span class="text">{{ line.text }}</span>
+              <span v-if="index === lines.length - 1 && currentInterim && isInterimInline" class="text interim-inline">
+                {{ currentInterim }}
+              </span>
+            </div>
           </div>
         </div>
 
         <div v-if="currentInterim && !isInterimInline" class="transcript-line interim">
-          <span class="time-stamp">{{ currentTime }}</span>
-          <span class="text">{{ currentInterim }}</span>
+          <div class="avatar-column">
+            <div class="user-avatar-small">{{ userInitials }}</div>
+          </div>
+          <div class="content-column">
+            <span class="time-stamp">{{ currentTime }}</span>
+            <span class="text">{{ currentInterim }}</span>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="control_bar" v-if="!isReadOnly">
       <div class="control-status">
-        <div class="audio-wave" v-if="isListening">
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
+        <div class="status-indicator-wrap">
+          <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': isListening }"></i>
+          <span class="status-label" :class="{ 'recording-text': isListening, 'paused-text': !isListening }">
+            {{ isListening ? 'RECORDING' : 'PAUSED' }}
+          </span>
         </div>
-        <span class="recording-text" :class="{ 'paused-text': !isListening }">
-            {{ isListening ? 'Recording...' : 'Recording Paused' }}
-         </span>
       </div>
 
       <div class="controls-group">
+        <!-- Timers Section in Center -->
+        <div class="center-timers">
+          
+          <div class="recording-duration">
+            {{ currentTime }}
+          </div>
+        </div>
+
         <div class="controls">
           <el-button
-              type="primary"
               circle
-              class="record-btn"
-              :class="{ 'is-recording': isListening, 'is-paused': !isListening }"
+              class="record-btn minimal-control-btn"
+              :class="{ 'is-active': isListening, 'is-paused': !isListening }"
               @click="$emit('toggle-pause')"
           >
-            <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-microphone'"></i>
+            <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-video-play'"></i>
           </el-button>
           <div class="control-text">{{ isListening ? 'Pause' : 'Resume' }}</div>
         </div>
 
         <div class="controls">
-          <el-button type="success" circle class="record-btn done-btn" @click="$emit('finish')">
+          <el-button circle class="record-btn done-btn minimal-control-btn" @click="$emit('finish')">
             <i class="el-icon-check"></i>
           </el-button>
           <div class="control-text">Done</div>
@@ -93,6 +106,8 @@
 </template>
 
 <script>
+import authService from '@/services/authService';
+
 export default {
   name: 'TranscriptDetail',
   props: {
@@ -104,24 +119,20 @@ export default {
     lines: Array,
     currentInterim: String,
     isInterimInline: Boolean,
-    currentTime: String
+    currentTime: String,
+    silenceProgress: { type: Number, default: 0 },
+    countdownSecsLeft: { type: [Number, String], default: 0 }
+  },
+  computed: {
+    userEmail() {
+      return authService.getUserEmail();
+    },
+    userInitials() {
+      if (!this.userEmail) return '?';
+      return this.userEmail.charAt(0).toUpperCase();
+    }
   },
   methods: {
-    handleScroll() {
-      const container = this.$refs.scrollContainer;
-      if (container) {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
-    },
-    onTitleClick() {
-      if (this.isReadOnly) return;
-      this.$nextTick(() => {
-        this.$refs.titleInput.focus();
-      });
-    },
     onTitleBlur(e) {
       const newTitle = e.target.innerText.trim();
       if (newTitle && newTitle !== this.title) {
@@ -132,6 +143,8 @@ export default {
     }
   }
 }
+
+
 </script>
 
 <style scoped>
@@ -231,24 +244,47 @@ export default {
 
 .transcript-line {
   display: flex;
+  flex-direction: row;
+  gap: 12px;
   margin-bottom: 24px;
-  line-height: 1.7;
+  animation: fadeIn 0.4s ease-out;
 }
 
-.transcript-line.interim .text {
-  color: #000;
+.avatar-column {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+.content-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.user-avatar-small {
+  width: 24px;
+  height: 24px;
+  background: #94a3b8;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.7rem;
+  flex-shrink: 0;
 }
 
 .time-stamp {
-  min-width: 70px;
-  color: #c0c4cc;
-  font-size: 0.8em;
-  padding-top: 5px;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.65rem;
+  color: #b0b7c3;
+  font-weight: 500;
+  line-height: 24px; /* Vertically align with avatar center/top line */
 }
 
 .text-container {
-  flex-grow: 1;
+  margin-top: -2px; /* Pull text closer to time */
 }
 
 .text {
@@ -268,50 +304,148 @@ export default {
 
 .control_bar {
   background: white;
-  padding: 15px 30px;
+  padding: 10px 25px;
   border-top: 1px solid #f0f2f5;
   display: flex;
-  justify-content: space-between; /* Space out status and controls */
+  justify-content: space-between;
   align-items: center;
-  gap: 30px;
+  gap: 15px;
   flex-shrink: 0;
   z-index: 20;
-}
-
-.control_bar.read-only-bar {
-  background: #f9fafe;
-  color: #666;
-  justify-content: center;
+  min-height: 65px;
 }
 
 .control-status {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 220px;
 }
 
-.recording-text {
-  color: #f56c6c;
-  font-weight: 600;
-  font-size: 0.95em;
-  animation: flash 2s infinite;
+.status-indicator-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-@keyframes flash {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.status-mic-icon {
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  color: #94a3b8; /* Default dimmed color */
 }
 
-.paused-text {
-  color: #e6a23c;
-  animation: none;
+.status-mic-icon.is-recording {
+  color: #dc2626;
+  animation: mic-pulse 1.5s infinite;
 }
+
+@keyframes mic-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.circular-timer-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.circular-timer-wrap.mini-timer {
+  width: 24px;
+  height: 24px;
+}
+
+.circular-timer {
+  width: 100%;
+  height: 100%;
+}
+
+.circle-bg {
+  fill: none;
+  stroke: #f1f5f9;
+  stroke-width: 3.8;
+}
+
+.circle-fill {
+  fill: none;
+  stroke: #059669;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.1s linear;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.timer-countdown {
+  position: absolute;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #059669;
+}
+
+.mini-count {
+  font-size: 0.6rem !important;
+}
+
+.status-label {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.recording-text { color: #dc2626; }
+.paused-text { color: #e6a23c; }
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.center-timers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f8fafc;
+  padding: 6px 16px;
+  border-radius: 24px;
+  border: 1px solid #f1f5f9;
+  margin-right: 12px;
+}
+
+.silence-indicator-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+}
+
+.timer-icon {
+  font-size: 1.1rem;
+  color: #64748b;
+}
+
+.recording-duration {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+}
+
 
 .audio-wave {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
+  gap: 2px;
+  height: 12px;
 }
 
 .bar {
@@ -332,10 +466,6 @@ export default {
   50% { transform: scaleY(0.4); }
 }
 
-.controls-group {
-  display: flex;
-  gap: 30px;
-}
 
 .controls {
   text-align: center;
@@ -345,71 +475,71 @@ export default {
 }
 
 .record-btn {
-  width: 52px;
-  height: 52px;
-  font-size: 24px;
-  margin-bottom: 6px;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  width: 30px;
+  height: 30px;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
 }
 
-.record-btn.is-recording {
-  background-color: #f56c6c;
-  border-color: #f56c6c;
-  box-shadow: 0 4px 12px rgba(245, 108, 108, 0.4);
-}
-
-.record-btn.is-paused {
-  background-color: #e6a23c;
-  border-color: #e6a23c;
-  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.4);
-  color: white;
+.record-btn i {
+  margin: 0 !important;
+  line-height: normal !important;
 }
 
 .done-btn {
-  width: 52px;
-  height: 52px;
-  font-size: 24px;
-  margin-bottom: 6px;
-  box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+}
+.done-btn i {
+  margin: 0 !important;
+  line-height: normal !important;
 }
 
 .control-text {
-  font-size: 0.75em;
+  display: none;
 }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .transcript-line {
-    flex-direction: column;
-    gap: 2px;
     margin-bottom: 18px;
   }
   .time-stamp {
-    min-width: 0;
-    font-size: 0.7em;
-    color: #b0b7c3;
-    padding-top: 0;
-    display: block;
+    font-size: 0.6rem;
+    line-height: 24px;
   }
   .text { font-size: 1.05em; line-height: 1.55; }
   .transcript_area { padding: 14px 14px; padding-bottom: 55vh; }
 
   .control_bar {
-    padding: 10px 14px;
-    flex-wrap: wrap;
+    height: 15px !important;
+    overflow: visible !important;
     gap: 10px;
   }
   .controls-group { gap: 16px; }
-  .record-btn, .done-btn { width: 44px; height: 44px; font-size: 20px; }
+  .record-btn, .done-btn {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 14px !important;
+  }
+  .control-text { display: none !important; }
 }
 
 @media (max-width: 480px) {
   .transcript_area { padding: 10px; padding-bottom: 55vh; }
   .text { font-size: 1em; }
-  .control_bar { padding: 8px 10px; gap: 8px; }
+  .control_bar { height: 15px !important; padding: 0 10px !important; gap: 8px; overflow: visible !important; }
   .controls-group { gap: 10px; }
-  .record-btn, .done-btn { width: 40px; height: 40px; font-size: 18px; }
-  .control-text { font-size: 0.65em; }
+  .record-btn, .done-btn { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control-text { display: none !important; }
 }
 </style>
