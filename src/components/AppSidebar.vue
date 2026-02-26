@@ -11,7 +11,7 @@
       <div class="sidebar-header">
         <router-link to="/" class="branding-link">
           <div class="logo-wrapper" v-if="!isCollapsed">
-            <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="sidebar-logo" />
+            <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="sidebar-logo" />
           </div>
           <div class="logo-mini-text" v-else title="Diyo Tech">
             DT
@@ -61,11 +61,14 @@ export default {
     isMobileOpen: {
       type: Boolean,
       default: false
+    },
+    isCollapsed: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
     return {
-      isCollapsed: false,
       navItems: NAVIGATION_ITEMS
     };
   },
@@ -83,8 +86,7 @@ export default {
       return this.$route.name === routeName;
     },
     toggleCollapse() {
-      this.isCollapsed = !this.isCollapsed;
-      this.$emit('toggle', this.isCollapsed);
+      this.$emit('toggle', !this.isCollapsed);
     },
     handleLogout() {
       authService.logout();

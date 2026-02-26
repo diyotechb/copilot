@@ -92,7 +92,7 @@ export default {
 .card-body p {
   margin: 0;
   color: #606266;
-  font-size: 0.95em;
+  font-size: 1.15rem;
   line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 3;

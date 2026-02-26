@@ -13,7 +13,7 @@
           </button>
           
           <router-link to="/" class="brand-link">
-            <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="brand-logo" />
+            <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="brand-logo" />
           </router-link>
 
           <!-- Desktop Navigation -->

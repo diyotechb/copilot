@@ -3,6 +3,7 @@
     <AppSidebar 
       v-if="showSidebar" 
       :is-mobile-open="isMobileSidebarOpen"
+      :is-collapsed="isSidebarCollapsed"
       @toggle="isSidebarCollapsed = $event"
       @close-mobile="isMobileSidebarOpen = false"
     />
@@ -43,11 +44,22 @@ export default {
     return {
       isSidebarCollapsed: false,
       isMobileSidebarOpen: false,
-      isLoggedIn: authService.isLoggedIn()
+      isLoggedIn: authService.isLoggedIn(),
+      isSidebarHiddenManually: false
     }
+  },
+  mounted() {
+    this.$root.$on('toggle-sidebar', (hide) => {
+      this.isSidebarHiddenManually = hide;
+    });
+  },
+  beforeDestroy() {
+    this.$root.$off('toggle-sidebar');
   },
   computed: {
     showSidebar() {
+      if (this.isSidebarHiddenManually) return false;
+
       // Hide sidebar on Auth pages and during the actual Interview session for maximum focus
       const hideOn = ['Login', 'Signup', 'ResetPassword', 'InterviewView'];
       const isPublic = ['Home'].includes(this.$route.name);
@@ -70,6 +82,7 @@ export default {
     '$route'() {
       this.isLoggedIn = authService.isLoggedIn();
       this.isMobileSidebarOpen = false; // Auto-close on navigation
+      this.isSidebarHiddenManually = false; // Reset session-based hiding
     }
   }
 }

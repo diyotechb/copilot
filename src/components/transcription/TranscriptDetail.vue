@@ -33,18 +33,28 @@
         </div>
 
         <div v-for="(line, index) in lines" :key="index" class="transcript-line">
-          <span class="time-stamp">{{ line.time }}</span>
-          <div class="text-container">
-            <span class="text">{{ line.text }}</span>
-            <span v-if="index === lines.length - 1 && currentInterim && isInterimInline" class="text interim-inline">
-              {{ currentInterim }}
-            </span>
+          <div class="avatar-column">
+            <div class="user-avatar-small">{{ userInitials }}</div>
+          </div>
+          <div class="content-column">
+            <span class="time-stamp">{{ line.time }}</span>
+            <div class="text-container">
+              <span class="text">{{ line.text }}</span>
+              <span v-if="index === lines.length - 1 && currentInterim && isInterimInline" class="text interim-inline">
+                {{ currentInterim }}
+              </span>
+            </div>
           </div>
         </div>
 
         <div v-if="currentInterim && !isInterimInline" class="transcript-line interim">
-          <span class="time-stamp">{{ currentTime }}</span>
-          <span class="text">{{ currentInterim }}</span>
+          <div class="avatar-column">
+            <div class="user-avatar-small">{{ userInitials }}</div>
+          </div>
+          <div class="content-column">
+            <span class="time-stamp">{{ currentTime }}</span>
+            <span class="text">{{ currentInterim }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -93,6 +103,8 @@
 </template>
 
 <script>
+import authService from '@/services/authService';
+
 export default {
   name: 'TranscriptDetail',
   props: {
@@ -105,6 +117,15 @@ export default {
     currentInterim: String,
     isInterimInline: Boolean,
     currentTime: String
+  },
+  computed: {
+    userEmail() {
+      return authService.getUserEmail();
+    },
+    userInitials() {
+      if (!this.userEmail) return '?';
+      return this.userEmail.charAt(0).toUpperCase();
+    }
   },
   methods: {
     handleScroll() {
@@ -231,24 +252,47 @@ export default {
 
 .transcript-line {
   display: flex;
+  flex-direction: row;
+  gap: 12px;
   margin-bottom: 24px;
-  line-height: 1.7;
+  animation: fadeIn 0.4s ease-out;
 }
 
-.transcript-line.interim .text {
-  color: #000;
+.avatar-column {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+.content-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.user-avatar-small {
+  width: 24px;
+  height: 24px;
+  background: #94a3b8;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.7rem;
+  flex-shrink: 0;
 }
 
 .time-stamp {
-  min-width: 70px;
-  color: #c0c4cc;
-  font-size: 0.8em;
-  padding-top: 5px;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.65rem;
+  color: #b0b7c3;
+  font-weight: 500;
+  line-height: 24px; /* Vertically align with avatar center/top line */
 }
 
 .text-container {
-  flex-grow: 1;
+  margin-top: -2px; /* Pull text closer to time */
 }
 
 .text {
@@ -268,14 +312,17 @@ export default {
 
 .control_bar {
   background: white;
-  padding: 15px 30px;
+  padding: 20px 30px;
   border-top: 1px solid #f0f2f5;
   display: flex;
-  justify-content: space-between; /* Space out status and controls */
+  justify-content: space-between;
   align-items: center;
-  gap: 30px;
+  gap: 20px;
   flex-shrink: 0;
   z-index: 20;
+  height: 15px;
+  overflow: visible;
+  line-height: 1;
 }
 
 .control_bar.read-only-bar {
@@ -293,8 +340,11 @@ export default {
 .recording-text {
   color: #f56c6c;
   font-weight: 600;
-  font-size: 0.95em;
+  font-size: 11px;
   animation: flash 2s infinite;
+  display: flex;
+  align-items: center;
+  height: 100%;
 }
 
 @keyframes flash {
@@ -310,8 +360,8 @@ export default {
 .audio-wave {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
+  gap: 2px;
+  height: 12px;
 }
 
 .bar {
@@ -345,12 +395,20 @@ export default {
 }
 
 .record-btn {
-  width: 52px;
-  height: 52px;
-  font-size: 24px;
-  margin-bottom: 6px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  margin-bottom: 0;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+}
+.record-btn i {
+  margin: 0 !important;
+  line-height: normal !important;
 }
 
 .record-btn.is-recording {
@@ -367,49 +425,57 @@ export default {
 }
 
 .done-btn {
-  width: 52px;
-  height: 52px;
-  font-size: 24px;
-  margin-bottom: 6px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  margin-bottom: 0;
   box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+}
+.done-btn i {
+  margin: 0 !important;
+  line-height: normal !important;
 }
 
 .control-text {
-  font-size: 0.75em;
+  display: none;
 }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .transcript-line {
-    flex-direction: column;
-    gap: 2px;
     margin-bottom: 18px;
   }
   .time-stamp {
-    min-width: 0;
-    font-size: 0.7em;
-    color: #b0b7c3;
-    padding-top: 0;
-    display: block;
+    font-size: 0.6rem;
+    line-height: 24px;
   }
   .text { font-size: 1.05em; line-height: 1.55; }
   .transcript_area { padding: 14px 14px; padding-bottom: 55vh; }
 
   .control_bar {
-    padding: 10px 14px;
-    flex-wrap: wrap;
+    height: 15px !important;
+    overflow: visible !important;
     gap: 10px;
   }
   .controls-group { gap: 16px; }
-  .record-btn, .done-btn { width: 44px; height: 44px; font-size: 20px; }
+  .record-btn, .done-btn {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 14px !important;
+  }
+  .control-text { display: none !important; }
 }
 
 @media (max-width: 480px) {
   .transcript_area { padding: 10px; padding-bottom: 55vh; }
   .text { font-size: 1em; }
-  .control_bar { padding: 8px 10px; gap: 8px; }
+  .control_bar { height: 15px !important; padding: 0 10px !important; gap: 8px; overflow: visible !important; }
   .controls-group { gap: 10px; }
-  .record-btn, .done-btn { width: 40px; height: 40px; font-size: 18px; }
-  .control-text { font-size: 0.65em; }
+  .record-btn, .done-btn { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control-text { display: none !important; }
 }
 </style>

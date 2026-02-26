@@ -76,6 +76,7 @@ export default {
       }
       
       this.saveCurrentTranscript(); 
+      this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
     },
@@ -89,6 +90,7 @@ export default {
       this.sessionStart = null;
     },
     openDetail(item) {
+      this.$root.$emit('toggle-sidebar', true);
       this.viewMode = 'detail';
       this.transcriptLines = JSON.parse(JSON.stringify(item.lines));
       this.sessionId = item.id;
@@ -102,6 +104,7 @@ export default {
         // Force permission check before changing view state
         await navigator.mediaDevices.getUserMedia({ audio: true });
         
+        this.$root.$emit('toggle-sidebar', true);
         this.viewMode = 'detail';
         speechRecognitionService.stop(); 
         this.resetActiveSession();
@@ -124,6 +127,7 @@ export default {
     finishRecording() {
       speechRecognitionService.stop();
       this.saveCurrentTranscript();
+      this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
     },

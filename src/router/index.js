@@ -6,7 +6,6 @@ import ResetPassword from '@/views/auth/ResetPassword.vue'
 import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
-import LiveTranscriptView from '@/views/LiveTranscription.vue'
 import { getInterviewQA } from '@/store/interviewStore'
 import TranscriptionsView from '@/views/TranscriptionsView.vue';
 import HomeView from '@/views/HomeView.vue';
@@ -17,12 +16,13 @@ Vue.use(VueRouter)
 const routes = [
   { path: '/', name: 'Home', component: HomeView },
   { path: '/login', name: 'Login', component: Login },
+  // NOTE: Keep Signup and ResetPassword routes even if hidden from Login UI.
+  // Users should be able to access these directly via URL.
   { path: '/signup', name: 'Signup', component: Signup },
   { path: '/reset-password', name: 'ResetPassword', component: ResetPassword },
   { path: '/setup', name: 'ResumeSetup', component: ResumeSetup },
   { path: '/summary', name: 'SummaryView', component: SummaryView },
   { path: '/interview', name: 'InterviewView', component: InterviewView },
-  { path: '/liveTranscription', name: 'LiveTranscriptView', component: LiveTranscriptView },
   { path: '/setting', name: 'Setting', component: ResumeSetup },
   { path: '/transcriptions', name: 'TranscriptionsView', component: TranscriptionsView }
 ]

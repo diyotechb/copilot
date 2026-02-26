@@ -24,49 +24,77 @@
               v-show="item.type === 'user' || showQuestionSection"
               :class="['transcript-line', item.type]"
           >
-            <span class="time-stamp">{{ item.time }}</span>
-            <div class="text-container">
-              <div class="speaker-label">{{ item.type === 'user' ? 'YOU' : 'INTERVIEWER' }}</div>
-              <span class="text">{{ item.text }}</span>
+            <!-- Avatar Column -->
+            <div class="avatar-column">
+              <div v-if="item.type === 'user'" class="user-avatar-small">Y</div>
+              <div v-else class="user-avatar-small interviewer-avatar">I</div>
+            </div>
+
+            <!-- Content Column -->
+            <div class="content-column">
+              <div class="meta-header">
+                <span class="speaker-label">{{ item.type === 'user' ? 'YOU' : 'INTERVIEWER' }}</span>
+                <span class="time-stamp">{{ item.time }}</span>
+              </div>
+              <div class="text-container">
+                <span class="text">{{ item.text }}</span>
+              </div>
             </div>
           </div>
 
-          <!-- Live status rows — only shown when questions are HIDDEN (no text in transcript) -->
-          <!-- When questions are visible, the transcript entry itself shows the text/dots inline -->
+          <!-- Live status rows -->
           <template v-if="!showQuestionSection">
-            <!-- INTERVIEWER Speaking + YOU Listening -->
             <template v-if="isReading">
               <div class="transcript-line interviewer thinking">
-                <span class="time-stamp">{{ nowTime }}</span>
-                <div class="text-container">
-                  <div class="speaker-label">INTERVIEWER</div>
-                  <div class="status-pill speaking-pill">
-                    <span class="pill-dot"></span> Speaking…
+                <div class="avatar-column">
+                  <div class="user-avatar-small interviewer-avatar">I</div>
+                </div>
+                <div class="content-column">
+                  <div class="meta-header">
+                    <span class="speaker-label">INTERVIEWER</span>
+                    <span class="time-stamp">{{ nowTime }}</span>
+                  </div>
+                  <div class="text-container">
+                    <div class="status-pill speaking-pill">
+                      <span class="pill-dot"></span> Speaking…
+                    </div>
                   </div>
                 </div>
               </div>
               <div class="transcript-line user thinking">
-                <span class="time-stamp">{{ nowTime }}</span>
-                <div class="text-container">
-                  <div class="speaker-label">YOU</div>
-                  <div class="status-pill listening-pill">
-                    <span class="pill-dot"></span> Listening…
+                <div class="avatar-column">
+                  <div class="user-avatar-small">Y</div>
+                </div>
+                <div class="content-column">
+                  <div class="meta-header">
+                    <span class="speaker-label">YOU</span>
+                    <span class="time-stamp">{{ nowTime }}</span>
+                  </div>
+                  <div class="text-container">
+                    <div class="status-pill listening-pill">
+                      <span class="pill-dot"></span> Listening…
+                    </div>
                   </div>
                 </div>
               </div>
             </template>
-
-            <!-- INTERVIEWER Listening removed — no status shown when user is answering -->
           </template>
 
-          <!-- When questions ARE visible: show typing dots on the last interviewer entry inline -->
+          <!-- When questions ARE visible -->
           <template v-if="showQuestionSection && isReading">
             <div class="transcript-line user thinking">
-              <span class="time-stamp">{{ nowTime }}</span>
-              <div class="text-container">
-                <div class="speaker-label">YOU</div>
-                <div class="status-pill listening-pill">
-                  <span class="pill-dot"></span> Listening…
+              <div class="avatar-column">
+                <div class="user-avatar-small">Y</div>
+              </div>
+              <div class="content-column">
+                <div class="meta-header">
+                  <span class="speaker-label">YOU</span>
+                  <span class="time-stamp">{{ nowTime }}</span>
+                </div>
+                <div class="text-container">
+                  <div class="status-pill listening-pill">
+                    <span class="pill-dot"></span> Listening…
+                  </div>
                 </div>
               </div>
             </div>
@@ -80,32 +108,26 @@
         <!-- Status Left -->
         <div class="control-status">
           <div class="status-indicator-wrap">
-            <!-- Silence countdown bar -->
-            <template v-if="silenceProgress > 0 && !isPaused">
-              <div class="silence-countdown">
-                <div class="cbar-track">
-                  <div class="cbar-fill" :style="{ width: silenceProgress * 100 + '%' }"></div>
+            <div class="indicator-visual">
+              <!-- Silence countdown bar -->
+              <template v-if="silenceProgress > 0 && !isPaused">
+                <div class="silence-countdown">
+                  <div class="cbar-track">
+                    <div class="cbar-fill" :style="{ width: silenceProgress * 100 + '%' }"></div>
+                  </div>
+                  <span class="cbar-secs">{{ countdownSecsLeft }}s</span>
                 </div>
-                <span class="cbar-secs">{{ countdownSecsLeft }}s</span>
-              </div>
-            </template>
-            <!-- Recording wave -->
-            <template v-else-if="interviewing && !isPaused">
-              <div class="audio-wave">
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div>
-              </div>
-            </template>
-            <!-- Paused: show same-size pause icon so layout doesn't jump -->
-            <template v-else-if="isPaused">
-              <div class="audio-wave paused-wave">
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div>
-              </div>
-            </template>
-            <span class="status-label" :class="isPaused ? 'paused-text' : 'recording-text'">
+              </template>
+              <!-- Recording or Paused wave -->
+              <template v-else>
+                <div class="audio-wave" :class="{ 'paused-wave': isPaused }">
+                  <div class="bar"></div><div class="bar"></div>
+                  <div class="bar"></div><div class="bar"></div>
+                  <div class="bar"></div>
+                </div>
+              </template>
+            </div>
+            <span class="status-label" :class="isPaused || silenceProgress > 0 ? 'paused-text' : 'recording-text'">
               {{ isPaused ? 'Paused' : 'Recording...' }}
             </span>
           </div>
@@ -671,31 +693,80 @@ export default {
 
 .transcript-line {
   display: flex;
-  margin-bottom: 28px;
-  line-height: 1.7;
+  gap: 12px;
+  margin: 1.25rem 0;
+  align-items: flex-start;
 }
-.time-stamp {
-  min-width: 75px;
-  color: #c0c4cc;
-  font-size: 0.8em;
-  padding-top: 4px;
-  font-variant-numeric: tabular-nums;
+
+.avatar-column {
+  flex-shrink: 0;
+  width: 24px;
+}
+
+.content-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-avatar-small {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #94a3b8;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
   flex-shrink: 0;
 }
-.text-container { flex-grow: 1; }
+
+.interviewer-avatar {
+  background: #64748b;
+}
+
+.time-stamp {
+  font-size: 0.65rem;
+  color: #b0b7c3;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 24px; /* Match avatar height */
+  margin-bottom: 2px;
+}
+
 .speaker-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #94a3b8;
-  margin-bottom: 3px;
 }
-.transcript-line.user .speaker-label { color: #2563eb; }
+
+.transcript-line.user .speaker-label {
+  color: #2563eb;
+  opacity: 0.8;
+}
+
+.text-container {
+  flex: 1;
+  margin-top: -2px; /* Pull text closer to time */
+}
+
 .text {
-  font-size: 1.15em;
-  color: #000;
-  line-height: 1.65;
+  font-size: 1.1em;
+  color: #0f172a;
+  line-height: 1.6;
+  font-weight: 400;
 }
 
 /* Typing indicator */
@@ -716,7 +787,7 @@ export default {
 /* ── Control Bar ── */
 .control_bar {
   background: white;
-  padding: 15px 30px;
+  padding: 20px 30px;
   border-top: 1px solid #f0f2f5;
   display: flex;
   justify-content: space-between;
@@ -724,12 +795,26 @@ export default {
   gap: 20px;
   flex-shrink: 0;
   z-index: 20;
+  height: 15px;
+  overflow: visible;
+  line-height: 1;
 }
 .control-status {
   display: flex;
   align-items: center;
+  gap: 15px;
+  min-width: 280px;
+}
+.status-indicator-wrap {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  min-width: 200px;
+}
+.indicator-visual {
+  width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Silence countdown bar (replaces wave in footer) */
@@ -739,9 +824,9 @@ export default {
   gap: 8px;
 }
 .cbar-track {
-  width: 100px;
+  width: 50px;
   height: 4px;
-  background: #f1f5f9;
+  background: #fef3c7;
   border-radius: 2px;
   overflow: hidden;
 }
@@ -887,12 +972,20 @@ export default {
 }
 
 .record-btn {
-  width: 52px;
-  height: 52px;
-  font-size: 22px;
-  margin-bottom: 5px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  margin-bottom: 0;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+}
+.record-btn i {
+  margin: 0 !important;
+  line-height: normal !important;
 }
 .record-btn.is-recording {
   background-color: #f56c6c;
@@ -906,11 +999,12 @@ export default {
   color: white;
 }
 .done-btn { box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3); }
-.control-text { font-size: 0.72em; color: #64748b; font-weight: 600; }
+.control-text { display: none; }
 
 /* Audio Wave */
-.audio-wave { display: flex; align-items: center; gap: 3px; height: 20px; }
+.audio-wave { display: flex; align-items: center; gap: 2px; height: 12px; }
 .bar { width: 3px; background-color: #f56c6c; border-radius: 2px; animation: wave 1s ease-in-out infinite; }
+.paused-wave .bar { background-color: #e6a23c; animation: none; }
 .bar:nth-child(1) { height: 60%; animation-delay: 0.0s; }
 .bar:nth-child(2) { height: 80%; animation-delay: 0.1s; }
 .bar:nth-child(3) { height: 100%; animation-delay: 0.2s; }
@@ -920,6 +1014,8 @@ export default {
   0%, 100% { transform: scaleY(1); }
   50%       { transform: scaleY(0.4); }
 }
+.recording-text { color: #f56c6c; transition: color 0.3s; }
+.paused-text { color: #e6a23c; transition: color 0.3s; }
 
 .summary-wrapper, .setup-status-view {
   flex-grow: 1;
@@ -1002,33 +1098,32 @@ export default {
 
   /* Transcript: timestamp on its own line above text */
   .transcript_area  { padding: 14px 14px; padding-bottom: 55vh; }
-  .transcript-line  {
-    flex-direction: column;
-    gap: 3px;
-    margin-bottom: 20px;
+  .transcript-line {
+    gap: 10px;
   }
+  .avatar-column, .user-avatar-small {
+    width: 22px;
+    height: 22px;
+  }
+  .user-avatar-small { font-size: 0.6rem; }
   .time-stamp {
-    min-width: 0;
-    font-size: 0.7em;
-    color: #b0b7c3;
-    padding-top: 0;
+    font-size: 0.6rem;
+    line-height: 22px;
   }
   .text { font-size: 1em; }
-  .speaker-label { font-size: 0.68rem; }
 
-  /* Control bar */
+  /* Control bar - forced ultra-slim */
   .control_bar {
-    padding: 10px 14px;
-    gap: 8px;
-    flex-wrap: wrap;
+    height: 15px !important;
+    overflow: visible !important;
   }
   .control-status   { min-width: 0; flex: 1 1 auto; order: 1; }
   .bar-progress-group { flex: 1 1 100%; order: 3; max-width: 100%; }
   .controls-group   { order: 2; gap: 12px; }
   .status-indicator-wrap { min-width: 0; }
 
-  .record-btn   { width: 44px; height: 44px; font-size: 18px; }
-  .control-text { font-size: 0.65em; }
+  .record-btn   { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control-text { display: none !important; }
 
   /* Video popup: anchor to right edge */
   .video-popup {
@@ -1054,10 +1149,10 @@ export default {
   .transcript_area { padding: 10px 10px; padding-bottom: 55vh; }
   .text { font-size: 0.95em; }
 
-  .control_bar { padding: 8px 10px; gap: 6px; }
+  .control_bar { height: 15px !important; padding: 0 10px !important; gap: 6px; }
   .controls-group { gap: 8px; }
-  .record-btn { width: 40px; height: 40px; font-size: 16px; }
-  .control-text { font-size: 0.6em; }
+  .record-btn { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control-text { display: none !important; }
   .bar-progress-group { display: none; }
   .silence-countdown .cbar-track { width: 50px; }
   .status-label { font-size: 0.8em; }

@@ -19,7 +19,7 @@
       </div>
       <div class="hero-visual">
         <div class="visual-card">
-          <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="visual-logo" />
+          <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="visual-logo" />
           <div class="card-dots"></div>
         </div>
       </div>
