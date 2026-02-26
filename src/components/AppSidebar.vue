@@ -31,7 +31,7 @@
             :title="isCollapsed ? item.name : ''"
           >
             <div class="icon-box">
-              <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" :d="item.icon"/></svg>
+              <i :class="item.icon" class="nav-icon"></i>
             </div>
             <span v-if="!isCollapsed" class="link-label">{{ item.name }}</span>
           </router-link>
@@ -69,10 +69,17 @@ export default {
   },
   data() {
     return {
-      navItems: NAVIGATION_ITEMS
+      // navItems is now a computed property for dynamic filtering
     };
   },
   computed: {
+    navItems() {
+      const userRoles = authService.getUserRoles();
+      return NAVIGATION_ITEMS.filter(item => {
+        if (!item.allowedRoles) return true; // Public or all-logged-in
+        return userRoles.some(role => item.allowedRoles.includes(role));
+      });
+    },
     userEmail() {
       return authService.getUserEmail();
     },
@@ -221,8 +228,10 @@ export default {
 }
 
 .nav-icon {
-  width: 20px;
-  height: 20px;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .link-label {

@@ -1,22 +1,16 @@
 <template>
   <div class="info-button" @click.stop="toggle" title="View password policy">
-    <svg viewBox="0 0 24 24" width="16" height="16">
-      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-    </svg>
+    <i class="el-icon-info"></i>
     <div class="policy-popup" v-if="isOpen" @click.stop>
       <div class="policy-header">Password Requirements</div>
       
       <div class="requirement-list">
         <div class="requirement-item">
-          <svg viewBox="0 0 24 24" width="14" height="14" class="check-icon">
-            <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-          </svg>
+          <i class="el-icon-check check-icon"></i>
           <span>Minimum 8 characters</span>
         </div>
         <div class="requirement-item">
-          <svg viewBox="0 0 24 24" width="14" height="14" class="check-icon">
-            <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-          </svg>
+          <i class="el-icon-check check-icon"></i>
           <span>At least one: uppercase, lowercase, number, and special character</span>
         </div>
       </div>
@@ -132,7 +126,6 @@ export default {
   border: 1px solid #f1f5f9;
   padding: 0.5rem;
   border-radius: 4px;
-  font-family: monospace;
   font-size: 0.7rem; /* Smaller text */
   color: #2563eb;
   letter-spacing: 0.5px;

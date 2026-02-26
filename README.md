@@ -1,50 +1,66 @@
-> For Chinese users, we have provided an improved version: [https://mszl.me ](https://mszl.me )
-> 
-> （对于中国地区用户，我们提供了一个优化版本：[https://mszl.me ](https://mszl.me ) ）
+# Interview Simulator Copilot
 
-# Interview Copilot
+A modern, high-performance web application designed for real-time interview practice and transcription. It leverages advanced AI for voice synthesis, live speech-to-text, and automated feedback.
 
-> Utilizing GPT and Microsoft Azure's cutting-edge technology to assist interviewers
+## ✨ Features
 
-**Online Demo:** https://interview-copilot.github.io
+- **Real-time Transcription**: High-accuracy live transcription using AssemblyAI.
+- **AI-Powered Interviewer**: Interactive sessions with Azure Text-to-Speech (TTS) for realistic voice delivery.
+- **Live Feedback**: Automated evaluation and suggestions based on interview performance.
+- **Session History**: Save, review, and manage past mock interviews and transcriptions.
+- **Customizable Experience**: Choose between different voices, difficulty levels, and preview modes.
+- **Manual Control**: Full control over scrolling and session flow for a natural interaction.
 
-Interview Copilot is a web application that captures audio from the microphone, 
-utilizes Microsoft Azure's speech recognition service to obtain transcript, 
-and then invokes GPT to generate answer.
+## 🛠 Tech Stack
 
-![](./docs/imgs/2_demo/demo.png)
+- **Frontend**: Vue.js 2 with Element UI for a premium, responsive interface.
+- **Speech**: Azure Cognitive Services (TTS) and AssemblyAI (Real-time STT).
+- **AI**: OpenAI GPT-4o for intelligent question generation and feedback.
+- **Storage**: IndexedDB (local history) and session-based persistence.
 
-## Why Interview Copilot?
+## 🚀 Getting Started
 
-Although there are excellent interview assistance programs on GitHub (like [cheetah](https://github.com/leetcode-mafia/cheetah)), 
-they can only run on specific desktop platforms and are difficult to install or extend.
+### 1. Prerequisites
+- Node.js (v16+ recommended)
+- npm or yarn
 
-Therefore, I developed Interview Copilot using pure web technology.
-It does not need installation and can run in the browser of desktop, tablet, or smartphones.
-Also, It is **serverless**, the API Token information is stored locally in your browser.
+### 2. Environment Setup
+Create a `.env` file in the root directory and add your API keys:
 
-|                                                      | Windows | Mac  | Pad \ Phone |
-| ---------------------------------------------------- | ------- | ---- | ----------- |
-| [cheetah](https://github.com/leetcode-mafia/cheetah) |         | ✅    |             |
-| [ecoute](https://github.com/SevaSk/ecoute)           | ✅       |      |             |
-| Interview Copilot                                    | ✅       | ✅    | ✅           |
+```bash
+# OpenAI (Question generation & Feedback)
+VUE_APP_OPENAPI_TOKEN_KEY=your_openai_key
 
+# AssemblyAI (Real-time transcription)
+VUE_APP_ASSEMBLY_AI_TOKEN=your_assemblyai_token
 
+# Microsoft Azure (Realistic Voice Synthesis)
+VUE_APP_AZURE_SPEECH_KEY=your_azure_key
+VUE_APP_AZURE_SPEECH_REGION=your_azure_region
+```
 
-## Setting Instruction
+### 3. Installation
+```bash
+# Install dependencies
+npm install
 
-In order to use GPT, you need an Open AI API Token: https://platform.openai.com
+# Start development server
+npm run serve
+```
 
-To use Azure's speech recognition service, you can apply for a free token by referring to [this tutorial](./docs/azure_speech_service_tutorial.md).
+### 4. Build
+```bash
+# Build for production
+npm run build
+```
 
-The server controls live-ASR endpointing parameters via environment variables: **MIN_SILENCE_THRESHOLD** (milliseconds), **MAX_SILENCE_THRESHOLD** (milliseconds), and **END_OF_TURN_THRESHOLD** (confidence threshold 0.0–1.0). These env vars are REQUIRED — the realtime proxy will refuse to start a connection and will report an error to the client if they are missing or invalid.
+## 📂 Project Structure
 
+- `src/views`: Core page components (Interview, Transcriptions, Dashboard).
+- `src/components`: Reusable UI elements and functional modules (Recorders, UI gaps fixes).
+- `src/services`: API interaction layers for AI and Speech services.
+- `src/store`: Local state management and settings.
 
-## Developing
-This project is based on Vue2. Just  `cd app`:
+## 🤝 Contributing
+Feel free to submit issues or pull requests to improve the simulator!
 
-**install packages:** `npm install`
-
-**develop:** `npm run serve`
-
-**build:** `npm run build`

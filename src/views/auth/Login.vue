@@ -4,7 +4,7 @@
       <div class="auth-header">
         <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="auth-brand-logo" />
         <h2>Welcome Back</h2>
-        <p class="auth-subtitle">Log in to your AI Interview Simulator</p>
+        <p class="auth-subtitle">Log in to your Interview Simulator</p>
       </div>
 
       <form @submit.prevent="handleLogin" style="display: flex; flex-direction: column; gap: 20px;">

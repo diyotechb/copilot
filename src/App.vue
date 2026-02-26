@@ -90,9 +90,18 @@ export default {
 
 <style>
 :root {
+  --primary-color: #2563eb;
+  --primary-hover: #1d4ed8;
+  --bg-color: #ffffff;
+  --secondary-bg: #f9fafe;
+  --border-color: #e2e8f0;
+  --text-main: #1a1a1a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
   --sidebar-width: 260px;
   --sidebar-collapsed-width: 80px;
   --top-nav-height: 60px;
+  --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 * {
@@ -100,7 +109,7 @@ export default {
 }
 
 #app {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #1a1a1a;
@@ -128,6 +137,52 @@ body {
 
 #app.has-sidebar.sidebar-collapsed .main-wrapper {
   padding-left: var(--sidebar-collapsed-width);
+}
+
+/* ── Global Button Standard (Hero Style) ── */
+.primary-hero-btn {
+  padding: 16px 40px !important;
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  height: auto !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+  transition: all 0.3s !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.primary-hero-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
+}
+
+.minimal-control-btn {
+  background: white !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+  transition: all 0.2s !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+}
+
+.minimal-control-btn:hover {
+  background: #f8fafc !important;
+  color: #1a1a1a !important;
+  border-color: #cbd5e0 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.05) !important;
+}
+
+.minimal-control-btn:active {
+  transform: translateY(0);
+  background: #f1f5f9 !important;
+}
+
+.minimal-control-btn.is-active {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border-color: #bfdbfe !important;
 }
 
 .page-content {

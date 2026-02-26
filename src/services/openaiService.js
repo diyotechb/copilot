@@ -31,7 +31,6 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
       ]
     `;
 
-    // console.log(`[generateInterviewQA] 🔄 Fetching batch ${batchNum} of size ${batchSize}...`);
 
     const start = Date.now();
     const completion = await openai.chat.completions.create({
@@ -44,13 +43,11 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
     });
 
     const duration = ((Date.now() - start) / 1000).toFixed(2);
-    // console.log(`[generateInterviewQA] ✅ Batch ${batchNum} completed in ${duration}s`);
 
     const raw = completion.choices[0].message.content;
     try {
       const cleaned = raw.replace(/```(json)?\s*|```$/gi, '').trim();
       const qaArr = JSON.parse(cleaned);
-      // console.log(`[generateInterviewQA] 📦 Batch ${batchNum} produced ${qaArr.length} QAs`);
       return qaArr;
     } catch (e) {
       console.error(`[generateInterviewQA] ❌ Batch ${batchNum} returned invalid JSON`, raw);
@@ -79,7 +76,6 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
       return true;
     });
 
-    console.log(`[generateInterviewQA] 📊 Total unique QAs so far: ${allQA.length}`);
   }
 
   // Shuffle for randomness
@@ -88,7 +84,6 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
     [allQA[i], allQA[j]] = [allQA[j], allQA[i]];
   }
 
-  console.log(`[generateInterviewQA] 🎯 Final QA count: ${allQA.length}`);
 
   await saveInterviewQA(allQA);
   return allQA;

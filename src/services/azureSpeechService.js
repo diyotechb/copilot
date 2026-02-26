@@ -45,7 +45,8 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
       utter.rate = 1.05;
       utter.onend = onEnd;
       window.speechSynthesis.speak(utter);
-      return window.speechSynthesis; // Return for control (cancel/pause)
+      return window.speechSynthesis;
+
     }
     if (typeof onEnd === 'function') onEnd();
     return null;
@@ -81,7 +82,8 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
       console.error('Audio playback error:', e);
       if (typeof onEnd === 'function') onEnd();
     });
-    return audio; // Return for control (pause/play)
+    return audio;
+
   } catch (e) {
     console.error('Azure TTS error:', e);
     if (typeof onEnd === 'function') onEnd();
@@ -89,17 +91,13 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
   }
 }
 
-/**
- * Speak text via Azure TTS, routing audio through a shared AudioContext
- * so it can be captured by MediaRecorder alongside the microphone.
- * Falls back to normal Audio() playback if no context is provided.
- */
+
 export async function speakWithAzureTTSToContext(text, voice, audioCtx, destination, onEnd) {
   const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
   const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
 
   if (!subscriptionKey || !region) {
-    // Fallback: browser TTS (can't route through context easily)
+
     return speakWithAzureTTS(text, voice, onEnd);
   }
 
@@ -127,9 +125,7 @@ export async function speakWithAzureTTSToContext(text, voice, audioCtx, destinat
     const blob = new Blob([arrayBuffer], { type: 'audio/mp3' });
     const url = URL.createObjectURL(blob);
 
-    // Use an HTML Audio element so we get proper pause/resume support.
-    // Route it through the AudioContext via createMediaElementSource so it's
-    // captured by MediaRecorder alongside the mic.
+
     const audio = new Audio(url);
     audio.crossOrigin = 'anonymous';
 
@@ -139,7 +135,7 @@ export async function speakWithAzureTTSToContext(text, voice, audioCtx, destinat
       sourceNode.connect(audioCtx.destination);       // speakers
       if (destination) sourceNode.connect(destination); // recording mix
     } catch (e) {
-      // If createMediaElementSource fails (e.g. already connected), play directly
+
       console.warn('[TTS] Could not route through AudioContext:', e);
     }
 
@@ -153,7 +149,7 @@ export async function speakWithAzureTTSToContext(text, voice, audioCtx, destinat
       if (typeof onEnd === 'function') onEnd();
     });
 
-    // Return standard pause/play interface — HTML Audio handles it natively
+
     return audio;
   } catch (e) {
     console.error('Azure TTS context error:', e);

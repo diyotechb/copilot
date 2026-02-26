@@ -1,22 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-:root {
-  --primary-color: #2563eb;
-  --primary-hover: #1d4ed8;
-  --bg-color: #ffffff;
-  --secondary-bg: #f9fafe;
-  --border-color: #f0f2f5;
-  --text-main: #1a1a1a;
-  --text-secondary: #666666;
-  --text-muted: #999999;
-  --error-color: #f56c6c;
-  --warning-color: #e6a23c;
-  --success-color: #67c23a;
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(37,99,235,0.12);
-}
-
 .main-content-layout {
   flex-grow: 1;
   display: flex;
@@ -47,7 +28,8 @@
   scroll-behavior: smooth;
   display: flex;
   flex-direction: column;
-  padding-bottom: 80px; /* footer offset */
+  padding-bottom: 80px;
+  /* footer offset */
 }
 
 .footer-standard {

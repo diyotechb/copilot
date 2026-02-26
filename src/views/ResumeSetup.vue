@@ -203,7 +203,7 @@
 
           <div v-if="isGenerating" class="setup-submit-progress">
             <div class="submit-loader"></div>
-            <p>Our AI is crafting your personalized interview...</p>
+            <p>The system is crafting your personalized interview...</p>
           </div>
         </div>
       </div>
@@ -505,7 +505,7 @@ export default {
   overflow-y: auto;
   height: calc(100vh - 60px);
   background-color: #f9fafe;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 .setup-view-header {

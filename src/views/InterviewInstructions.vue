@@ -38,7 +38,7 @@
               <div class="rule-body">
                 <p class="rule-title">The 3-Second Rule</p>
                 <p class="rule-desc">
-                  After you stop speaking, the AI waits <strong>{{ silenceWaitSeconds }} seconds</strong> of silence before automatically moving to the next question. Finish your answer, then simply stay quiet for {{ silenceWaitSeconds }} seconds to advance — or tap <strong>Next</strong> to skip ahead anytime.
+                  After you stop speaking, the system waits <strong>{{ silenceWaitSeconds }} seconds</strong> of silence before automatically moving to the next question. Finish your answer, then simply stay quiet for {{ silenceWaitSeconds }} seconds to advance — or tap <strong>Next</strong> to skip ahead anytime.
                 </p>
               </div>
             </div>
@@ -48,7 +48,7 @@
                 <div class="list-icon step-num">1</div>
                 <div>
                   <p class="list-title">Interviewer reads the question aloud</p>
-                  <p class="list-sub">You'll hear the question spoken by your selected AI voice. The transcript appears in real time.</p>
+                  <p class="list-sub">You'll hear the question spoken by your selected system voice. The transcript appears in real time.</p>
                 </div>
               </li>
               <li>
@@ -260,7 +260,7 @@ export default {
 /* ── Base ── */
 .instructions-page-view {
   width: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 /* ── Header ── */

@@ -3,14 +3,19 @@
     <div class="dashboard-header">
       <h2>Transcripts</h2>
       <div class="dash-actions">
-        <el-button type="primary" icon="el-icon-microphone" @click="$emit('start-new')">Start Recording</el-button>
+        <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
+          Start Recording <i class="el-icon-right"></i>
+        </el-button>
       </div>
     </div>
     
       <div v-if="history.length === 0" class="empty-dashboard">
-        <i class="el-icon-microphone empty-icon"></i>
+        <i class="el-icon-microphone-off empty-icon"></i>
         <h3>No transcripts yet</h3>
-        <p>Start a new recording to get started</p>
+        <p>Capture your thoughts or meetings with real-time transcription.</p>
+        <el-button type="primary" class="primary-hero-btn" style="margin-top: 24px;" @click="$emit('start-new')">
+          Start First Recording <i class="el-icon-right"></i>
+        </el-button>
       </div>
       
       <div v-else class="transcript-list">

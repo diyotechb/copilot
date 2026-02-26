@@ -61,34 +61,37 @@
 
     <div class="control_bar" v-if="!isReadOnly">
       <div class="control-status">
-        <div class="audio-wave" v-if="isListening">
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
+        <div class="status-indicator-wrap">
+          <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': isListening }"></i>
+          <span class="status-label" :class="{ 'recording-text': isListening, 'paused-text': !isListening }">
+            {{ isListening ? 'RECORDING' : 'PAUSED' }}
+          </span>
         </div>
-        <span class="recording-text" :class="{ 'paused-text': !isListening }">
-            {{ isListening ? 'Recording...' : 'Recording Paused' }}
-         </span>
       </div>
 
       <div class="controls-group">
+        <!-- Timers Section in Center -->
+        <div class="center-timers">
+          
+          <div class="recording-duration">
+            {{ currentTime }}
+          </div>
+        </div>
+
         <div class="controls">
           <el-button
-              type="primary"
               circle
-              class="record-btn"
-              :class="{ 'is-recording': isListening, 'is-paused': !isListening }"
+              class="record-btn minimal-control-btn"
+              :class="{ 'is-active': isListening, 'is-paused': !isListening }"
               @click="$emit('toggle-pause')"
           >
-            <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-microphone'"></i>
+            <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-video-play'"></i>
           </el-button>
           <div class="control-text">{{ isListening ? 'Pause' : 'Resume' }}</div>
         </div>
 
         <div class="controls">
-          <el-button type="success" circle class="record-btn done-btn" @click="$emit('finish')">
+          <el-button circle class="record-btn done-btn minimal-control-btn" @click="$emit('finish')">
             <i class="el-icon-check"></i>
           </el-button>
           <div class="control-text">Done</div>
@@ -116,7 +119,9 @@ export default {
     lines: Array,
     currentInterim: String,
     isInterimInline: Boolean,
-    currentTime: String
+    currentTime: String,
+    silenceProgress: { type: Number, default: 0 },
+    countdownSecsLeft: { type: [Number, String], default: 0 }
   },
   computed: {
     userEmail() {
@@ -128,21 +133,6 @@ export default {
     }
   },
   methods: {
-    handleScroll() {
-      const container = this.$refs.scrollContainer;
-      if (container) {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
-    },
-    onTitleClick() {
-      if (this.isReadOnly) return;
-      this.$nextTick(() => {
-        this.$refs.titleInput.focus();
-      });
-    },
     onTitleBlur(e) {
       const newTitle = e.target.innerText.trim();
       if (newTitle && newTitle !== this.title) {
@@ -153,6 +143,8 @@ export default {
     }
   }
 }
+
+
 </script>
 
 <style scoped>
@@ -312,50 +304,142 @@ export default {
 
 .control_bar {
   background: white;
-  padding: 20px 30px;
+  padding: 10px 25px;
   border-top: 1px solid #f0f2f5;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20px;
+  gap: 15px;
   flex-shrink: 0;
   z-index: 20;
-  height: 15px;
-  overflow: visible;
-  line-height: 1;
-}
-
-.control_bar.read-only-bar {
-  background: #f9fafe;
-  color: #666;
-  justify-content: center;
+  min-height: 65px;
 }
 
 .control-status {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 220px;
 }
 
-.recording-text {
-  color: #f56c6c;
-  font-weight: 600;
-  font-size: 11px;
-  animation: flash 2s infinite;
+.status-indicator-wrap {
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.status-mic-icon {
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  color: #94a3b8; /* Default dimmed color */
+}
+
+.status-mic-icon.is-recording {
+  color: #dc2626;
+  animation: mic-pulse 1.5s infinite;
+}
+
+@keyframes mic-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.circular-timer-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.circular-timer-wrap.mini-timer {
+  width: 24px;
+  height: 24px;
+}
+
+.circular-timer {
+  width: 100%;
   height: 100%;
 }
 
-@keyframes flash {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.circle-bg {
+  fill: none;
+  stroke: #f1f5f9;
+  stroke-width: 3.8;
 }
 
-.paused-text {
-  color: #e6a23c;
-  animation: none;
+.circle-fill {
+  fill: none;
+  stroke: #059669;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.1s linear;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
 }
+
+.timer-countdown {
+  position: absolute;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #059669;
+}
+
+.mini-count {
+  font-size: 0.6rem !important;
+}
+
+.status-label {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.recording-text { color: #dc2626; }
+.paused-text { color: #e6a23c; }
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.center-timers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f8fafc;
+  padding: 6px 16px;
+  border-radius: 24px;
+  border: 1px solid #f1f5f9;
+  margin-right: 12px;
+}
+
+.silence-indicator-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+}
+
+.timer-icon {
+  font-size: 1.1rem;
+  color: #64748b;
+}
+
+.recording-duration {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+}
+
 
 .audio-wave {
   display: flex;
@@ -382,10 +466,6 @@ export default {
   50% { transform: scaleY(0.4); }
 }
 
-.controls-group {
-  display: flex;
-  gap: 30px;
-}
 
 .controls {
   text-align: center;
@@ -397,31 +477,16 @@ export default {
 .record-btn {
   width: 30px;
   height: 30px;
-  font-size: 14px;
   margin-bottom: 0;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 !important;
 }
+
 .record-btn i {
   margin: 0 !important;
   line-height: normal !important;
-}
-
-.record-btn.is-recording {
-  background-color: #f56c6c;
-  border-color: #f56c6c;
-  box-shadow: 0 4px 12px rgba(245, 108, 108, 0.4);
-}
-
-.record-btn.is-paused {
-  background-color: #e6a23c;
-  border-color: #e6a23c;
-  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.4);
-  color: white;
 }
 
 .done-btn {
@@ -429,7 +494,6 @@ export default {
   height: 30px;
   font-size: 14px;
   margin-bottom: 0;
-  box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
