@@ -166,12 +166,18 @@ class TranscriptionSpeechService {
 
         let text = '';
         let isFinal = false;
+        let audioStart = 0;
+        let audioEnd = 0;
+        let words = [];
 
         if (typeof data === 'string') {
             text = data;
         } else {
             text = data.text || data.utterance || '';
             isFinal = !!data.end_of_turn;
+            audioStart = data.audio_start || 0;
+            audioEnd = data.audio_end || 0;
+            words = data.words || [];
         }
 
         if (!text && !isFinal) return;
@@ -183,6 +189,9 @@ class TranscriptionSpeechService {
                 0: {
                     isFinal: isFinal,
                     0: { transcript: text },
+                    audioStart: audioStart,
+                    audioEnd: audioEnd,
+                    words: words,
                     length: 1
                 },
                 length: 1

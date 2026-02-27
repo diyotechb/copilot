@@ -247,7 +247,7 @@ export default {
   display: flex;
   flex-direction: row;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 15px;
   animation: fadeIn 0.4s ease-out;
 }
 
@@ -515,7 +515,7 @@ export default {
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .transcript-line {
-    margin-bottom: 18px;
+    margin-bottom: 15px;
   }
   .time-stamp {
     font-size: 0.6rem;
