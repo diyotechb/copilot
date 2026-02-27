@@ -50,7 +50,14 @@ export default {
       sessionTitle: "Note",
       sessionDate: null,
       isReadOnly: false,
-      mergeThresholdMs: 3500,
+      transcriptConfig: {
+        mergeThresholdMs: 5000,   // Silence gap to trigger new paragraph (5.0s)
+        overlapFuzzyInterim: 500, // Tolerance for matching ghost text start times
+        overlapFuzzyFinal: 1000,  // Tolerance for matching final segments
+        mergeBufferMs: 100,       // Padding for time-slice replacement
+        searchDepthLines: 10,     // How many previous segments to check for overlaps
+        overlapBufferMs: 500      // Micro-gap ignored for paragraph splitting
+      },
       isInterimInActiveParagraph: false,
       sessionStart: null,
       recordingDurationMs: 0,
@@ -209,19 +216,28 @@ export default {
       speechRecognitionService.setCallback('onResult', (event) => {
         let interim = '';
         let final = '';
+        let audioStart = 0;
+        let audioEnd = 0;
+        let words = [];
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             final = event.results[i][0].transcript;
+            audioStart = event.results[i].audioStart;
+            audioEnd = event.results[i].audioEnd;
+            words = event.results[i].words || [];
             if (!final && this.currentInterim) final = this.currentInterim;
-            this.onFinalTranscript(final);
+            this.onFinalTranscript(final, audioStart, audioEnd, words);
           } else {
             interim += event.results[i][0].transcript;
+            audioStart = event.results[i].audioStart;
+            audioEnd = event.results[i].audioEnd;
+            words = event.results[i].words || [];
           }
         }
 
         if (interim) {
-           this.onPartial(interim);
+           this.onPartial(interim, audioStart, audioEnd);
         } else {
            this.currentInterim = '';
         }
@@ -235,97 +251,168 @@ export default {
       });
     },
 
-    onPartial(text) {
+    /**
+     * Handles interim (ghost) transcription results.
+     * Decisions made here (like paragraph splitting) are persisted to the final result
+     * to prevent "snapping back" UI jitter.
+     * 
+     * @param {String} text - Current ghost text
+     * @param {Number} audioStart - Start time in audio milliseconds
+     * @param {Number} audioEnd - End time in audio milliseconds
+     */
+    onPartial(text, audioStart, audioEnd) {
         this.currentInterim = text || '';
-        
-        const last = this.transcriptLines[this.transcriptLines.length - 1];
         const now = Date.now();
-        if (last && this.currentInterim) {
-          const timeDiff = now - (last.ts || now);
-          this.isInterimInActiveParagraph = timeDiff <= this.mergeThresholdMs;
-          
-          // Keep paragraph alive while speaking
-          if (this.isInterimInActiveParagraph) {
-            last.ts = now;
-          }
+        
+        // 1. REFINEMENT DETECTION
+        // If this ghost text starts near where an existing line started, it's an update.
+        const overlaps = this.findOverlappingIndices(audioStart, this.transcriptConfig.overlapFuzzyInterim);
+        if (overlaps.length > 0) {
+            this.isInterimInActiveParagraph = true;
+            this.transcriptLines[overlaps[0]].ts = now;
+            return;
+        }
+
+        // 2. PROACTIVE PARAGRAPHING
+        // Anticipate if we should jump to a new line based on silence.
+        const lastLine = this.transcriptLines[this.transcriptLines.length - 1];
+        if (lastLine) {
+            // Guard: Check for both Audio silence and Wall-Clock silence.
+            const willSplit = this.shouldSplitParagraph(audioStart, lastLine, true);
+            this.isInterimInActiveParagraph = !willSplit;
+            
+            if (this.isInterimInActiveParagraph) {
+                lastLine.ts = now;
+            }
         } else {
-          this.isInterimInActiveParagraph = false;
+            this.isInterimInActiveParagraph = false;
         }
     },
 
-    cleanupText(text) {
-        if (!text) return "";
-        let t = text.trim();
-        const words = t.split(/\s+/).filter(Boolean);
-        // Only strip trailing period for absolute single words
-        if (words.length === 1) {
-            t = t.replace(/[.,!?]$/, "");
-        }
-        return t;
-    },
-
-    onFinalTranscript(text) {
+    /**
+     * Handles finalized transcription results from the backend.
+     * Implements "Shared Decision" logic: respects decisions made in onPartial.
+     * Implements "Multi-Line Merge": consolidates lines if the backend re-segments.
+     * 
+     * @param {String} text - Finalized text string
+     * @param {Number} audioStart - Start timestamp (from backend)
+     * @param {Number} audioEnd - End timestamp (from backend)
+     * @param {Array} newWords - Individual word timing metadata
+     */
+    onFinalTranscript(text, audioStart, audioEnd, newWords) {
         if (!text) return;
-        const cleaned = this.cleanupText(text);
         const timestamp = Date.now();
         if (!this.sessionStart) this.sessionStart = timestamp;
 
-        const lastIndex = this.transcriptLines.length - 1;
-        const lastLine = this.transcriptLines[lastIndex];
+        // Fallback if word-level data is missing
+        if (!newWords || newWords.length === 0) {
+            newWords = [{ text, start: audioStart, end: audioEnd || (audioStart + 1000) }];
+        }
 
+        // 1. SURGICAL REFINEMENT & MULTI-LINE CONSOLIDATION
+        // If new words overlap with history, merge them and delete old split versions.
+        const overlaps = this.findOverlappingIndices(newWords[0].start, this.transcriptConfig.overlapFuzzyFinal);
+        if (overlaps.length > 0) {
+            const firstIdx = overlaps[0];
+            const targetLine = this.transcriptLines[firstIdx];
+            
+            targetLine.allWords = this.mergeWords(targetLine.allWords || [], newWords);
+            targetLine.text = targetLine.allWords.map(w => w.text).join(' ');
+            targetLine.ts = timestamp;
+            
+            // Delete subsequent lines that are now redundant (Consolidation)
+            for (let i = overlaps.length - 1; i > 0; i--) {
+                this.transcriptLines.splice(overlaps[i], 1);
+            }
+
+            this.isInterimInActiveParagraph = false;
+            this.saveCurrentTranscript();
+            return;
+        }
+
+        // 2. SHARED DECISION PARAGRAPHING
+        const lastLine = this.transcriptLines[this.transcriptLines.length - 1];
         if (lastLine) {
-            const timeDiff = timestamp - (lastLine.ts || timestamp);
-            if (timeDiff <= this.mergeThresholdMs) {
-                this.mergeWithLast(lastIndex, lastLine, cleaned, timestamp);
+            // Priority 1: Did onPartial already decide this segment starts a new line?
+            const hasInterimDecision = !!this.currentInterim;
+            const splitAlreadyDecided = hasInterimDecision && !this.isInterimInActiveParagraph;
+            
+            // Priority 2: Trust absolute AUDIO timing for finalizing (ignore wall-clock jitter).
+            const newTimingRequiresSplit = this.shouldSplitParagraph(newWords[0].start, lastLine, false);
+
+            if (!splitAlreadyDecided && !newTimingRequiresSplit) {
+                // APPEND TO PARAGRAPH
+                lastLine.allWords = [...(lastLine.allWords || []), ...newWords];
+                lastLine.text = lastLine.allWords.map(w => w.text).join(' ');
+                lastLine.ts = timestamp;
+                this.lastFinalTime = timestamp; 
                 this.isInterimInActiveParagraph = false;
+                this.saveCurrentTranscript();
                 return;
             }
         }
 
-        this.addNewLine(cleaned, timestamp);
+        // 3. START FRESH LINE
+        this.lastFinalTime = timestamp;
+        this.addNewLine(text, timestamp, audioStart, audioEnd, newWords);
         this.isInterimInActiveParagraph = false;
     },
 
-    mergeWithLast(index, lastLine, text, timestamp) {
-        const updatedLine = { ...lastLine };
-        updatedLine.ts = timestamp;
-        
-        const numMap = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
-        const normalize = (s) => String(s || '')
-            .replace(/[\p{P}\u2018\u2019\u201C\u201D]/gu, '')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .toLowerCase()
-            .split(' ')
-            .map(w => numMap[w] || w)
-            .join(' ');
-
-        const baseNorm = normalize(lastLine.text);
-        const newNorm = normalize(text);
-
-        if (newNorm.includes(baseNorm) || baseNorm.includes(newNorm)) {
-            if (text.length >= lastLine.text.length) {
-                updatedLine.text = text;
+    /**
+     * Finds all lines in history that overlap with a timestamp.
+     */
+    findOverlappingIndices(audioStart, fuzzyMs) {
+        const indices = [];
+        const depth = this.transcriptConfig.searchDepthLines;
+        for (let i = this.transcriptLines.length - 1; i >= 0; i--) {
+            const words = this.transcriptLines[i].allWords || [];
+            if (words.some(w => Math.abs(w.start - audioStart) < fuzzyMs)) {
+                indices.unshift(i);
             }
-        } else {
-            const b = lastLine.text.trim();
-            const a = text.trim();
-            if (normalize(b).endsWith(normalize(a))) {
-                updatedLine.text = b;
-            } else {
-                updatedLine.text = `${b} ${a}`;
-            }
+            if (i < this.transcriptLines.length - depth) break;
         }
-
-        this.transcriptLines.splice(index, 1, updatedLine);
-        this.saveCurrentTranscript();
+        return indices;
     },
 
-    addNewLine(text, timestamp) {
+    /**
+     * Logic for deciding if a new sentence starts a fresh paragraph.
+     */
+    shouldSplitParagraph(newAudioStart, lastLine, checkWallClock = false) {
+        if (!lastLine || !lastLine.allWords || lastLine.allWords.length === 0) return true;
+        
+        const lastWordEnd = lastLine.allWords[lastLine.allWords.length - 1].end;
+        const audioSilence = newAudioStart - lastWordEnd;
+        
+        // Always merge if audio shows we are overlapping or speaking very fast.
+        if (audioSilence < this.transcriptConfig.overlapBufferMs) return false;
+
+        const wallClockSilence = (this.lastFinalTime && checkWallClock) ? (Date.now() - this.lastFinalTime) : 0;
+        const threshold = this.transcriptConfig.mergeThresholdMs;
+
+        return audioSilence >= threshold || wallClockSilence >= threshold;
+    },
+
+    /**
+     * Surgically replaces words in the time slice with new results.
+     */
+    mergeWords(existingWords, newWords) {
+        if (!newWords.length) return existingWords;
+        const buffer = this.transcriptConfig.mergeBufferMs;
+        const start = newWords[0].start - buffer;
+        const end = newWords[newWords.length - 1].end + buffer;
+
+        const unchanged = existingWords.filter(w => w.start < start || w.start > end);
+        return [...unchanged, ...newWords].sort((a, b) => a.start - b.start);
+    },
+
+    addNewLine(text, timestamp, audioStart, audioEnd, words) {
         this.transcriptLines.push({
             time: this.getCurrentTime(),
             text: text,
-            ts: timestamp
+            ts: timestamp,
+            audioStart: audioStart,
+            audioEnd: audioEnd,
+            allWords: words || [{ text, start: audioStart, end: audioEnd }]
         });
         this.saveCurrentTranscript();
     },
@@ -337,6 +424,12 @@ export default {
         this.stopDurationTimer();
       } else {
         if (this.isReadOnly) return; 
+        
+        // RESET state for a fresh session
+        this.lastFinalTime = null;
+        this.isInterimInActiveParagraph = false;
+        this.currentInterim = "";
+
         speechRecognitionService.start();
         this.isListening = true;
         this.startDurationTimer();
