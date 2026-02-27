@@ -108,7 +108,7 @@
         <!-- 1. Left: Status & Timer -->
         <div class="control-status">
           <div class="status-indicator-wrap">
-            <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': !isPaused && interviewing && !isReading }"></i>
+            <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': !isPaused && interviewing && !isReading }" title="Recording Status"></i>
             <span class="status-label" :class="{ 'recording-text': !isPaused && !isReading, 'paused-text': isPaused || isReading }">
               {{ (isPaused || isReading) ? 'PAUSED' : 'RECORDING' }}
             </span>
@@ -128,7 +128,7 @@
                 </svg>
                 <span class="timer-countdown mini-count">{{ countdownSecsLeft }}</span>
               </div>
-              <i v-else class="el-icon-time timer-icon"></i>
+              <i v-else class="el-icon-time timer-icon" title="Silence Detection Active"></i>
             </div>
             
             <div class="recording-duration">
@@ -154,13 +154,13 @@
                 </div>
               </div>
             </transition>
-            <el-button circle class="record-btn minimal-control-btn" :class="{ 'active-video': showVideoPreview }" @click="toggleVideoPreview">
+            <el-button circle class="record-btn minimal-control-btn" :class="{ 'active-video': showVideoPreview }" @click="toggleVideoPreview" title="Toggle Camera Preview">
               <i class="el-icon-video-camera"></i>
             </el-button>
           </div>
 
           <div class="controls">
-            <el-button circle class="record-btn minimal-control-btn" :class="{ 'is-active': !isPaused }" @click="togglePause">
+            <el-button circle class="record-btn minimal-control-btn" :class="{ 'is-active': !isPaused }" @click="togglePause" :title="isPaused ? 'Resume Session' : 'Pause Session'">
               <i :class="isPaused ? 'el-icon-video-play' : 'el-icon-video-pause'"></i>
             </el-button>
           </div>
@@ -592,7 +592,6 @@ export default {
   flex-direction: column;
   overflow: hidden;
   height: 100%;
-  font-family: var(--font-family);
 }
 
 .interview-main {
@@ -781,8 +780,8 @@ export default {
 }
 
 .circular-timer-wrap.mini-timer {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
 }
 
 .circular-timer {
@@ -832,7 +831,9 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 .timer-icon {
@@ -1141,17 +1142,34 @@ export default {
   }
   .text { font-size: 1em; }
 
-  /* Control bar - forced ultra-slim */
+  /* Control bar - responsive layout */
   .control_bar {
-    height: 15px !important;
-    overflow: visible !important;
+    height: auto !important;
+    min-height: 70px;
+    flex-wrap: wrap;
+    padding: 15px !important;
+    gap: 15px;
+    justify-content: center;
   }
-  .control-status   { min-width: 0; flex: 1 1 auto; order: 1; }
-  .bar-progress-group { flex: 1 1 100%; order: 3; max-width: 100%; }
-  .controls-group   { order: 2; gap: 12px; }
-  .status-indicator-wrap { min-width: 0; }
+  .control-status   { 
+    flex: 1 1 100%; 
+    justify-content: center; 
+    order: 1; 
+  }
+  .controls-group   { 
+    flex: 1 1 auto; 
+    order: 2; 
+    gap: 16px; 
+  }
+  .bar-progress-group { 
+    flex: 1 1 100%; 
+    order: 3; 
+    max-width: 100%; 
+    align-items: center;
+  }
+  .status-indicator-wrap { min-width: 0; justify-content: center; }
 
-  .record-btn   { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .record-btn   { width: 36px !important; height: 36px !important; font-size: 16px !important; }
   .control-text { display: none !important; }
 
   /* Video popup: anchor to right edge */
@@ -1178,12 +1196,14 @@ export default {
   .transcript_area { padding: 10px 10px; padding-bottom: 55vh; }
   .text { font-size: 0.95em; }
 
-  .control_bar { height: 15px !important; padding: 0 10px !important; gap: 6px; }
-  .controls-group { gap: 8px; }
-  .record-btn { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control_bar { 
+    padding: 12px 10px !important; 
+    gap: 10px; 
+  }
+  .controls-group { gap: 12px; }
+  .record-btn { width: 32px !important; height: 32px !important; font-size: 14px !important; }
   .control-text { display: none !important; }
-  .bar-progress-group { display: none; }
-  .silence-countdown .cbar-track { width: 50px; }
-  .status-label { font-size: 0.8em; }
+  .bar-progress-group { display: flex; } /* Show progress on mobile but at the bottom */
+  .status-label { font-size: 0.82rem; }
 }
 </style>

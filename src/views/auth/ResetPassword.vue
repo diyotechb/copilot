@@ -115,7 +115,6 @@
 import authService from '@/services/authService';
 import { validateEmail, validatePassword } from '@/utils/validation';
 import PasswordPolicy from './components/PasswordPolicy.vue';
-import { Message } from 'element-ui';
 
 export default {
     components: { PasswordPolicy },
@@ -147,7 +146,6 @@ export default {
             try {
                 await authService.resetPassword(this.email);
                 this.step = 2;
-                Message.success('Reset code sent successfully.');
             } catch (error) {
                 console.error('Reset request error:', error);
                 const errorMsg = error.response?.data?.message || error.message || 'Failed to send reset code.';
@@ -179,7 +177,6 @@ export default {
                     confirmationCode: this.confirmationCode,
                 };
                 await authService.confirmReset(data);
-                Message.success('Password updated successfully! Please login.');
                 this.$router.push({ name: 'Login' });
             } catch (error) {
                 console.error('Password confirm error:', error);

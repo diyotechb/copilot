@@ -59,7 +59,7 @@ export default {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  padding: 0 40px;
+  padding: 0 40px 40px 40px;
   overflow-y: auto;
 }
 

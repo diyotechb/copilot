@@ -6,7 +6,6 @@
     align-items: center;
     min-height: 100vh;
     background-color: var(--secondary-bg);
-    font-family: var(--font-family);
     padding: 20px;
 }
 

@@ -62,7 +62,7 @@
     <div class="control_bar" v-if="!isReadOnly">
       <div class="control-status">
         <div class="status-indicator-wrap">
-          <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': isListening }"></i>
+          <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': isListening }" title="Recording Status"></i>
           <span class="status-label" :class="{ 'recording-text': isListening, 'paused-text': !isListening }">
             {{ isListening ? 'RECORDING' : 'PAUSED' }}
           </span>
@@ -84,6 +84,7 @@
               class="record-btn minimal-control-btn"
               :class="{ 'is-active': isListening, 'is-paused': !isListening }"
               @click="$emit('toggle-pause')"
+              :title="isListening ? 'Pause Recording' : 'Resume Recording'"
           >
             <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-video-play'"></i>
           </el-button>
@@ -91,7 +92,7 @@
         </div>
 
         <div class="controls">
-          <el-button circle class="record-btn done-btn minimal-control-btn" @click="$emit('finish')">
+          <el-button circle class="record-btn done-btn minimal-control-btn" @click="$emit('finish')" title="Finish Recording">
             <i class="el-icon-check"></i>
           </el-button>
           <div class="control-text">Done</div>
@@ -356,8 +357,8 @@ export default {
 }
 
 .circular-timer-wrap.mini-timer {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
 }
 
 .circular-timer {
@@ -425,7 +426,9 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 .timer-icon {
@@ -522,15 +525,27 @@ export default {
   .transcript_area { padding: 14px 14px; padding-bottom: 55vh; }
 
   .control_bar {
-    height: 15px !important;
-    overflow: visible !important;
-    gap: 10px;
+    height: auto !important;
+    flex-wrap: wrap;
+    padding: 15px !important;
+    gap: 15px;
+    justify-content: center;
   }
-  .controls-group { gap: 16px; }
+  .control-status {
+    flex: 1 1 100%;
+    justify-content: center;
+    order: 1;
+  }
+  .controls-group {
+    flex: 1 1 100%;
+    order: 2;
+    gap: 20px;
+    justify-content: center;
+  }
   .record-btn, .done-btn {
-    width: 30px !important;
-    height: 30px !important;
-    font-size: 14px !important;
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 16px !important;
   }
   .control-text { display: none !important; }
 }
@@ -538,9 +553,12 @@ export default {
 @media (max-width: 480px) {
   .transcript_area { padding: 10px; padding-bottom: 55vh; }
   .text { font-size: 1em; }
-  .control_bar { height: 15px !important; padding: 0 10px !important; gap: 8px; overflow: visible !important; }
-  .controls-group { gap: 10px; }
-  .record-btn, .done-btn { width: 30px !important; height: 30px !important; font-size: 14px !important; }
+  .control_bar {
+    padding: 12px !important;
+    gap: 12px;
+  }
+  .controls-group { gap: 15px; }
+  .record-btn, .done-btn { width: 32px !important; height: 32px !important; font-size: 14px !important; }
   .control-text { display: none !important; }
 }
 </style>

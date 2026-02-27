@@ -367,7 +367,6 @@ export default {
   flex-direction: column;
   height: calc(100vh - 60px); 
   background-color: #f9fafe;
-  font-family: var(--font-family);
   color: #333;
 }
 </style>

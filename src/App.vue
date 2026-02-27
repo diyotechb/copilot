@@ -42,7 +42,7 @@ export default {
   components: { NavBar, AppSidebar },
   data() {
     return {
-      isSidebarCollapsed: false,
+      isSidebarCollapsed: true,
       isMobileSidebarOpen: false,
       isLoggedIn: authService.isLoggedIn(),
       isSidebarHiddenManually: false
@@ -89,6 +89,8 @@ export default {
 </script>
 
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+
 :root {
   --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
@@ -101,15 +103,23 @@ export default {
   --sidebar-width: 260px;
   --sidebar-collapsed-width: 80px;
   --top-nav-height: 60px;
-  --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --font-family: 'Outfit', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 * {
   box-sizing: border-box;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: 'Outfit', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+button, input, select, textarea, .el-button, .el-input {
+  font-family: var(--font-family) !important;
 }
 
 #app {
-  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #1a1a1a;

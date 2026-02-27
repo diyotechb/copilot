@@ -60,7 +60,6 @@
 <script>
 import { validateEmail, validateMinLength } from '@/utils/validation';
 import authService from '@/services/authService';
-import { Message } from 'element-ui';
 
 export default {
     name: "Login",
@@ -74,7 +73,7 @@ export default {
     },
     created() {
         if (authService.isLoggedIn()) {
-            this.$router.push({ name: 'ResumeSetup' });
+            this.$router.push({ name: 'Home' });
         }
     },
     methods: {
@@ -93,8 +92,7 @@ export default {
 
             try {
                 await authService.login(this.email, this.password);
-                Message.success('Login successful!');
-                this.$router.push({ name: 'ResumeSetup' });
+                this.$router.push({ name: 'Home' });
             } catch (error) {
                 console.error('Login error:', error);
                 const errorMsg = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';

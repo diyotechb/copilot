@@ -108,7 +108,6 @@
 import authService from '@/services/authService';
 import { validateEmail, validatePassword } from '@/utils/validation';
 import PasswordPolicy from './components/PasswordPolicy.vue';
-import { Message } from 'element-ui';
 
 export default {
   components: { PasswordPolicy },
@@ -159,7 +158,6 @@ export default {
 
         const response = await authService.signup(signupData);
         if (response.status === 200 || response.status === 201) {
-          Message.success('Registration successful! Please login.');
           this.$router.push({ name: 'Login' });
         }
       } catch (error) {
