@@ -712,7 +712,7 @@ export default {
 }
 
 .transcript-line.user .speaker-label {
-  color: #2563eb;
+  color: #94a3b8;
   opacity: 0.8;
 }
 
@@ -722,10 +722,9 @@ export default {
 }
 
 .text {
-  font-size: 1.1em;
+  font-size: 1.30em;
   color: #0f172a;
-  line-height: 1.6;
-  font-weight: 400;
+  line-height: 1.65;
 }
 
 /* Typing indicator */

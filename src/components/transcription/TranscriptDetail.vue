@@ -288,8 +288,9 @@ export default {
 }
 
 .text {
-  font-size: 1.15em;
-  color: #000;
+  font-size: 1.30em;
+  color: #0f172a;
+  line-height: 1.65;
 }
 
 .interim-inline {
