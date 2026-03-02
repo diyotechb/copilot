@@ -382,14 +382,22 @@ export default {
         
         const lastWordEnd = lastLine.allWords[lastLine.allWords.length - 1].end;
         const audioSilence = newAudioStart - lastWordEnd;
-        
-        // Always merge if audio shows we are overlapping or speaking very fast.
-        if (audioSilence < this.transcriptConfig.overlapBufferMs) return false;
-
-        const wallClockSilence = (this.lastFinalTime && checkWallClock) ? (Date.now() - this.lastFinalTime) : 0;
         const threshold = this.transcriptConfig.mergeThresholdMs;
 
-        return audioSilence >= threshold || wallClockSilence >= threshold;
+        // 1. Check Audio Timestamp (Source of Truth)
+        // Only trust audio silence if newAudioStart > 0 (not a missing/reset timestamp)
+        if (newAudioStart > 0) {
+            if (audioSilence >= threshold) return true;
+            if (audioSilence < this.transcriptConfig.overlapBufferMs) return false;
+        }
+
+        // 2. Fallback to Wall-Clock Silence
+        if (checkWallClock && this.lastFinalTime) {
+            const wallClockSilence = Date.now() - this.lastFinalTime;
+            if (wallClockSilence >= threshold) return true;
+        }
+
+        return false;
     },
 
     /**

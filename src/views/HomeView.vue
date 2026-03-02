@@ -10,7 +10,7 @@
         </p>
         <div class="hero-actions">
           <el-button v-if="canStartInterview" type="primary" class="primary-hero-btn" @click="startNewInterview">
-            Practice Interview Now <i class="el-icon-right"></i>
+            Practice Interview <i class="el-icon-right"></i>
           </el-button>
           <el-button v-if="canViewTranscriptions" class="secondary-hero-btn" @click="$router.push({name: 'TranscriptionsView'})">
             <i class="el-icon-document"></i> View Transcriptions
@@ -47,23 +47,16 @@
 
 <script>
 import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'HomeView',
   computed: {
     canStartInterview() {
-      const allowed = ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL'];
-      const rawRoles = authService.getUserRoles();
-      const roles = Array.isArray(rawRoles) ? rawRoles : (typeof rawRoles === 'string' ? [rawRoles] : []);
-      const normalizedRoles = roles.map(r => String(r).trim().toUpperCase());
-      return normalizedRoles.some(role => allowed.includes(role));
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.ALL_AUTHORIZED);
     },
     canViewTranscriptions() {
-      const allowed = ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP'];
-      const rawRoles = authService.getUserRoles();
-      const roles = Array.isArray(rawRoles) ? rawRoles : (typeof rawRoles === 'string' ? [rawRoles] : []);
-      const normalizedRoles = roles.map(r => String(r).trim().toUpperCase());
-      return normalizedRoles.some(role => allowed.includes(role));
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
     }
   },
   methods: {
