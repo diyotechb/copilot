@@ -1,3 +1,5 @@
+import { ROLE_GROUPS } from '@/constants/roles';
+
 export const NAVIGATION_ITEMS = [
     {
         name: 'Home',
@@ -9,12 +11,12 @@ export const NAVIGATION_ITEMS = [
         name: 'Practice Setup',
         routeName: 'ResumeSetup',
         icon: 'el-icon-notebook-2',
-        allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL']
+        allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     },
     {
         name: 'Transcriptions',
         routeName: 'TranscriptionsView',
         icon: 'el-icon-microphone',
-        allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP']
+        allowedRoles: ROLE_GROUPS.STAFF
     }
 ];

@@ -10,6 +10,7 @@ import { getInterviewQA } from '@/store/interviewStore'
 import TranscriptionsView from '@/views/TranscriptionsView.vue';
 import HomeView from '@/views/HomeView.vue';
 import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 import Unauthorized from '@/views/Unauthorized.vue'
 
@@ -58,7 +59,7 @@ const routes = [
     component: ResumeSetup,
     meta: {
       requiresAuth: true,
-      allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL']
+      allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
   },
   {
@@ -67,7 +68,7 @@ const routes = [
     component: SummaryView,
     meta: {
       requiresAuth: true,
-      allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL']
+      allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
   },
   {
@@ -76,7 +77,7 @@ const routes = [
     component: InterviewView,
     meta: {
       requiresAuth: true,
-      allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL']
+      allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
   },
   {
@@ -85,7 +86,7 @@ const routes = [
     component: ResumeSetup,
     meta: {
       requiresAuth: true,
-      allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP', 'COPILOT_USER', 'DIYO_EXTERNAL']
+      allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
   },
   {
@@ -94,7 +95,7 @@ const routes = [
     component: TranscriptionsView,
     meta: {
       requiresAuth: true,
-      allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'DIYO_EMP']
+      allowedRoles: ROLE_GROUPS.STAFF
     }
   }
 ]
@@ -122,14 +123,7 @@ router.beforeEach(async (to, from, next) => {
   // 3. Check Authorization (Roles)
   const requiredRoles = to.meta.allowedRoles;
   if (requiredRoles && requiredRoles.length > 0) {
-    // Robust role checking: Ensure array and normalize to uppercase
-    const rawRoles = authService.getUserRoles();
-    const userRoles = Array.isArray(rawRoles) ? rawRoles : (typeof rawRoles === 'string' ? [rawRoles] : []);
-    const normalizedUserRoles = userRoles.map(r => String(r).trim().toUpperCase());
-    const normalizedRequiredRoles = requiredRoles.map(r => String(r).trim().toUpperCase());
-
-    const hasRole = normalizedUserRoles.some(role => normalizedRequiredRoles.includes(role));
-    if (!hasRole) {
+    if (!hasAnyRole(userRoles, requiredRoles)) {
       return next({ name: 'Unauthorized' });
     }
   }

@@ -54,6 +54,7 @@
 <script>
 import authService from '@/services/authService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
+import { hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'AppSidebar',
@@ -76,8 +77,7 @@ export default {
     navItems() {
       const userRoles = authService.getUserRoles();
       return NAVIGATION_ITEMS.filter(item => {
-        if (!item.allowedRoles) return true; // Public or all-logged-in
-        return userRoles.some(role => item.allowedRoles.includes(role));
+        return hasAnyRole(userRoles, item.allowedRoles);
       });
     },
     userEmail() {
