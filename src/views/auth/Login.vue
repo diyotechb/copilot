@@ -60,6 +60,7 @@
 <script>
 import { validateEmail, validateMinLength } from '@/utils/validation';
 import authService from '@/services/authService';
+import storageService from '@/services/storageService';
 
 export default {
     name: "Login",
@@ -92,7 +93,8 @@ export default {
 
             try {
                 await authService.login(this.email, this.password);
-                this.$router.push({ name: 'Home' });
+                const preferredPage = storageService.getItem(storageService.KEYS.USER_LANDING_PAGE);
+                this.$router.push({ name: preferredPage || 'Home' });
             } catch (error) {
                 console.error('Login error:', error);
                 const errorMsg = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';

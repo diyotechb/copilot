@@ -14,7 +14,7 @@
         <button class="hamburger-btn" @click="isMobileSidebarOpen = true" aria-label="Open Menu">
           <i class="el-icon-menu"></i>
         </button>
-        <router-link to="/" class="mobile-branding-link">
+        <router-link :to="{ name: logoTarget }" class="mobile-branding-link">
           <div class="mobile-branding">
             <span class="mobile-logo-text">Diyo Tech</span>
           </div>
@@ -36,6 +36,7 @@
 import NavBar from '@/components/NavBar.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import authService from '@/services/authService';
+import storageService from '@/services/storageService';
 
 export default {
   name: 'App',
@@ -76,6 +77,9 @@ export default {
       
       const publicPages = ['Home'];
       return publicPages.includes(this.$route.name) && !this.showSidebar;
+    },
+    logoTarget() {
+      return storageService.getItem(storageService.KEYS.USER_LANDING_PAGE) || 'Home';
     }
   },
   watch: {
@@ -142,12 +146,10 @@ body {
 }
 
 #app.has-sidebar .main-wrapper {
-  padding-left: var(--sidebar-width);
-}
-
-#app.has-sidebar.sidebar-collapsed .main-wrapper {
   padding-left: var(--sidebar-collapsed-width);
 }
+
+/* No longer need specific padding for sidebar-collapsed as it's now constant */
 
 /* ── Global Button Standard (Hero Style) ── */
 .primary-hero-btn {

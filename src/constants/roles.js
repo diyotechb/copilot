@@ -23,6 +23,14 @@ export const ROLE_GROUPS = {
         ROLES.DIYO_EMP,
         ROLES.COPILOT_USER,
         ROLES.DIYO_EXTERNAL
+    ],
+
+    // Roles allowed to access transcription features
+    TRANSCRIPTION_ACCESS: [
+        ROLES.ADMIN,
+        ROLES.SUPER_ADMIN,
+        ROLES.DIYO_EMP,
+        ROLES.DIYO_EXTERNAL
     ]
 };
 

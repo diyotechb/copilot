@@ -9,8 +9,8 @@
 
     <aside class="app-sidebar" :class="{ 'is-collapsed': isCollapsed, 'is-mobile-open': isMobileOpen }">
       <div class="sidebar-header">
-        <router-link to="/" class="branding-link">
-          <div class="logo-wrapper" v-if="!isCollapsed">
+        <router-link :to="{ name: logoTarget }" class="branding-link">
+          <div class="logo-wrapper" v-if="showFullContent">
             <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="sidebar-logo" />
           </div>
           <div class="logo-mini-text" v-else title="Diyo Tech">
@@ -33,7 +33,7 @@
             <div class="icon-box">
               <i :class="item.icon" class="nav-icon"></i>
             </div>
-            <span v-if="!isCollapsed" class="link-label">{{ item.name }}</span>
+            <span v-if="showFullContent" class="link-label">{{ item.name }}</span>
           </router-link>
         </div>
       </div>
@@ -41,9 +41,13 @@
       <div class="sidebar-footer">
         <div v-if="userEmail" class="user-block">
           <div class="user-avatar-small">{{ userInitials }}</div>
-          <div v-if="!isCollapsed" class="user-info">
+          <div v-if="showFullContent" class="user-info">
             <span class="user-email-text">{{ userEmail }}</span>
-            <button class="logout-link-small" @click="handleLogout">Logout</button>
+            <div class="user-links-small">
+              <router-link :to="{ name: 'ProfileSettings' }" class="footer-link-small">Settings</router-link>
+              <span class="link-divider">•</span>
+              <button class="logout-link-small" @click="handleLogout">Logout</button>
+            </div>
           </div>
         </div>
       </div>
@@ -53,6 +57,7 @@
 
 <script>
 import authService from '@/services/authService';
+import storageService from '@/services/storageService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
 import { hasAnyRole } from '@/constants/roles';
 
@@ -86,6 +91,12 @@ export default {
     userInitials() {
       if (!this.userEmail) return '?';
       return this.userEmail.charAt(0).toUpperCase();
+    },
+    logoTarget() {
+      return storageService.getItem(storageService.KEYS.USER_LANDING_PAGE) || 'Home';
+    },
+    showFullContent() {
+      return !this.isCollapsed || this.isMobileOpen;
     }
   },
   methods: {
@@ -115,7 +126,12 @@ export default {
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 1000;
+  z-index: 1050; /* Above navbar if needed */
+  box-shadow: none;
+}
+
+.app-sidebar:not(.is-collapsed) {
+  box-shadow: 20px 0 25px -5px rgba(0, 0, 0, 0.05), 10px 0 10px -5px rgba(0, 0, 0, 0.02);
 }
 
 .app-sidebar.is-collapsed {
@@ -279,6 +295,26 @@ export default {
   text-overflow: ellipsis;
 }
 
+.user-links-small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.footer-link-small {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.footer-link-small:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.link-divider {
+  color: #e2e8f0;
+  font-size: 0.7rem;
+}
 .logout-link-small {
   background: none;
   border: none;
@@ -288,7 +324,6 @@ export default {
   font-weight: 600;
   cursor: pointer;
   text-align: left;
-  margin-top: 2px;
 }
 
 .logout-link-small:hover {

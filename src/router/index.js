@@ -8,8 +8,10 @@ import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
 import { getInterviewQA } from '@/store/interviewStore'
 import TranscriptionsView from '@/views/TranscriptionsView.vue';
+import ProfileSettings from '@/views/ProfileSettings.vue';
 import HomeView from '@/views/HomeView.vue';
 import authService from '@/services/authService';
+import storageService from '@/services/storageService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 import Unauthorized from '@/views/Unauthorized.vue'
@@ -95,7 +97,16 @@ const routes = [
     component: TranscriptionsView,
     meta: {
       requiresAuth: true,
-      allowedRoles: ROLE_GROUPS.STAFF
+      allowedRoles: ROLE_GROUPS.TRANSCRIPTION_ACCESS
+    }
+  },
+  {
+    path: '/profile',
+    name: 'ProfileSettings',
+    component: ProfileSettings,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
   }
 ]
