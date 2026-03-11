@@ -56,7 +56,7 @@ export default {
       return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.ALL_AUTHORIZED);
     },
     canViewTranscriptions() {
-      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.TRANSCRIPTION_ACCESS);
     }
   },
   methods: {

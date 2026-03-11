@@ -17,6 +17,12 @@ export const NAVIGATION_ITEMS = [
         name: 'Transcriptions',
         routeName: 'TranscriptionsView',
         icon: 'el-icon-microphone',
-        allowedRoles: ROLE_GROUPS.STAFF
+        allowedRoles: ROLE_GROUPS.TRANSCRIPTION_ACCESS
+    },
+    {
+        name: 'Profile Settings',
+        routeName: 'ProfileSettings',
+        icon: 'el-icon-user',
+        allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
 ];

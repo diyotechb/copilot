@@ -9,7 +9,7 @@
               <i :class="isMenuOpen ? 'el-icon-close' : 'el-icon-menu'" class="mobile-toggle-icon"></i>
             </button>
           
-          <router-link to="/" class="brand-link">
+          <router-link :to="{ name: logoTarget }" class="brand-link">
             <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="brand-logo" />
           </router-link>
 
@@ -37,9 +37,10 @@
             
             <transition name="fade">
               <div v-if="isUserMenuOpen" class="user-dropdown">
-                <div class="dropdown-header">
-                  <span class="user-email-full">{{ userEmail }}</span>
-                </div>
+                <router-link :to="{ name: 'ProfileSettings' }" class="dropdown-item" @click.native="isUserMenuOpen = false">
+                  <i class="el-icon-user nav-icon"></i>
+                  <span>Settings</span>
+                </router-link>
                 <button class="dropdown-item logout" @click="handleLogout">
                   <i class="el-icon-switch-button nav-icon"></i>
                   <span>Logout</span>
@@ -89,24 +90,34 @@
 
 <script>
 import authService from '@/services/authService';
+import storageService from '@/services/storageService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
+import { hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'NavBar',
   data() {
     return {
       isMenuOpen: false,
-      isUserMenuOpen: false,
-      navItems: NAVIGATION_ITEMS.filter(item => item.routeName) 
+      isUserMenuOpen: false
     };
   },
   computed: {
+    navItems() {
+      const userRoles = authService.getUserRoles();
+      return NAVIGATION_ITEMS.filter(item => {
+        return hasAnyRole(userRoles, item.allowedRoles);
+      });
+    },
     userEmail() {
       return authService.getUserEmail();
     },
     userInitials() {
       if (!this.userEmail) return '?';
       return this.userEmail.charAt(0).toUpperCase();
+    },
+    logoTarget() {
+      return storageService.getItem(storageService.KEYS.USER_LANDING_PAGE) || 'Home';
     }
   },
   methods: {
