@@ -61,7 +61,8 @@ export default {
       isInterimInActiveParagraph: false,
       sessionStart: null,
       recordingDurationMs: 0,
-      durationTimer: null
+      durationTimer: null,
+      audioTimeOffset: 0
     };
   },
   mounted() {
@@ -108,6 +109,7 @@ export default {
       this.lastFinalTime = null;
       this.sessionStart = null;
       this.recordingDurationMs = 0;
+      this.audioTimeOffset = 0;
       this.stopDurationTimer();
     },
     openDetail(item) {
@@ -221,18 +223,25 @@ export default {
         let words = [];
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            final = event.results[i][0].transcript;
-            audioStart = event.results[i].audioStart;
-            audioEnd = event.results[i].audioEnd;
-            words = event.results[i].words || [];
+          const res = event.results[i];
+          const offset = this.audioTimeOffset;
+          
+          if (res.isFinal) {
+            final = res[0].transcript;
+            audioStart = (res.audioStart || 0) + offset;
+            audioEnd = (res.audioEnd || 0) + offset;
+            words = (res.words || []).map(w => ({
+              ...w,
+              start: (w.start || 0) + offset,
+              end: (w.end || 0) + offset
+            }));
+            
             if (!final && this.currentInterim) final = this.currentInterim;
             this.onFinalTranscript(final, audioStart, audioEnd, words);
           } else {
-            interim += event.results[i][0].transcript;
-            audioStart = event.results[i].audioStart;
-            audioEnd = event.results[i].audioEnd;
-            words = event.results[i].words || [];
+            interim += res[0].transcript;
+            audioStart = (res.audioStart || 0) + offset;
+            audioEnd = (res.audioEnd || 0) + offset;
           }
         }
 
@@ -433,10 +442,16 @@ export default {
       } else {
         if (this.isReadOnly) return; 
         
-        // RESET state for a fresh session
-        this.lastFinalTime = null;
-        this.isInterimInActiveParagraph = false;
-        this.currentInterim = "";
+        // Calculate offset to ensure continuity across pause/resume
+        if (this.transcriptLines.length > 0) {
+          const lastLine = this.transcriptLines[this.transcriptLines.length - 1];
+          if (lastLine.allWords && lastLine.allWords.length > 0) {
+            const lastWord = lastLine.allWords[lastLine.allWords.length - 1];
+            this.audioTimeOffset = lastWord.end + 500; // 500ms safety buffer
+          } else {
+            this.audioTimeOffset = (lastLine.audioEnd || 0) + 500;
+          }
+        }
 
         speechRecognitionService.start();
         this.isListening = true;
