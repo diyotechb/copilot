@@ -337,20 +337,41 @@ export default {
   methods: {
     // ── Release all media devices (camera + mic) ──────────────────────────
     releaseMediaDevices() {
+      // 1. Explicitly stop AnswerRecorder (includes mic tracks)
       if (this.$refs.answerRecorder) {
         try { this.$refs.answerRecorder.stopRecording(); } catch (e) {}
       }
+      
+      // 2. Explicitly stop VideoRecorder (includes camera tracks)
       if (this.$refs.videoRecorder) {
-        try { this.$refs.videoRecorder.forceStopAllTracks(); } catch (e) {}
+        try { this.$refs.videoRecorder.stopRecording(); } catch (e) {}
       }
-      // Cancel any TTS
+
+      // 3. Close the shared AudioContext (kills any remaining audio processing)
+      if (this.sharedAudioCtx) {
+        try {
+          if (this.sharedAudioCtx.state !== 'closed') {
+            this.sharedAudioCtx.close();
+          }
+        } catch (e) {}
+        this.sharedAudioCtx = null;
+        this.mixDestination = null;
+      }
+
+      // 4. Cancel any TTS
       if (this.activeInterviewerAudio) {
         try {
-          if (typeof this.activeInterviewerAudio.pause === 'function') this.activeInterviewerAudio.pause();
+          if (typeof this.activeInterviewerAudio.pause === 'function') {
+             this.activeInterviewerAudio.pause();
+             this.activeInterviewerAudio.src = "";
+          }
           else if (window.speechSynthesis) window.speechSynthesis.cancel();
         } catch (e) {}
         this.activeInterviewerAudio = null;
       }
+
+      this.stopTimer();
+      this.clearStream();
     },
 
     highlightTranscript,

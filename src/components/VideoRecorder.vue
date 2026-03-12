@@ -72,19 +72,22 @@ export default {
   },
   methods: {
     forceStopAllTracks() {
-      // Immediately kill every track so the camera/mic indicator light turns off
-      if (this.recordingStream) {
-        this.recordingStream.getTracks().forEach(track => track.stop());
-        this.recordingStream = null;
-      }
-      if (this._fallbackAudioStream) {
-        this._fallbackAudioStream.getTracks().forEach(track => track.stop());
-        this._fallbackAudioStream = null;
-      }
-      if (this.mediaStream) {
-        this.mediaStream.getTracks().forEach(track => track.stop());
-        this.mediaStream = null;
-      }
+      const kill = (stream) => {
+        if (stream && stream.getTracks) {
+          stream.getTracks().forEach(t => {
+            t.stop();
+          });
+        }
+      };
+
+      kill(this.recordingStream);
+      kill(this._fallbackAudioStream);
+      kill(this.mediaStream);
+
+      this.recordingStream = null;
+      this._fallbackAudioStream = null;
+      this.mediaStream = null;
+
       if (this.$refs.previewVideo) {
         this.$refs.previewVideo.srcObject = null;
       }
