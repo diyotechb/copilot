@@ -3,6 +3,7 @@
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
       :history="history"
+      :mic-permission="micPermissionState"
       @start-new="startNewSession"
       @open-detail="openDetail"
       @delete-item="deleteHistoryItem"
@@ -62,15 +63,28 @@ export default {
       sessionStart: null,
       recordingDurationMs: 0,
       durationTimer: null,
-      audioTimeOffset: 0
+      audioTimeOffset: 0,
+      micPermissionState: 'prompt'
     };
   },
   mounted() {
     this.history = transcriptService.loadHistory();
     this.initSpeechRecognition();
+    this.initMicPermissionCheck();
+    
+    // Cleanup if tab is closed/refreshed
+    this._unloadHandler = () => this.cleanupMedia();
+    window.addEventListener('beforeunload', this._unloadHandler);
+  },
+  beforeRouteLeave(to, from, next) {
+    this.cleanupMedia();
+    next();
   },
   beforeDestroy() {
-    speechRecognitionService.stop();
+    this.cleanupMedia();
+    if (this._unloadHandler) {
+      window.removeEventListener('beforeunload', this._unloadHandler);
+    }
   },
   methods: {
     getCurrentTime() {
@@ -93,6 +107,7 @@ export default {
             return; 
         }
         speechRecognitionService.stop();
+        this.cleanupMedia();
       }
       
       this.saveCurrentTranscript(); 
@@ -123,10 +138,19 @@ export default {
       this.lastFinalTime = null;
     },
     async startNewSession() {
+      if (this.micPermissionState === 'denied') {
+        this.$alert('Microphone access is blocked. Please enable it in your browser settings (usually in the address bar) to start recording.', 'Microphone Access Required', {
+          confirmButtonText: 'Got it',
+          type: 'warning'
+        });
+        return;
+      }
+
       try {
         // Force permission check before changing view state
         await navigator.mediaDevices.getUserMedia({ audio: true });
-        
+        this.micPermissionState = 'granted';
+
         this.$root.$emit('toggle-sidebar', true);
         this.viewMode = 'detail';
         speechRecognitionService.stop(); 
@@ -150,6 +174,7 @@ export default {
     finishRecording() {
       this.stopDurationTimer();
       speechRecognitionService.stop();
+      this.cleanupMedia();
       this.saveCurrentTranscript();
       this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
@@ -471,6 +496,26 @@ export default {
       if (this.durationTimer) {
         clearInterval(this.durationTimer);
         this.durationTimer = null;
+      }
+    },
+
+    cleanupMedia() {
+      speechRecognitionService.stop();
+      this.stopDurationTimer();
+      this.isListening = false;
+    },
+
+    async initMicPermissionCheck() {
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const result = await navigator.permissions.query({ name: 'microphone' });
+          this.micPermissionState = result.state;
+          result.onchange = () => {
+            this.micPermissionState = result.state;
+          };
+        } catch (err) {
+          console.warn("[TranscriptionsView] Permissions API not fully supported for microphone:", err);
+        }
       }
     }
   }

@@ -221,11 +221,19 @@ class TranscriptionSpeechService {
             this.source = null;
         }
         if (this.audioContext) {
-            try { this.audioContext.close(); } catch (e) { }
+            try { 
+                if (this.audioContext.state !== 'closed') {
+                    this.audioContext.close();
+                }
+            } catch (e) { }
             this.audioContext = null;
         }
         if (this.audioStream) {
-            try { this.audioStream.getTracks().forEach(t => t.stop()); } catch (e) { }
+            try { 
+                this.audioStream.getTracks().forEach(t => {
+                    t.stop();
+                });
+            } catch (e) { }
             this.audioStream = null;
         }
 
