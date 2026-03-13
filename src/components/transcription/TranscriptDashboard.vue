@@ -25,7 +25,7 @@
         </div>
 
         <div class="storage-info">
-          <i class="el-icon-info"></i> Only the 10 most recent recordings are saved locally.
+          <i class="el-icon-info"></i> Only the {{ maxHistory }} most recent recordings are saved locally.
         </div>
 
         <transcript-card 
@@ -41,6 +41,7 @@
 
 <script>
 import TranscriptCard from './TranscriptCard.vue';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   name: 'TranscriptDashboard',
@@ -53,6 +54,11 @@ export default {
     micPermission: {
       type: String,
       default: 'prompt'
+    }
+  },
+  computed: {
+    maxHistory() {
+      return APP_CONFIG.TRANSCRIPTION.MAX_HISTORY;
     }
   }
 }

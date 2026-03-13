@@ -11,7 +11,7 @@
       <div class="sidebar-header">
         <router-link :to="{ name: logoTarget }" class="branding-link">
           <div class="logo-wrapper" v-if="showFullContent">
-            <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="sidebar-logo" />
+            <img :src="`${diyoUrl}/logo-transparent.svg`" alt="Diyo Logo" class="sidebar-logo" />
           </div>
           <div class="logo-mini-text" v-else title="Diyo Tech">
             DT
@@ -60,6 +60,7 @@ import authService from '@/services/authService';
 import storageService from '@/services/storageService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
 import { hasAnyRole } from '@/constants/roles';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   name: 'AppSidebar',
@@ -76,6 +77,7 @@ export default {
   data() {
     return {
       // navItems is now a computed property for dynamic filtering
+      diyoUrl: APP_CONFIG.SERVICES.DIYO_MAIN_WEBSITE
     };
   },
   computed: {

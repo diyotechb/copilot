@@ -42,3 +42,13 @@ export async function deleteItem(storeName, key) {
   const db = await getDb();
   await db.delete(storeName, key);
 }
+
+export async function getAllFromStore(storeName) {
+  const db = await getDb();
+  return db.getAll(storeName);
+}
+
+export async function getAllKeysFromStore(storeName) {
+  const db = await getDb();
+  return db.getAllKeys(storeName);
+}

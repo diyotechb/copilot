@@ -4,7 +4,7 @@
       <!-- Step 1: Request Reset -->
       <form v-if="step === 1" @submit.prevent="handleRequestReset" style="display: flex; flex-direction: column; gap: 20px;">
         <div class="auth-header">
-          <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="auth-brand-logo" />
+          <img :src="`${diyoUrl}/logo-transparent.svg`" alt="Diyo Logo" class="auth-brand-logo" />
           <h2>Reset Password</h2>
           <p class="auth-subtitle">Enter your email to receive a reset code</p>
         </div>
@@ -41,7 +41,7 @@
       <!-- Step 2: Confirm Reset -->
       <form v-else @submit.prevent="handleConfirmReset" style="display: flex; flex-direction: column; gap: 20px;">
         <div class="auth-header">
-          <img src="https://diyotech.net/assets/images/diyotech.jpg" alt="Diyo Logo" class="auth-brand-logo" />
+          <img :src="`${diyoUrl}/assets/images/diyotech.jpg`" alt="Diyo Logo" class="auth-brand-logo" />
           <h2>New Password</h2>
           <p class="auth-subtitle">Set your new workspace credentials</p>
         </div>
@@ -115,6 +115,7 @@
 import authService from '@/services/authService';
 import { validateEmail, validatePassword } from '@/utils/validation';
 import PasswordPolicy from './components/PasswordPolicy.vue';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
     components: { PasswordPolicy },
@@ -126,7 +127,8 @@ export default {
             newPassword: '',
             confirmNewPassword: '',
             errorMessage: '',
-            isLoading: false
+            isLoading: false,
+            diyoUrl: APP_CONFIG.SERVICES.DIYO_MAIN_WEBSITE
         };
     },
     methods: {

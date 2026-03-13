@@ -1,3 +1,5 @@
+import { APP_CONFIG } from '@/constants/appConfig';
+
 class TranscriptionSpeechService {
     constructor() {
         this.isListening = false;
@@ -8,47 +10,34 @@ class TranscriptionSpeechService {
             onError: null
         };
 
-
         this.ws = null;
         this.audioContext = null;
         this.processor = null;
         this.source = null;
         this.audioStream = null;
-        this.sampleRate = 48000;
-        this.bufferSize = 4096;
+        this.sampleRate = APP_CONFIG.TRANSCRIPTION.SAMPLE_RATE;
+        this.bufferSize = APP_CONFIG.TRANSCRIPTION.BUFFER_SIZE;
         this.audioQueue = [];
         this.sending = false;
-        this.debug = true;
-
 
         this.baseUrl = (function () {
             const env = process.env.VUE_APP_SERVER_URL;
-            let url = env || null;
+            let url = env || '';
+            
             if (!url) {
                 try {
-                    const origin = window.location.origin;
-                    if (window.location.port === '3002') {
-
-                    } else {
-                        url = origin;
-                    }
+                    url = window.location.origin;
                 } catch (e) {
                     url = 'http://localhost:3001';
                 }
             }
-            if (url && /\/$/.test(url)) {
-                url = url.replace(/\/+$/, '');
-            }
-            return url;
+            
+            return url.replace(/\/+$/, '');
         })();
     }
 
     isSupported() {
         return !!(window.AudioContext || window.webkitAudioContext) && !!window.WebSocket;
-    }
-
-    init(options = {}) {
-        this.options = options;
     }
 
     setCallback(name, cb) {
@@ -73,7 +62,6 @@ class TranscriptionSpeechService {
             try {
                 this.audioStream = await navigator.mediaDevices.getUserMedia(constraints);
             } catch (err) {
-                console.warn('Fallback to default audio', err);
                 this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
 
@@ -98,7 +86,7 @@ class TranscriptionSpeechService {
                 this.audioQueue.push(pcm16);
             };
 
-            let wsOrigin = this.baseUrl.replace(/\/+$/, '');
+            let wsOrigin = this.baseUrl;
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
@@ -117,16 +105,14 @@ class TranscriptionSpeechService {
                     if (msg.type === 'message') {
                         this.handleServerMessage(msg.data);
                     } else if (msg.type === 'proxy_error') {
-                        console.error('Server Error:', msg.message);
                         this.handleError(msg.message);
                     }
                 } catch (e) {
-                    console.warn('Failed to parse message', e);
+                    // Ignore malformed messages silently
                 }
             };
 
-            this.ws.onerror = (err) => {
-                console.error('WebSocket Error', err);
+            this.ws.onerror = () => {
                 this.handleError('WebSocket connection error');
             };
 
@@ -135,7 +121,6 @@ class TranscriptionSpeechService {
             };
 
         } catch (e) {
-            console.error('Start failed', e);
             this.handleError(e.message);
             this.stop();
         }
@@ -150,12 +135,13 @@ class TranscriptionSpeechService {
             }
 
             const chunk = this.audioQueue.shift();
+            // Minimum chunk size to avoid flood
             if (chunk.length < (this.sampleRate / 1000) * 50) continue;
 
             try {
                 this.ws.send(chunk.buffer);
             } catch (e) {
-                console.warn('Send failed', e);
+                break;
             }
         }
         this.sending = false;
@@ -181,7 +167,6 @@ class TranscriptionSpeechService {
         }
 
         if (!text && !isFinal) return;
-
 
         const mockEvent = {
             resultIndex: 0,
@@ -230,9 +215,7 @@ class TranscriptionSpeechService {
         }
         if (this.audioStream) {
             try { 
-                this.audioStream.getTracks().forEach(t => {
-                    t.stop();
-                });
+                this.audioStream.getTracks().forEach(t => t.stop());
             } catch (e) { }
             this.audioStream = null;
         }

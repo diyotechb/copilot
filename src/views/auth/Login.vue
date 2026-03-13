@@ -2,7 +2,7 @@
   <div class="auth-container">
     <div class="auth-form">
       <div class="auth-header">
-        <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="auth-brand-logo" />
+        <img :src="`${diyoUrl}/logo-transparent.svg`" alt="Diyo Logo" class="auth-brand-logo" />
         <h2>Welcome Back</h2>
         <p class="auth-subtitle">Log in to your Interview Simulator</p>
       </div>
@@ -61,6 +61,7 @@
 import { validateEmail, validateMinLength } from '@/utils/validation';
 import authService from '@/services/authService';
 import storageService from '@/services/storageService';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
     name: "Login",
@@ -70,6 +71,7 @@ export default {
             password: "",
             isLoading: false,
             errorMessage: '',
+            diyoUrl: APP_CONFIG.SERVICES.DIYO_MAIN_WEBSITE
         };
     },
     created() {

@@ -19,7 +19,7 @@
       </div>
       <div class="hero-visual">
         <div class="visual-card">
-          <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="visual-logo" />
+          <img :src="`${diyoUrl}/logo-transparent.svg`" alt="Diyo Logo" class="visual-logo" />
           <div class="card-dots"></div>
         </div>
       </div>
@@ -48,9 +48,15 @@
 <script>
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   name: 'HomeView',
+  data() {
+    return {
+      diyoUrl: APP_CONFIG.SERVICES.DIYO_MAIN_WEBSITE
+    };
+  },
   computed: {
     canStartInterview() {
       return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.ALL_AUTHORIZED);

@@ -1,8 +1,9 @@
 import storageService from './storageService';
-import moment from 'moment';
+
+import { APP_CONFIG } from '@/constants/appConfig';
 
 const KEYS = storageService.KEYS;
-const MAX_HISTORY = 10;
+const MAX_HISTORY = APP_CONFIG.TRANSCRIPTION.MAX_HISTORY;
 
 class TranscriptService {
     loadHistory() {
@@ -19,11 +20,12 @@ class TranscriptService {
 
         let history = this.loadHistory();
 
+        const now = new Date();
         const newEntry = {
             id: session.id || this.generateId(),
             timestamp: session.timestamp || Date.now(),
-            dateStr: session.dateStr || moment().format('MMM D, h:mm A'),
-            title: session.title || `Note ${moment().format('MMM D')}`,
+            dateStr: session.dateStr || now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+            title: session.title || `Note ${now.toLocaleString('en-US', { month: 'short', day: 'numeric' })}`,
             lines: session.lines
         };
 
@@ -62,8 +64,9 @@ class TranscriptService {
         if (!lines || lines.length === 0) return '';
         const allText = lines.map(line => line.text).join(' ');
         const words = allText.split(/\s+/).filter(w => w);
-        if (words.length > 75) {
-            return words.slice(0, 75).join(' ') + '...';
+        const previewLength = APP_CONFIG.TRANSCRIPTION.PREVIEW_LENGTH;
+        if (words.length > previewLength) {
+            return words.slice(0, previewLength).join(' ') + '...';
         }
         return allText;
     }
