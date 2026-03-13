@@ -10,7 +10,7 @@
             </button>
           
           <router-link :to="{ name: logoTarget }" class="brand-link">
-            <img src="https://www.diyotech.net/logo-transparent.svg" alt="Diyo Logo" class="brand-logo" />
+            <img :src="`${diyoUrl}/logo-transparent.svg`" alt="Diyo Logo" class="brand-logo" />
           </router-link>
 
           <!-- Desktop Navigation -->
@@ -93,13 +93,15 @@ import authService from '@/services/authService';
 import storageService from '@/services/storageService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
 import { hasAnyRole } from '@/constants/roles';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   name: 'NavBar',
   data() {
     return {
       isMenuOpen: false,
-      isUserMenuOpen: false
+      isUserMenuOpen: false,
+      diyoUrl: APP_CONFIG.SERVICES.DIYO_MAIN_WEBSITE
     };
   },
   computed: {

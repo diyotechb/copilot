@@ -46,9 +46,6 @@
 </template>
 
 <script>
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import mammoth from 'mammoth';
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 export default {
   name: 'FileUpload',
@@ -94,6 +91,8 @@ export default {
         const reader = new FileReader();
         reader.onload = async (ev) => {
           try {
+            const pdfjsLib = await import('pdfjs-dist/build/pdf');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
             const typedarray = new Uint8Array(ev.target.result);
             const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
             let text = "";
@@ -104,6 +103,7 @@ export default {
             }
             this.text = text.trim();
           } catch (err) {
+            console.error('PDF extraction error:', err);
             this.text = "Failed to extract text from PDF.";
           }
         };
@@ -113,10 +113,12 @@ export default {
         const reader = new FileReader();
         reader.onload = async (ev) => {
           try {
+            const { default: mammoth } = await import('mammoth');
             const arrayBuffer = ev.target.result;
             const result = await mammoth.extractRawText({ arrayBuffer });
             this.text = result.value.trim();
           } catch (err) {
+            console.error('DOCX extraction error:', err);
             this.text = "Failed to extract text from DOCX.";
           }
         };

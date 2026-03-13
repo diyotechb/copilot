@@ -36,7 +36,7 @@
                 <i class="el-icon-time"></i>
               </div>
               <div class="rule-body">
-                <p class="rule-title">The 3-Second Rule</p>
+                <p class="rule-title">The {{ silenceWaitSeconds }}-Second Rule</p>
                 <p class="rule-desc">
                   After you stop speaking, the system waits <strong>{{ silenceWaitSeconds }} seconds</strong> of silence before automatically moving to the next question. Finish your answer, then simply stay quiet for {{ silenceWaitSeconds }} seconds to advance — or tap <strong>Next</strong> to skip ahead anytime.
                 </p>
@@ -77,7 +77,6 @@
             <div class="tips-row">
               <div class="tip-chip"><i class="el-icon-microphone"></i> Quiet room = better results</div>
               <div class="tip-chip"><i class="el-icon-sunny"></i> Face a light source</div>
-              <div class="tip-chip"><i class="el-icon-headset"></i> Headphones recommended</div>
             </div>
           </div>
         </div>
@@ -167,6 +166,8 @@
 </template>
 
 <script>
+import { APP_CONFIG } from '@/constants/appConfig';
+
 export default {
   name: 'InterviewInstructions',
   props: {
@@ -186,9 +187,8 @@ export default {
     };
   },
   computed: {
-    // ── ONE place to change the silence rule shown on this page ──
     silenceWaitSeconds() {
-      return 3; // ← change this number (e.g. to 2) to update all text on this page
+      return (APP_CONFIG.INTERVIEW.SILENCE_WAIT_MS) / 1000;
     }
   },
   mounted() {

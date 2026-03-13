@@ -256,6 +256,19 @@
         <el-button type="primary" @click="handlePermissionsCheck">Check Status Again</el-button>
       </div>
     </el-dialog>
+
+    <!-- Custom Confirmation Modal -->
+    <ConfirmDialog
+      :visible.sync="confirmVisible"
+      :title="confirmConfig.title"
+      :message="confirmConfig.message"
+      :type="confirmConfig.type"
+      :confirm-text="confirmConfig.confirmText"
+      :show-cancel="confirmConfig.showCancel"
+      :icon="confirmConfig.icon"
+      :loading="confirmConfig.loading"
+      @confirm="handleConfirmAction"
+    />
   </div>
 </template>
 
@@ -265,11 +278,13 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
 import { clearRecordingsStore } from '@/store/recordingStore.js';
+import { APP_CONFIG } from '@/constants/appConfig';
 import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 
 export default {
   name: 'ResumeSetup',
-  components: { FileUpload, InterviewInstructions },
+  components: { FileUpload, InterviewInstructions, ConfirmDialog },
   data() {
     return {
       resumeText: '',
@@ -290,6 +305,18 @@ export default {
       micLoading: false,
       showHelpModal: false,
       showQuestions: true,
+      // Confirmation Modal State
+      confirmVisible: false,
+      confirmConfig: {
+        title: '',
+        message: '',
+        type: 'primary',
+        confirmText: 'Confirm',
+        showCancel: true,
+        icon: 'el-icon-warning-outline',
+        loading: false,
+        action: null
+      }
     };
   },
   computed: {
@@ -300,9 +327,11 @@ export default {
   },
   async mounted() {
     this.fetchVoices();
-    clearRecordingsStore();
-    clearInterviewQAStore();
-    clearTranscriptsStore();
+    // Selective cleanup for a fresh interview session
+    const { default: storage } = await import('@/services/storageService');
+    await storage.clearInterviewSession();
+    await storage.clearRecordingData();
+    
     this.enableVideo = await getSetting('enableVideo');
     const savedShowQuestions = await getSetting('showQuestions');
     if (savedShowQuestions !== null) {
@@ -359,7 +388,16 @@ export default {
     },
     async requestMediaPermissions() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        window.alert('Media access is not supported in this browser or context.');
+        this.confirmConfig = {
+          title: 'Unsupported Browser',
+          message: 'Media access is not supported in this browser or context.',
+          type: 'danger',
+          confirmText: 'Got it',
+          showCancel: false,
+          icon: 'el-icon-warning',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
         return;
       }
 
@@ -377,11 +415,21 @@ export default {
         stream.getTracks().forEach(track => track.stop());
       } catch (e) {
         console.error('Media access denied:', e);
+        let msg = 'Could not start devices: ' + e.message;
         if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-          window.alert('Access was denied. Please allow microphone' + (this.enableVideo ? ' and camera' : '') + ' in your browser settings.');
-        } else {
-          window.alert('Could not start devices: ' + e.message);
+          msg = 'Access was denied. Please allow microphone' + (this.enableVideo ? ' and camera' : '') + ' in your browser settings.';
         }
+        
+        this.confirmConfig = {
+          title: 'Permission Denied',
+          message: msg,
+          type: 'danger',
+          confirmText: 'Understand',
+          showCancel: false,
+          icon: 'el-icon-lock',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
         this.checkPermissions();
       } finally {
         this.micLoading = false;
@@ -405,7 +453,7 @@ export default {
       const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
       const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
       if (!subscriptionKey || !region) return;
-      const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/voices/list`;
+      const endpoint = APP_CONFIG.SERVICES.AZURE.VOICES_LIST_URL(region);
       try {
         const response = await fetch(endpoint, {
           headers: {
@@ -424,7 +472,7 @@ export default {
       const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
       const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
       if (!subscriptionKey || !region) return;
-      const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+      const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
       const ssml = `
         <speak version='1.0' xml:lang='en-US'>
           <voice xml:lang='en-US' name='${voiceName}'>
@@ -450,7 +498,16 @@ export default {
         const audio = new Audio(url);
         audio.play();
       } catch (e) {
-        alert('Could not play sample for this voice.');
+        this.confirmConfig = {
+          title: 'Playback Error',
+          message: 'Could not play sample for this voice.',
+          type: 'warning',
+          confirmText: 'OK',
+          showCancel: false,
+          icon: 'el-icon-warning-outline',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
       }
     },
     async submitSetup() {
@@ -466,7 +523,16 @@ export default {
         });
       } catch (e) {
         console.error('Failed to generate interview questions:', e);
-        window.alert('Failed to generate interview questions.');
+        this.confirmConfig = {
+          title: 'Generation Failed',
+          message: 'Failed to generate interview questions. Please try again or check your documents.',
+          type: 'danger',
+          confirmText: 'Dismiss',
+          showCancel: false,
+          icon: 'el-icon-circle-close',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
         this.qaReady = false;
       } finally {
         this.isGenerating = false;
@@ -480,14 +546,35 @@ export default {
       navigator.mediaDevices.getUserMedia(mediaConstraints)
           .then(() => {
             if (!this.interviewQA || this.interviewQA.length === 0) {
-              window.alert('Interview questions are not ready. Please try again.');
+              this.confirmConfig = {
+                title: 'Data Not Ready',
+                message: 'Interview questions are not ready. Please try again.',
+                type: 'warning',
+                confirmText: 'Go Back',
+                showCancel: false,
+                icon: 'el-icon-warning-outline',
+                action: 'ack'
+              };
+              this.confirmVisible = true;
               return;
             }
             this.$router.push({ name: 'InterviewView' });
           })
           .catch(() => {
-            window.alert('Permissions denied or hardware error. Please allow access to start.');
+            this.confirmConfig = {
+              title: 'Access Denied',
+              message: 'Permissions denied or hardware error. Please allow access to start.',
+              type: 'danger',
+              confirmText: 'Dismiss',
+              showCancel: false,
+              icon: 'el-icon-lock',
+              action: 'ack'
+            };
+            this.confirmVisible = true;
           });
+    },
+    handleConfirmAction() {
+      this.confirmVisible = false;
     },
     goToInterview() {
       this.$router.push({ name: 'InterviewView' });

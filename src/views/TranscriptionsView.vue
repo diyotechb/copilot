@@ -26,19 +26,33 @@
       @toggle-pause="togglePause"
       @finish="finishRecording"
     />
+
+    <!-- Custom Confirmation Modal -->
+    <ConfirmDialog
+      :visible.sync="confirmVisible"
+      :title="confirmConfig.title"
+      :message="confirmConfig.message"
+      :type="confirmConfig.type"
+      :confirm-text="confirmConfig.confirmText"
+      :show-cancel="confirmConfig.showCancel"
+      :icon="confirmConfig.icon"
+      @confirm="handleConfirmAction"
+    />
   </div>
 </template>
 
 <script>
-import moment from 'moment';
+
 import transcriptService from '@/services/transcriptService';
 import speechRecognitionService from '@/services/transcriptionSpeechService';
 import TranscriptDashboard from '@/components/transcription/TranscriptDashboard.vue';
 import TranscriptDetail from '@/components/transcription/TranscriptDetail.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   name: "TranscriptionsView",
-  components: { TranscriptDashboard, TranscriptDetail },
+  components: { TranscriptDashboard, TranscriptDetail, ConfirmDialog },
   data() {
     return {
       viewMode: 'dashboard',
@@ -52,19 +66,31 @@ export default {
       sessionDate: null,
       isReadOnly: false,
       transcriptConfig: {
-        mergeThresholdMs: 5000,   // Silence gap to trigger new paragraph (5.0s)
-        overlapFuzzyInterim: 500, // Tolerance for matching ghost text start times
-        overlapFuzzyFinal: 1000,  // Tolerance for matching final segments
-        mergeBufferMs: 100,       // Padding for time-slice replacement
-        searchDepthLines: 10,     // How many previous segments to check for overlaps
-        overlapBufferMs: 500      // Micro-gap ignored for paragraph splitting
+        mergeThresholdMs: APP_CONFIG.TRANSCRIPTION.MERGE_THRESHOLD_MS,
+        overlapFuzzyInterim: APP_CONFIG.TRANSCRIPTION.OVERLAP_FUZZY_INTERIM_MS,
+        overlapFuzzyFinal: APP_CONFIG.TRANSCRIPTION.OVERLAP_FUZZY_FINAL_MS,
+        mergeBufferMs: APP_CONFIG.TRANSCRIPTION.MERGE_BUFFER_MS,
+        searchDepthLines: APP_CONFIG.TRANSCRIPTION.SEARCH_DEPTH_LINES,
+        overlapBufferMs: APP_CONFIG.TRANSCRIPTION.OVERLAP_BUFFER_MS
       },
       isInterimInActiveParagraph: false,
       sessionStart: null,
       recordingDurationMs: 0,
       durationTimer: null,
       audioTimeOffset: 0,
-      micPermissionState: 'prompt'
+      micPermissionState: 'prompt',
+      // Confirmation Modal State
+      confirmVisible: false,
+      confirmConfig: {
+        title: '',
+        message: '',
+        type: 'primary',
+        confirmText: 'Confirm',
+        showCancel: true,
+        icon: 'el-icon-warning-outline',
+        data: null,
+        action: null
+      }
     };
   },
   mounted() {
@@ -91,7 +117,7 @@ export default {
       if (!this.isReadOnly) {
         return this.formatDuration(this.recordingDurationMs);
       }
-      return moment().format('h:mm A');
+      return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     },
 
     formatDuration(ms) {
@@ -103,11 +129,17 @@ export default {
     
     openDashboard() {
       if (this.isListening) {
-        if (!confirm("Recording active. Stop and save?")) {
-            return; 
-        }
-        speechRecognitionService.stop();
-        this.cleanupMedia();
+        this.confirmConfig = {
+          title: 'Active Recording',
+          message: 'A recording is currently active. Would you like to stop it and save the session or continue recording?',
+          type: 'warning',
+          confirmText: 'Stop & Save',
+          showCancel: true,
+          icon: 'el-icon-video-pause',
+          action: 'stopAndSave'
+        };
+        this.confirmVisible = true;
+        return;
       }
       
       this.saveCurrentTranscript(); 
@@ -139,15 +171,20 @@ export default {
     },
     async startNewSession() {
       if (this.micPermissionState === 'denied') {
-        this.$alert('Microphone access is blocked. Please enable it in your browser settings (usually in the address bar) to start recording.', 'Microphone Access Required', {
-          confirmButtonText: 'Got it',
-          type: 'warning'
-        });
+        this.confirmConfig = {
+          title: 'Microphone Restricted',
+          message: 'Microphone access is blocked. Please enable it in your browser settings (usually in the address bar) to start recording.',
+          type: 'warning',
+          confirmText: 'Understand',
+          showCancel: false,
+          icon: 'el-icon-lock',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
         return;
       }
 
       try {
-        // Force permission check before changing view state
         await navigator.mediaDevices.getUserMedia({ audio: true });
         this.micPermissionState = 'granted';
 
@@ -157,8 +194,9 @@ export default {
         this.resetActiveSession();
         
         this.sessionId = transcriptService.generateId();
-        this.sessionDate = moment().format('MMM D, h:mm A');
-        this.sessionTitle = `Note ${moment().format('MMM D')}`;
+        const now = new Date();
+        this.sessionDate = now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        this.sessionTitle = `Note ${now.toLocaleString('en-US', { month: 'short', day: 'numeric' })}`;
         this.isReadOnly = false;
         
         this.$nextTick(() => {
@@ -167,7 +205,16 @@ export default {
         });
       } catch (err) {
         console.warn("[TranscriptionsView] Microphone access denied or failed:", err);
-        alert("Microphone access is required to start a new recording. Please check your browser settings and try again.");
+        this.confirmConfig = {
+          title: 'Access Required',
+          message: 'Microphone access is required to start a new recording. Please check your browser settings and try again.',
+          type: 'danger',
+          confirmText: 'Got it',
+          showCancel: false,
+          icon: 'el-icon-warning',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
       }
     },
     
@@ -209,15 +256,49 @@ export default {
     },
 
     deleteHistoryItem({ item, index }) {
-      if (confirm("Delete this recording?")) {
-        this.history = transcriptService.deleteTranscript(item.id);
-      }
+      this.confirmConfig = {
+        title: 'Delete Recording',
+        message: `Are you sure you want to delete "${item.title || 'this recording'}"? This action cannot be undone.`,
+        type: 'danger',
+        confirmText: 'Delete',
+        showCancel: true,
+        icon: 'el-icon-delete',
+        data: { item, index },
+        action: 'deleteItem'
+      };
+      this.confirmVisible = true;
     },
 
     deleteAllHistory() {
-      if (confirm("Are you sure you want to delete ALL recordings? This cannot be undone.")) {
+      this.confirmConfig = {
+        title: 'Clear All History',
+        message: 'Are you sure you want to delete ALL recordings from your history? This action is permanent.',
+        type: 'danger',
+        confirmText: 'Delete Everything',
+        showCancel: true,
+        icon: 'el-icon-warning',
+        action: 'deleteAll'
+      };
+      this.confirmVisible = true;
+    },
+
+    handleConfirmAction() {
+      const { action, data } = this.confirmConfig;
+      
+      if (action === 'stopAndSave') {
+        speechRecognitionService.stop();
+        this.cleanupMedia();
+        this.saveCurrentTranscript();
+        this.$root.$emit('toggle-sidebar', false);
+        this.viewMode = 'dashboard';
+        this.resetActiveSession();
+      } else if (action === 'deleteItem') {
+        this.history = transcriptService.deleteTranscript(data.item.id);
+      } else if (action === 'deleteAll') {
         this.history = transcriptService.deleteAll();
       }
+      
+      this.confirmVisible = false;
     },
     
     initSpeechRecognition() {
@@ -280,7 +361,16 @@ export default {
       speechRecognitionService.setCallback('onError', (event) => {
         if(event.error === 'not-allowed') {
           this.isListening = false;
-          alert("Microphone access denied.");
+          this.confirmConfig = {
+            title: 'Mic Access Denied',
+            message: 'Microphone access was denied. Please update your permissions to continue.',
+            type: 'danger',
+            confirmText: 'Dismiss',
+            showCancel: false,
+            icon: 'el-icon-circle-close',
+            action: 'ack'
+          };
+          this.confirmVisible = true;
         }
       });
     },

@@ -9,6 +9,7 @@ import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import { saveRecording } from '@/store/recordingStore';
 import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
 import { getSetting } from '@/store/settingStore';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   mounted() {
@@ -44,7 +45,7 @@ export default {
       silenceTimer: null,
       silenceStart: null,
       difficultyLevel: null,
-      silenceThreshold: Number(process.env.VUE_APP_SILENCE_WAIT_MS) || 2500,
+      silenceThreshold: APP_CONFIG.INTERVIEW.SILENCE_WAIT_MS,
     };
   },
   watch: {
@@ -143,7 +144,7 @@ export default {
       const data = new Uint8Array(this.analyser.fftSize);
       this.silenceTimer = setInterval(() => {
         this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - 128) < 2);
+        const isSilent = data.every(v => Math.abs(v - APP_CONFIG.INTERVIEW.PCM_MIDPOINT) < APP_CONFIG.INTERVIEW.SILENCE_TOLERANCE);
         if (isSilent) {
           if (!this.silenceStart) this.silenceStart = Date.now();
           const elapsed = Date.now() - this.silenceStart;
@@ -218,7 +219,7 @@ export default {
       this.silenceStart = null;
       this.silenceTimer = setInterval(() => {
         this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - 128) < 2);
+        const isSilent = data.every(v => Math.abs(v - APP_CONFIG.INTERVIEW.PCM_MIDPOINT) < APP_CONFIG.INTERVIEW.SILENCE_TOLERANCE);
         if (isSilent) {
           if (!this.silenceStart) this.silenceStart = Date.now();
           const elapsed = Date.now() - this.silenceStart;

@@ -1,5 +1,7 @@
+import { APP_CONFIG } from '@/constants/appConfig';
+
 export async function fetchVoices(subscriptionKey, region) {
-  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/voices/list`;
+  const endpoint = APP_CONFIG.SERVICES.AZURE.VOICES_LIST_URL(region);
   const response = await fetch(endpoint, {
     headers: { 'Ocp-Apim-Subscription-Key': subscriptionKey }
   });
@@ -7,7 +9,7 @@ export async function fetchVoices(subscriptionKey, region) {
 }
 
 export async function playVoiceSample(voiceName, subscriptionKey, region) {
-  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
       <voice xml:lang='en-US' name='${voiceName}'>
@@ -46,13 +48,12 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
       utter.onend = onEnd;
       window.speechSynthesis.speak(utter);
       return window.speechSynthesis;
-
     }
     if (typeof onEnd === 'function') onEnd();
     return null;
   }
 
-  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
       <voice xml:lang='en-US' name='${voice}'>
@@ -78,30 +79,25 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     audio.onended = onEnd;
-    audio.play().catch(e => {
-      console.error('Audio playback error:', e);
+    audio.play().catch(() => {
       if (typeof onEnd === 'function') onEnd();
     });
     return audio;
-
   } catch (e) {
-    console.error('Azure TTS error:', e);
     if (typeof onEnd === 'function') onEnd();
     return null;
   }
 }
-
 
 export async function speakWithAzureTTSToContext(text, voice, audioCtx, destination, onEnd) {
   const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
   const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
 
   if (!subscriptionKey || !region) {
-
     return speakWithAzureTTS(text, voice, onEnd);
   }
 
-  const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
       <voice xml:lang='en-US' name='${voice}'>${text}</voice>
@@ -125,18 +121,15 @@ export async function speakWithAzureTTSToContext(text, voice, audioCtx, destinat
     const blob = new Blob([arrayBuffer], { type: 'audio/mp3' });
     const url = URL.createObjectURL(blob);
 
-
     const audio = new Audio(url);
     audio.crossOrigin = 'anonymous';
 
-    let sourceNode = null;
     try {
-      sourceNode = audioCtx.createMediaElementSource(audio);
-      sourceNode.connect(audioCtx.destination);       // speakers
-      if (destination) sourceNode.connect(destination); // recording mix
+      const sourceNode = audioCtx.createMediaElementSource(audio);
+      sourceNode.connect(audioCtx.destination);
+      if (destination) sourceNode.connect(destination);
     } catch (e) {
-
-      console.warn('[TTS] Could not route through AudioContext:', e);
+      // Ignore audio routing warnings
     }
 
     audio.onended = () => {
@@ -144,16 +137,12 @@ export async function speakWithAzureTTSToContext(text, voice, audioCtx, destinat
       URL.revokeObjectURL(url);
     };
 
-    audio.play().catch(e => {
-      console.error('TTS audio playback error:', e);
+    audio.play().catch(() => {
       if (typeof onEnd === 'function') onEnd();
     });
 
-
     return audio;
   } catch (e) {
-    console.error('Azure TTS context error:', e);
-    // Fallback to normal playback
     return speakWithAzureTTS(text, voice, onEnd);
   }
 }

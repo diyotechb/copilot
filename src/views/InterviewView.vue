@@ -225,6 +225,18 @@
           ref="answerRecorder"
       />
     </div>
+
+    <!-- Custom Confirmation Modal -->
+    <ConfirmDialog
+      :visible.sync="confirmVisible"
+      :title="confirmConfig.title"
+      :message="confirmConfig.message"
+      :type="confirmConfig.type"
+      :confirm-text="confirmConfig.confirmText"
+      :show-cancel="confirmConfig.showCancel"
+      :icon="confirmConfig.icon"
+      @confirm="handleConfirmAction"
+    />
   </div>
 </template>
 
@@ -238,10 +250,12 @@ import { getInterviewQA, saveQuestionTimestamps } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
 import { speakWithAzureTTS, speakWithAzureTTSToContext } from '@/services/azureSpeechService';
 import FeedbackSection from '../views/FeedbackSection.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
   name: 'InterviewView',
-  components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView, FeedbackSection },
+  components: { VideoRecorder, InterviewInstructions, AnswerRecorder, SummaryView, FeedbackSection, ConfirmDialog },
 
   data() {
     return {
@@ -278,6 +292,17 @@ export default {
       videoRecordingStartTime: null,
       sharedAudioCtx: null,       // shared Web Audio context for TTS+mic mixing
       mixDestination: null,        // MediaStreamDestination — its stream goes into VideoRecorder
+      // Confirmation Modal State
+      confirmVisible: false,
+      confirmConfig: {
+        title: '',
+        message: '',
+        type: 'primary',
+        confirmText: 'Confirm',
+        showCancel: true,
+        icon: 'el-icon-warning-outline',
+        action: null
+      }
     };
   },
 
@@ -431,7 +456,6 @@ export default {
       const qa = this.interviewQA[this.turn];
       this.turn++;
 
-      // Push question into transcript history
       this.interviewTranscript.push({
         type: 'interviewer',
         text: qa.question,
@@ -439,13 +463,11 @@ export default {
       });
       this.isReading = true;
 
-      // Timestamp = video offset at the moment the question starts being read aloud
       const videoOffsetMs = this.videoRecordingStartTime
           ? Date.now() - this.videoRecordingStartTime
           : this.currentMediaTime;
       this.questionTimestamps[this.turn - 1] = videoOffsetMs;
 
-      // Speak the question; only after it finishes — open mic + stream answer
       const ttsFunc = (this.sharedAudioCtx && this.mixDestination)
           ? (text, voice, onEnd) => speakWithAzureTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
           : speakWithAzureTTS;
@@ -470,7 +492,7 @@ export default {
     },
 
     streamAnswer(text, entry) {
-      const WPM = 130;
+      const WPM = APP_CONFIG.INTERVIEW.WPM;
       const BASE_DELAY = (60 / WPM) * 1000;
       const words = (text || '').split(' ');
       let i = 0;
@@ -568,7 +590,7 @@ export default {
         const now = Date.now();
         if (!this.isPaused) this.currentMediaTime += (now - this.lastTickTime);
         this.lastTickTime = now;
-      }, 100);
+      }, APP_CONFIG.INTERVIEW.TIMER_TICK_MS);
     },
     stopTimer() {
       if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
@@ -599,9 +621,21 @@ export default {
         this.startTimer();
         this.nextQuestion();
       } catch (err) {
-        window.alert('Microphone permission denied. Please allow access to start the interview.');
+        this.confirmConfig = {
+          title: 'Permission Denied',
+          message: 'Microphone permission denied. Please allow access to start the interview.',
+          type: 'danger',
+          confirmText: 'Dismiss',
+          showCancel: false,
+          icon: 'el-icon-lock',
+          action: 'ack'
+        };
+        this.confirmVisible = true;
       }
     },
+    handleConfirmAction() {
+      this.confirmVisible = false;
+    }
   },
 };
 </script>

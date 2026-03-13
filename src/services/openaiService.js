@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { saveInterviewQA } from '@/store/interviewStore';
+import { APP_CONFIG } from '@/constants/appConfig';
 
 /**
  * CASUAL OPENER CONFIGURATION
@@ -19,9 +20,9 @@ const CASUAL_OPENERS = [
 export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
   const openaiModel = process.env.VUE_APP_OPENAI_MODEL;
-  const targetCount = parseInt(process.env.VUE_APP_INTERVIEW_Q_COUNT || '30', 10);
-  const batchSize = parseInt(process.env.VUE_APP_INTERVIEW_Q_BATCH || '10', 10);
-  const parallelBatches = parseInt(process.env.VUE_APP_INTERVIEW_Q_PARALLEL || '3', 10);
+  const targetCount = APP_CONFIG.SERVICES.OPENAI.TARGET_Q_COUNT;
+  const batchSize = APP_CONFIG.SERVICES.OPENAI.BATCH_SIZE;
+  const parallelBatches = APP_CONFIG.SERVICES.OPENAI.PARALLEL_BATCHES;
 
   if (!apiKey) throw new Error('Missing OpenAI API key');
   if (!openaiModel) throw new Error('Missing OpenAI model');
@@ -121,7 +122,6 @@ STRICT ANSWER FORMAT
 - Do not label sections
 - Do not prefix with "Answer:"
 - Do not include markdown formatting
-- Do not restate the question
 - Do not include meta commentary
 - Keep each answer interview-ready and natural
 
@@ -178,7 +178,6 @@ Use this exact shape:
 ]
     `;
 
-    const start = Date.now();
     const completion = await openai.chat.completions.create({
       model: openaiModel,
       messages: [
@@ -188,14 +187,12 @@ Use this exact shape:
       temperature: 0.9,
     });
 
-    const duration = ((Date.now() - start) / 1000).toFixed(2);
     const raw = completion.choices[0].message.content;
 
     try {
       const cleaned = raw.replace(/```(json)?\s*|```$/gi, '').trim();
       return JSON.parse(cleaned);
     } catch (e) {
-      console.error(`[generateInterviewQA] ❌ Batch ${batchNum} returned invalid JSON`, raw);
       return [];
     }
   }
@@ -222,13 +219,11 @@ Use this exact shape:
     });
   }
 
-  // Handle Flow: Preserve openers and format at the top, shuffle the main questions
+  // Handle Flow
   const openers = allQA.filter(item => item.type === 'opener');
   const formatStatements = allQA.filter(item => item.type === 'format');
-  let mainQuestions = allQA.filter(item => typeof item.type === 'undefined' || item.type === 'main' || item.type === null);
+  let mainQuestions = allQA.filter(item => !item.type || item.type === 'main');
 
-  // Separate intro from other main questions to ensure it stays first
-  // We look for common intro keywords in the question text
   const introKeywords = [
     'tell me about yourself', 'introduce yourself', 'your background', 'introduction',
     'kick things off', 'your journey', 'how you started', 'how you became', 'your story',
@@ -238,7 +233,6 @@ Use this exact shape:
     introKeywords.some(keyword => q.question?.toLowerCase().includes(keyword))
   );
 
-  // CRITICAL: Keep ONLY ONE introduction question
   const singleIntro = introQuestions.length > 0 ? [introQuestions[0]] : [];
 
   const otherMainQuestions = mainQuestions.filter(q =>
@@ -251,8 +245,6 @@ Use this exact shape:
     [otherMainQuestions[i], otherMainQuestions[j]] = [otherMainQuestions[j], otherMainQuestions[i]];
   }
 
-  // Final flow sequence: Openers -> Format -> Intro -> Other Questions
-  // If we have multiple format statements from parallel batches, just keep the first one
   const combinedQA = [
     ...openers,
     ...(formatStatements.length > 0 ? [formatStatements[0]] : []),
@@ -260,22 +252,18 @@ Use this exact shape:
     ...otherMainQuestions
   ];
 
-  // SCRUBBING: Ensure NO greetings appear after the first question
+  // SCRUBBING
   const finalQA = combinedQA.map((item, index) => {
-    if (index === 0) return item; // Allow greeting on first question only
+    if (index === 0) return item;
 
-    // Remove greetings, names, and introductory reset phrases
-    // Regex covers: "Hi Nutan,", "Hello Nutan!", "Hi there,", "Welcome!", etc.
     let q = item.question || '';
     q = q.replace(/^(hi|hello|welcome|nice to meet you|thanks for joining|good (morning|afternoon|evening))\s*([\w']+\s*)?[,!.]?\s*/gi, '');
 
-    // Capitalize first letter if it became lowercase
     if (q.length > 0) q = q.charAt(0).toUpperCase() + q.slice(1);
 
     return { ...item, question: q };
   });
 
-  // Strip temporary metadata
   const sanitizedQA = finalQA.map(item => ({
     question: item.question,
     answer: item.answer
