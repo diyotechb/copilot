@@ -311,8 +311,9 @@ export default {
       return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     },
     countdownSecsLeft() {
-      // silenceThreshold is 3000ms; show 3→2→1→0
-      const remaining = Math.ceil((1 - this.silenceProgress) * 3);
+      // silenceWaitMs is the full threshold; show 3→2→1→0 based on wait time
+      const waitTimeSecs = APP_CONFIG.INTERVIEW.SILENCE_WAIT_MS / 1000;
+      const remaining = Math.ceil((1 - this.silenceProgress) * waitTimeSecs);
       return Math.max(0, remaining);
     },
   },
@@ -513,10 +514,10 @@ export default {
         i++;
         const lastChar = words[i - 1].slice(-1);
         const delay = ['.', '!', '?'].includes(lastChar)
-            ? BASE_DELAY * 2.5 + Math.random() * 200
+            ? BASE_DELAY * 1.4 + Math.random() * 50
             : [',', ';', ':'].includes(lastChar)
-                ? BASE_DELAY * 1.5 + Math.random() * 100
-                : BASE_DELAY * (0.7 + Math.random() * 0.6);
+                ? BASE_DELAY * 1.1 + Math.random() * 30
+                : BASE_DELAY * (0.9 + Math.random() * 0.2);
         this.streamTimer = setTimeout(typeWord, delay);
       };
       this._streamResumeCallback = null;

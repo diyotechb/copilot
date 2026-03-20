@@ -20,20 +20,14 @@ class TranscriptionSpeechService {
         this.audioQueue = [];
         this.sending = false;
 
-        this.baseUrl = (function () {
-            const env = process.env.VUE_APP_SERVER_URL;
-            let url = env || '';
-            
-            if (!url) {
-                try {
-                    url = window.location.origin;
-                } catch (e) {
-                    url = 'http://localhost:3001';
-                }
-            }
-            
-            return url.replace(/\/+$/, '');
-        })();
+        this.baseUrl = APP_CONFIG.SERVICES.WS_URL;
+        if (!this.baseUrl) {
+            console.error('********************************************************************************');
+            console.error('ERROR: Real-time Backend URL (VUE_APP_SERVER_URL) is MISSING!');
+            console.error('Transcription and real-time features will FAIL.');
+            console.error('Please provide the URL in your .env file or environment.');
+            console.error('********************************************************************************');
+        }
     }
 
     isSupported() {

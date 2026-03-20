@@ -1,7 +1,15 @@
+import { APP_CONFIG } from '@/constants/appConfig';
 import axios from 'axios';
 import storageService from './storageService';
 
-const BASE_URL = process.env.VUE_APP_DIYO_SERVICE_BACKEND_ENDPOINT;
+const BASE_URL = APP_CONFIG.SERVICES.DIYO_SERVICE_URL;
+if (!BASE_URL) {
+  console.error('********************************************************************************');
+  console.error('ERROR: Diyo Service Backend URL (VUE_APP_DIYO_SERVICE_BACKEND_ENDPOINT) is MISSING!');
+  console.error('Login and other authentication features will FAIL.');
+  console.error('Please provide the URL in your .env file or environment.');
+  console.error('********************************************************************************');
+}
 const API_URL = `${BASE_URL}/api`;
 const KEYS = storageService.KEYS;
 

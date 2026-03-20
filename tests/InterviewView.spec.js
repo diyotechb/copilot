@@ -7,8 +7,6 @@
 //   console.log.mockRestore();
 //   console.error.mockRestore();
 // });
-process.env.VUE_APP_SILENCE_WAIT_MS = '3000';
-
 import { mount } from '@vue/test-utils';
 import InterviewView from '../src/views/InterviewView.vue';
 

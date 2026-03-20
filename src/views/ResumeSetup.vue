@@ -281,6 +281,7 @@ import { clearRecordingsStore } from '@/store/recordingStore.js';
 import { APP_CONFIG } from '@/constants/appConfig';
 import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { fetchVoices, playVoiceSample } from '@/services/azureSpeechService';
 
 export default {
   name: 'ResumeSetup',
@@ -451,16 +452,12 @@ export default {
     async fetchVoices() {
       this.voicesLoading = true;
       const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-      if (!subscriptionKey || !region) return;
-      const endpoint = APP_CONFIG.SERVICES.AZURE.VOICES_LIST_URL(region);
+      if (!subscriptionKey) {
+        this.voicesLoading = false;
+        return;
+      }
       try {
-        const response = await fetch(endpoint, {
-          headers: {
-            'Ocp-Apim-Subscription-Key': subscriptionKey
-          }
-        });
-        const allVoices = await response.json();
+        const allVoices = await fetchVoices(subscriptionKey);
         this.voices = allVoices.filter(v => (v.Locale || v.locale) === 'en-US');
       } catch (e) {
         this.voices = [];
@@ -470,33 +467,9 @@ export default {
     },
     async playVoiceSample(voiceName) {
       const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
-      if (!subscriptionKey || !region) return;
-      const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
-      const ssml = `
-        <speak version='1.0' xml:lang='en-US'>
-          <voice xml:lang='en-US' name='${voiceName}'>
-            This is a sample of the selected Azure voice.
-          </voice>
-        </speak>
-      `;
+      if (!subscriptionKey) return;
       try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Ocp-Apim-Subscription-Key': subscriptionKey,
-            'Content-Type': 'application/ssml+xml',
-            'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
-            'User-Agent': 'ResumeSetupVue'
-          },
-          body: ssml
-        });
-        if (!response.ok) throw new Error('Azure TTS failed');
-        const audioData = await response.arrayBuffer();
-        const blob = new Blob([audioData], { type: 'audio/mp3' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play();
+        await playVoiceSample(voiceName, subscriptionKey);
       } catch (e) {
         this.confirmConfig = {
           title: 'Playback Error',
