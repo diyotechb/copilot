@@ -153,8 +153,8 @@ class TranscriptionSpeechService {
         if (typeof data === 'string') {
             text = data;
         } else {
-            text = data.text || data.utterance || '';
-            isFinal = !!data.end_of_turn;
+            text = data.text || data.transcript || data.utterance || '';
+            isFinal = !!data.end_of_turn || !!data.eot || !!data.isFinal;
             audioStart = data.audio_start || 0;
             audioEnd = data.audio_end || 0;
             words = data.words || [];

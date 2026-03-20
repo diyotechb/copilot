@@ -476,7 +476,21 @@ export default {
             }
         }
 
-        // 3. START FRESH LINE
+        // 3. TEXT-BASED DEDUPLICATION SAFETY (V3 Mitigation)
+        // If timestamp overlap failed, check if the new line *starts* with the end of the previous line.
+        if (lastLine && text.length > 10) {
+            const lastText = lastLine.text.trim();
+            // If the final text starts with the exact text of the previous line, it's likely a re-transcription
+            if (text.startsWith(lastText) || (lastText.length > 20 && text.includes(lastText.substring(lastText.length - 20)))) {
+                 lastLine.allWords = this.mergeWords(lastLine.allWords || [], newWords);
+                 lastLine.text = text;
+                 lastLine.ts = timestamp;
+                 this.saveCurrentTranscript();
+                 return;
+            }
+        }
+
+        // 4. START FRESH LINE
         this.lastFinalTime = timestamp;
         this.addNewLine(text, timestamp, audioStart, audioEnd, newWords);
         this.isInterimInActiveParagraph = false;
