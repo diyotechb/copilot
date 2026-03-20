@@ -1,7 +1,7 @@
 import { APP_CONFIG } from '@/constants/appConfig';
 
 export async function fetchVoices(subscriptionKey, region) {
-  const endpoint = APP_CONFIG.SERVICES.AZURE.VOICES_LIST_URL(region);
+  const endpoint = APP_CONFIG.SERVICES.AZURE.VOICES_LIST_URL;
   const response = await fetch(endpoint, {
     headers: { 'Ocp-Apim-Subscription-Key': subscriptionKey }
   });
@@ -9,7 +9,7 @@ export async function fetchVoices(subscriptionKey, region) {
 }
 
 export async function playVoiceSample(voiceName, subscriptionKey, region) {
-  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
+  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL;
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
       <voice xml:lang='en-US' name='${voiceName}'>
@@ -37,7 +37,15 @@ export async function playVoiceSample(voiceName, subscriptionKey, region) {
 
 export async function speakWithAzureTTS(text, voice, onEnd) {
   const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+  const region = APP_CONFIG.SERVICES.AZURE.REGION;
+
+  if (!subscriptionKey) {
+    console.warn('********************************************************************************');
+    console.warn('WARNING: Azure Speech Key (VUE_APP_AZURE_SPEECH_KEY) is MISSING!');
+    console.warn('The system will fall back to browser-native Speech Synthesis (Web Speech API).');
+    console.warn('For better voice quality, please provide your Azure key in the .env file.');
+    console.warn('********************************************************************************');
+  }
 
   if (!subscriptionKey || !region) {
     if (window.speechSynthesis) {
@@ -53,7 +61,7 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
     return null;
   }
 
-  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
+  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL;
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
       <voice xml:lang='en-US' name='${voice}'>
@@ -91,13 +99,13 @@ export async function speakWithAzureTTS(text, voice, onEnd) {
 
 export async function speakWithAzureTTSToContext(text, voice, audioCtx, destination, onEnd) {
   const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-  const region = process.env.VUE_APP_AZURE_SPEECH_REGION;
+  const region = APP_CONFIG.SERVICES.AZURE.REGION;
 
   if (!subscriptionKey || !region) {
     return speakWithAzureTTS(text, voice, onEnd);
   }
 
-  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL(region);
+  const endpoint = APP_CONFIG.SERVICES.AZURE.TTS_URL;
   const ssml = `
     <speak version='1.0' xml:lang='en-US'>
       <voice xml:lang='en-US' name='${voice}'>${text}</voice>

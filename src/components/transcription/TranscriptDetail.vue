@@ -61,41 +61,45 @@
 
     <div class="control_bar" v-if="!isReadOnly">
       <div class="control-status">
-        <div class="status-indicator-wrap">
+        <div class="status-indicator-wrap" :class="{ 'is-paused-mode': !isListening }">
           <i class="el-icon-microphone status-mic-icon" :class="{ 'is-recording': isListening }" title="Recording Status"></i>
           <span class="status-label" :class="{ 'recording-text': isListening, 'paused-text': !isListening }">
             {{ isListening ? 'RECORDING' : 'PAUSED' }}
           </span>
-        </div>
-      </div>
 
-      <div class="controls-group">
-        <!-- Timers Section in Center -->
-        <div class="center-timers">
-          
           <div class="recording-duration">
             {{ currentTime }}
           </div>
         </div>
+      </div>
 
-        <div class="controls">
+      <div class="controls-group">
+        <!-- Bubble-up Pause Indicator -->
+        <transition name="bubble">
+          <div v-if="!isListening" class="pause-bubble">
+            <i class="el-icon-video-pause"></i> Recording Paused
+          </div>
+        </transition>
+
+        <div class="controls action-controls">
           <el-button
-              circle
+              :circle="isListening"
               class="record-btn minimal-control-btn"
-              :class="{ 'is-active': isListening, 'is-paused': !isListening }"
+              :class="{ 'is-active': isListening, 'is-paused': !isListening, 'resume-prominent': !isListening }"
               @click="$emit('toggle-pause')"
               :title="isListening ? 'Pause Recording' : 'Resume Recording'"
           >
-            <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-video-play'"></i>
+            <div class="btn-content-wrap">
+              <i :class="isListening ? 'el-icon-video-pause' : 'el-icon-video-play'" class="control-icon"></i>
+              <span v-if="!isListening" class="resume-label">RESUME</span>
+            </div>
           </el-button>
-          <div class="control-text">{{ isListening ? 'Pause' : 'Resume' }}</div>
         </div>
 
-        <div class="controls">
+        <div class="controls action-controls">
           <el-button circle class="record-btn done-btn minimal-control-btn" @click="$emit('finish')" title="Finish Recording">
-            <i class="el-icon-check"></i>
+            <i class="el-icon-check control-icon"></i>
           </el-button>
-          <div class="control-text">Done</div>
         </div>
       </div>
     </div>
@@ -321,13 +325,22 @@ export default {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 0 0 220px;
+  flex: 1;
 }
 
 .status-indicator-wrap {
   display: flex;
   align-items: center;
   gap: 10px;
+  background: #f8fafc;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #f1f5f9;
+}
+
+.status-indicator-wrap.is-paused-mode {
+  border-color: #fef3c7;
+  background-color: #fffbeb;
 }
 
 .status-mic-icon {
@@ -406,7 +419,7 @@ export default {
 .controls-group {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 16px;
   flex: 1;
 }
@@ -442,6 +455,9 @@ export default {
   color: #1e293b;
   font-variant-numeric: tabular-nums;
   min-width: 48px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid #e2e8f0;
 }
 
 
@@ -471,42 +487,108 @@ export default {
 }
 
 
-.controls {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 .record-btn {
-  width: 30px;
-  height: 30px;
+  width: 40px !important;
+  height: 40px !important;
   margin-bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 0 !important;
+  border-radius: 50% !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid #e2e8f0 !important;
+  background-color: #f8fafc !important;
+  color: #64748b !important;
 }
 
-.record-btn i {
-  margin: 0 !important;
-  line-height: normal !important;
+.record-btn:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e0 !important;
 }
 
-.done-btn {
-  width: 30px;
-  height: 30px;
-  font-size: 14px;
-  margin-bottom: 0;
+.record-btn .control-icon {
+  font-size: 1.3rem !important;
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.resume-prominent {
+  width: auto !important;
+  padding: 0 20px !important;
+  border-radius: 24px !important;
+  background-color: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: white !important;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.35) !important;
+}
+
+.btn-content-wrap {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+}
+
+.pause-bubble {
+  position: absolute;
+  top: -45px;
+  right: 25px;
+  background: #fffbeb;
+  color: #b45309;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid #fef3c7;
+  box-shadow: 0 4px 12px rgba(180, 83, 9, 0.1);
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 !important;
+  gap: 6px;
+  animation: float 2s infinite ease-in-out;
 }
-.done-btn i {
-  margin: 0 !important;
-  line-height: normal !important;
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
+
+.bubble-enter-active, .bubble-leave-active {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.bubble-enter {
+  opacity: 0;
+  transform: translateY(10px) scale(0.9);
+}
+.bubble-leave-to {
+  opacity: 0;
+  transform: translateY(5px);
+}
+
+.resume-prominent:hover {
+  background-color: #d97706 !important;
+  border-color: #d97706 !important;
+}
+
+.resume-prominent .control-icon {
+  font-size: 1.1rem !important;
+  color: white !important;
+}
+
+.resume-label {
+  font-size: 0.82rem;
+  color: white;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  line-height: 1;
+  text-transform: uppercase;
+  margin-top: 1px; /* Optical centering */
+}
+
+/* Done-btn specific was removed and unified into .record-btn base classes */
 
 .control-text {
   display: none;

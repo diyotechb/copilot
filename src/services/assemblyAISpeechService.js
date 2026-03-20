@@ -3,7 +3,12 @@ import { APP_CONFIG } from '@/constants/appConfig';
 export async function sendToAssemblyAI(audioBlob) {
   const apiKey = process.env.VUE_APP_ASSEMBLY_AI_TOKEN;
   if (!apiKey) {
-    throw new Error('AssemblyAI token not found in environment variables.');
+    console.error('********************************************************************************');
+    console.error('ERROR: AssemblyAI Token (VUE_APP_ASSEMBLY_AI_TOKEN) is MISSING!');
+    console.error('Transcription for recorded audio will FAIL.');
+    console.error('Please provide the token in your .env file or environment.');
+    console.error('********************************************************************************');
+    throw new Error('AssemblyAI token not found. Recorded transcription cannot proceed.');
   }
 
   // Step 1: Upload audio file

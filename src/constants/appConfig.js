@@ -31,7 +31,7 @@ export const APP_CONFIG = {
    */
   INTERVIEW: {
     // Simulated typing speed (Words Per Minute) for the interviewer
-    WPM: 130,
+    WPM: 300,
 
     // Duration of silence (ms) at the end of an answer to trigger the next question
     SILENCE_WAIT_MS: 3000,
@@ -51,9 +51,11 @@ export const APP_CONFIG = {
    */
   SERVICES: {
     OPENAI: {
-      TARGET_Q_COUNT: 30,
-      BATCH_SIZE: 10,
-      PARALLEL_BATCHES: 3,
+      MODEL: 'gpt-4o-mini',
+      MIN_Q_COUNT: 30,
+      MAX_Q_COUNT: 45,
+      BATCH_SIZE: 8,
+      PARALLEL_BATCHES: 6,
     },
 
     ASSEMBLY_AI: {
@@ -64,9 +66,20 @@ export const APP_CONFIG = {
     },
 
     AZURE: {
-      // Template for Azure TTS URLs
-      VOICES_LIST_URL: (region) => `https://${region}.tts.speech.microsoft.com/cognitiveservices/voices/list`,
-      TTS_URL: (region) => `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`
+      REGION: 'eastus',
+      // Azure TTS URLs using the configured region
+      get VOICES_LIST_URL() { return `https://${this.REGION}.tts.speech.microsoft.com/cognitiveservices/voices/list`; },
+      get TTS_URL() { return `https://${this.REGION}.tts.speech.microsoft.com/cognitiveservices/v1`; }
+    },
+
+    // Diyo Service Backend URL (Auth, etc.)
+    get DIYO_SERVICE_URL() {
+      return (process.env.VUE_APP_DIYO_SERVICE_BACKEND_ENDPOINT || '').replace(/\/+$/, '');
+    },
+
+    // Websocket/Real-time Backend URL
+    get WS_URL() {
+      return (process.env.VUE_APP_SERVER_URL || '').replace(/\/+$/, '');
     },
 
     // Main Branding / Links

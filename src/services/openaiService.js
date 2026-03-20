@@ -19,13 +19,21 @@ const CASUAL_OPENERS = [
 
 export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
-  const openaiModel = process.env.VUE_APP_OPENAI_MODEL;
-  const targetCount = APP_CONFIG.SERVICES.OPENAI.TARGET_Q_COUNT;
+  if (!apiKey) {
+    console.error('********************************************************************************');
+    console.error('ERROR: OpenAI API Key (VUE_APP_OPENAPI_TOKEN_KEY) is MISSING!');
+    console.error('Interview question generation will FAIL.');
+    console.error('Please provide the key in your .env file or environment.');
+    console.error('********************************************************************************');
+    throw new Error('OpenAI API Key is missing. Question generation cannot proceed.');
+  }
+  const openaiModel = APP_CONFIG.SERVICES.OPENAI.MODEL;
+  const minCount = APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT;
+  const maxCount = APP_CONFIG.SERVICES.OPENAI.MAX_Q_COUNT;
   const batchSize = APP_CONFIG.SERVICES.OPENAI.BATCH_SIZE;
   const parallelBatches = APP_CONFIG.SERVICES.OPENAI.PARALLEL_BATCHES;
 
-  if (!apiKey) throw new Error('Missing OpenAI API key');
-  if (!openaiModel) throw new Error('Missing OpenAI model');
+  if (!openaiModel) throw new Error('Missing OpenAI model in configuration');
 
   const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
 
@@ -200,7 +208,7 @@ Use this exact shape:
   let allQA = [];
   let batchNum = 1;
 
-  while (allQA.length < targetCount) {
+  while (allQA.length < maxCount) {
     const batchPromises = [];
     for (let i = 0; i < parallelBatches; i++) {
       batchPromises.push(fetchBatch(batchNum++));
@@ -252,8 +260,11 @@ Use this exact shape:
     ...otherMainQuestions
   ];
 
+  // Limit to MAX_Q_COUNT (ensuring the range 30-45 represents the final set)
+  const slicedQA = combinedQA.slice(0, maxCount);
+
   // SCRUBBING
-  const finalQA = combinedQA.map((item, index) => {
+  const finalQA = slicedQA.map((item, index) => {
     if (index === 0) return item;
 
     let q = item.question || '';
