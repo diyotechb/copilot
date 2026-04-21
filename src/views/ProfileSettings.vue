@@ -21,6 +21,19 @@
         </div>
 
         <div class="setting-item">
+          <label>Beta Features</label>
+          <p class="setting-description">Enable experimental features. These are actively developed and may change.</p>
+
+          <div class="feature-toggle-row">
+            <div class="feature-toggle-info">
+              <span class="feature-name">New Transcription Engine</span>
+              <span class="feature-desc">Enables the improved engine with better accuracy and real-time formatting. Adds a "Try New" button on the transcriptions page.</span>
+            </div>
+            <el-switch v-model="features.transcriptionV2Enabled"></el-switch>
+          </div>
+        </div>
+
+        <div class="setting-item">
           <label>Storage Management</label>
           <p class="setting-description">Manage the data stored locally in your browser. Large recordings and old interview data can be cleared to free up space.</p>
           
@@ -100,6 +113,9 @@ export default {
   data() {
     return {
       selectedLandingPage: 'Home',
+      features: {
+        transcriptionV2Enabled: false
+      },
       isSaving: false,
       storageStats: null,
       isClearingInterviews: false,
@@ -128,9 +144,11 @@ export default {
   },
   created() {
     const savedPage = realStorageService.getItem(realStorageService.KEYS.USER_LANDING_PAGE);
-    if (savedPage) {
-      this.selectedLandingPage = savedPage;
-    }
+    if (savedPage) this.selectedLandingPage = savedPage;
+
+    const savedFeatures = realStorageService.getItem(realStorageService.KEYS.USER_FEATURES, true);
+    if (savedFeatures) this.features = { ...this.features, ...savedFeatures };
+
     this.refreshStorageStats();
   },
   methods: {
@@ -138,6 +156,7 @@ export default {
       this.isSaving = true;
       try {
         realStorageService.setItem(realStorageService.KEYS.USER_LANDING_PAGE, this.selectedLandingPage);
+        realStorageService.setItem(realStorageService.KEYS.USER_FEATURES, this.features);
         this.$message({
           message: 'Settings saved successfully!',
           type: 'success'
@@ -356,6 +375,35 @@ export default {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.feature-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.feature-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  padding-right: 16px;
+}
+
+.feature-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.feature-desc {
+  font-size: 0.82rem;
+  color: #64748b;
 }
 
 .storage-stats-container {

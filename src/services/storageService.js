@@ -3,7 +3,8 @@ const KEYS = {
     USER_EMAIL: 'email',
     USER_ROLES: 'roles',
     TRANSCRIPTIONS_HISTORY: 'transcriptions_history',
-    USER_LANDING_PAGE: 'user_landing_page'
+    USER_LANDING_PAGE: 'user_landing_page',
+    USER_FEATURES: 'user_features'
 };
 
 class StorageService {
