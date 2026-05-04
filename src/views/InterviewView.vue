@@ -459,8 +459,9 @@ export default {
       }
 
       if (this.turn >= this.interviewQA.length) {
-        this.interviewing = false;
-        this.transitioning = false;
+        // No more questions left — play a brief closing message before
+        // ending the session, then navigate to the summary.
+        this.playClosingMessage();
         return;
       }
 
@@ -479,28 +480,53 @@ export default {
           : this.currentMediaTime;
       this.questionTimestamps[this.turn - 1] = videoOffsetMs;
 
+      // Stream the reference answer such that it BEGINS to appear ~1 second
+      // before the TTS reaches the end of the question. That way the
+      // candidate gets a brief head start to read along while the
+      // interviewer is finishing the last word — not the entire question.
+      let streamStarted = false;
+      const startAnswerStream = () => {
+        if (streamStarted || !this.showAIAnswer || !this.interviewing) return;
+        streamStarted = true;
+        const answerEntry = {
+          type: 'user',
+          text: '',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        this.interviewTranscript.push(answerEntry);
+        this.streamAnswer(qa.answer, answerEntry);
+      };
+
       const ttsFunc = (this.sharedAudioCtx && this.mixDestination)
           ? (text, voice, onEnd) => speakWithTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
           : speakWithTTS;
       ttsFunc(qa.question, this.selectedVoice, () => {
         if (!this.interviewing) { this.transitioning = false; return; }
+        // Safety net — if the timeupdate listener never fired (e.g., short
+        // TTS, browser fallback synthesis with no `currentTime`), make sure
+        // the answer still appears as soon as the question ends.
+        startAnswerStream();
         this.isReading = false;
         this.showAnswer = true;     // mounts AnswerRecorder → mic on → silence detection starts
         this.transcriptLoaded = true;
-        this.transitioning = false; // allow next advance only after TTS done
-
-        // Show the AI's suggested answer only when the difficulty allows it.
-        if (this.showAIAnswer) {
-          const answerEntry = {
-            type: 'user',
-            text: '',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          };
-          this.interviewTranscript.push(answerEntry);
-          this.streamAnswer(qa.answer, answerEntry);
-        }
+        this.transitioning = false;
       }).then(audio => {
         this.activeInterviewerAudio = audio;
+        // Pre-trigger: when the TTS audio is ~2 seconds from finishing,
+        // start the answer streaming. The browser fires `timeupdate` at
+        // ~250ms granularity and Vue takes another tick to render, so a
+        // 2-second lead lands the first word ~5-6 words before the
+        // question's last word at typical speech rate.
+        if (audio && typeof audio.addEventListener === 'function') {
+          const onTimeUpdate = () => {
+            if (!audio.duration || isNaN(audio.duration)) return;
+            if (audio.currentTime >= audio.duration - 2) {
+              audio.removeEventListener('timeupdate', onTimeUpdate);
+              startAnswerStream();
+            }
+          };
+          audio.addEventListener('timeupdate', onTimeUpdate);
+        }
       });
     },
 
@@ -542,6 +568,36 @@ export default {
       this._pausedStreamTimer = false;
     },
 
+    playClosingMessage() {
+      // Avoid double-firing if nextQuestion gets called more than once
+      // after the last question (e.g. silence detection + manual Next).
+      if (this._closingPlayed) return;
+      this._closingPlayed = true;
+
+      const closingText = "That brings us to the end of our session. Thank you so much for your time today — it was great learning about your background and experience. Someone from our team will be in touch with next steps within the next few business days. Have a wonderful rest of your day.";
+
+      this.interviewTranscript.push({
+        type: 'interviewer',
+        text: closingText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+      this.isReading = true;
+      this.showAnswer = false;
+
+      const ttsFunc = (this.sharedAudioCtx && this.mixDestination)
+          ? (text, voice, onEnd) => speakWithTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
+          : speakWithTTS;
+      const finishUp = () => {
+        this.isReading = false;
+        this.transitioning = false;
+        this.stopInterview();
+      };
+      const audioOrPromise = ttsFunc(closingText, this.selectedVoice, finishUp);
+      Promise.resolve(audioOrPromise).then(audio => {
+        this.activeInterviewerAudio = audio;
+      });
+    },
+
     repeatCurrentQuestion() {
       if (!this.canRepeatQuestion) return;
       const qa = this.interviewQA[this.turn - 1];
@@ -575,9 +631,40 @@ export default {
     async stopInterview() {
       this.transitioning = true; // prevent any queued advance
       this.clearStream();
-      this.releaseMediaDevices();
+
+      // Stop the answer recorder + audio context immediately, but await the
+      // video recorder's stop separately so its blob is fully saved before
+      // we navigate (otherwise the SummaryView's polling sometimes finds
+      // nothing in IndexedDB and falls back to the "Video not found" warning).
+      if (this.$refs.answerRecorder) {
+        try { this.$refs.answerRecorder.stopRecording(); } catch (e) { /* noop */ }
+      }
+      const videoStopPromise = this.$refs.videoRecorder
+        ? Promise.resolve().then(() => this.$refs.videoRecorder.stopRecording()).catch(() => {})
+        : Promise.resolve();
+
+      // Free the audio graph + cancel TTS
+      if (this.sharedAudioCtx) {
+        try {
+          if (this.sharedAudioCtx.state !== 'closed') this.sharedAudioCtx.close();
+        } catch (e) { /* noop */ }
+        this.sharedAudioCtx = null;
+        this.mixDestination = null;
+      }
+      if (this.activeInterviewerAudio) {
+        try {
+          if (typeof this.activeInterviewerAudio.pause === 'function') {
+            this.activeInterviewerAudio.pause();
+            this.activeInterviewerAudio.src = '';
+          } else if (window.speechSynthesis) window.speechSynthesis.cancel();
+        } catch (e) { /* noop */ }
+        this.activeInterviewerAudio = null;
+      }
+
       this.stopTimer();
       await saveQuestionTimestamps(this.questionTimestamps);
+      // Wait for the video blob to land in IndexedDB before navigating away
+      await videoStopPromise;
       this.interviewing = false;
       this.showAnswer = false;
       this.$router.push({ name: 'SummaryView' });

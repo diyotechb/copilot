@@ -3,18 +3,46 @@ import { saveInterviewQA } from '@/store/interviewStore';
 import { APP_CONFIG } from '@/constants/appConfig';
 
 /**
- * CASUAL OPENER CONFIGURATION
- * Add or remove questions here to change the "opening phase" of the interview.
+ * CASUAL OPENER POOL
+ * Prompts the interviewer can use to warm up the conversation. The model
+ * is told to rephrase these in its own words and weave them into a friendly
+ * back-and-forth (with a brief remark + a question), rather than firing
+ * one-line questions in a row.
+ *
+ * Mix of three buckets so the warm-up feels real:
+ *   • Small talk (day / weekend / weather)
+ *   • Light personal context (where they're joining from)
+ *   • Logistical pre-screening (location, time in country, work auth, relocation)
+ *
+ * NOTE: "background / journey" / "how you got into tech" prompts are
+ * intentionally NOT here — those belong in the first *main* question (the
+ * existing INTRO_KEYWORDS filter promotes them to the slot right after the
+ * openers and format message). Putting them in the opener pool causes the
+ * model to skip the greeting and lead with a journey question.
  */
 const CASUAL_OPENERS = [
-  "Hey, how are you today?",
-  "Where are you currently based?",
-  "Are you open to relocation?",
-  "What's the weather like where you are right now?",
-  "Which part of the state are you in exactly?",
-  "How do you like the area you're living in currently?",
-  "What's your current work authorization or visa status?",
-  "When did you move to the U.S.?"
+  // ── Small talk ──
+  "How's your day going so far?",
+  "How's the weather where you are today?",
+  "Have you had a busy week so far?",
+  "Anything fun planned for the weekend?",
+  "Did you get a chance to grab coffee before we hopped on?",
+  "What's the rest of your day looking like after this?",
+  "Have you been working on anything fun outside of work?",
+  "Any plans for the rest of the day after our chat?",
+
+  // ── Light personal / location context ──
+  "Whereabouts are you joining in from today?",
+  "How long have you been in your current city?",
+  "What do you like most about where you're living right now?",
+  "Have you always been in that area, or did you move there at some point?",
+
+  // ── Logistical pre-screening (kept from the old list, friendlier phrasing) ──
+  "I see you're based in the U.S. — has it been a while since you moved over, or are you still relatively new?",
+  "How long have you been in the U.S., if you don't mind me asking?",
+  "Quick logistical one before we get rolling — are you authorized to work in the U.S. on your own, or would you need any kind of sponsorship from the company?",
+  "On the relocation side of things — would you be open to moving for the right role, or are you mostly looking for something local or remote?",
+  "Are you currently in the same time zone as the team, or is there usually a few hours of difference?"
 ];
 
 const DIFFICULTY_INSTRUCTIONS = {
@@ -67,6 +95,28 @@ CATEGORY FOCUS: SCENARIO-BASED
 - Each answer should explain the candidate's reasoning step-by-step within a single paragraph: how they'd assess, prioritize, communicate, and decide.`
 };
 
+// Topic clusters used to give each batch a different focus, so parallel
+// batches don't all converge on the same generic questions ("tell me about
+// your project", "what frameworks have you used") and the final list has
+// real topical diversity.
+const TOPIC_CLUSTERS = [
+  'Most recent or current project — what it does, who uses it, the candidate\'s role and ownership scope, and the hardest technical challenge they hit.',
+  'A previous project from the resume that\'s different from the most recent one — system overview, candidate\'s contribution, and one concrete tradeoff or design decision.',
+  'Technical fundamentals tied to a specific technology mentioned in the resume (databases, languages, frameworks, networking, message queues, caching).',
+  'System design and architecture decisions for a system the candidate built or maintained — component boundaries, data flow, scaling, integration points.',
+  'Debugging and production-incident stories — what broke, how they investigated, what the fix was, what they\'d do differently.',
+  'Code review, testing strategy, and code quality practices — reviewing peers, testing approach, refactoring decisions.',
+  'Teamwork, conflict, and communication — disagreements with peers, working with PMs/designers, giving and receiving feedback.',
+  'Leadership, mentorship, and ownership — leading a project or feature, mentoring a junior, owning an outcome end-to-end.',
+  'Tradeoffs and decision-making under constraints — speed vs. quality, build vs. buy, technical debt vs. new features.',
+  'Cross-functional collaboration — working with product, design, ops, security, or another engineering team.'
+];
+
+function pickTopicsForBatch(n = 2) {
+  const shuffled = [...TOPIC_CLUSTERS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
 export async function generateInterviewQA({ resumeText, jobDescriptionText, difficulty, category, onProgress, onUpdate }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
   if (!apiKey) {
@@ -102,6 +152,14 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText, diff
   async function fetchBatch(batchNum) {
     const isFirstBatch = (batchNum === 1);
 
+    // Per-batch topic focus so parallel batches cover *different* territory
+    // instead of all generating the same generic "tell me about your project"
+    // questions. Batch 1 stays unconstrained (intro/openers/range of topics).
+    const batchTopics = isFirstBatch ? [] : pickTopicsForBatch(2);
+    const topicFocusBlock = batchTopics.length
+      ? `\nTHIS BATCH'S TOPIC FOCUS\n- Focus the main questions in this batch on the following areas. Do not stray into other areas:\n${batchTopics.map(t => `  • ${t}`).join('\n')}\n- Group questions on the same topic together so the conversation flows naturally — do not jump between unrelated topics within the batch.\n`
+      : '';
+
     const prompt = `
 SENIOR SOFTWARE ENGINEER INTERVIEW AGENT (REALISTIC INTERVIEW STYLE)
 
@@ -125,20 +183,64 @@ CORE BEHAVIOR
 - Do not over-focus on Java, Spring Boot, or any specific technology unless the resume strongly supports it.
 - Adapt to the candidate's actual stack and experience.
 - Do not invent unrealistic tools, projects, achievements, or responsibilities.
+
+ANTI-REPETITION (STRICT)
+- Each question in this batch must explore a DIFFERENT angle. Do not ask two questions about the same project, the same technology, or the same situation.
+- Do not produce near-duplicates by paraphrasing. "How did you scale Kafka?" and "What was your experience scaling Kafka?" are duplicates — pick one.
+- Vary the verbs, the framing, and the depth of probe across questions.
+
+CONTINUITY (STRICT)
+- Order the questions in this batch as a connected conversation: each question should feel like a natural follow-on from the previous, building on what was just discussed.
+- Do not jump from one topic to a completely unrelated one without a brief transition phrase ("Shifting gears for a moment…", "Building on that…", "On a different note…").
+- If the resume has multiple projects/technologies, finish exploring one before moving to the next — do not bounce back and forth.
+
+PHRASING & TONE — HUMAN CONVERSATION (STRICT)
+- Sound like a real person talking, not a corporate document or LinkedIn post. Use everyday words.
+- Use contractions naturally: "I'm", "I've", "we're", "didn't", "wasn't", "that's", "it's", "couldn't".
+- Prefer short, clear sentences ending in a full stop. If a sentence is getting long, split it. Avoid long comma-stitched sentences that string four or five clauses together.
+- Join ideas with connector words instead of more commas. Use these often: "to", "for", "in order to", "so that", "by using", "because", "since", "after", "before", "while", "and then", "which is why", "that way".
+- BANNED WORDS — never use any of these in questions or answers (or any inflected forms): ensure, ensuring, ensured, employed, leverage, leveraging, leveraged, streamline, streamlined, extensive, facilitate, facilitated, facilitating, leading (use "running" or "in charge of"), engineering (as a verb — use "build" or "set up"), robust, seamless, utilize, utilizing, utilized, implement, implementing, implemented (use "build", "set up", "wire up"), spearhead, orchestrate, synergize, deliverables, holistic, paradigm, solution-oriented, value-add.
+- Plain-word alternatives to default to:
+  • "ensure / make sure" → "make sure", "check that"
+  • "leverage / utilize" → "use"
+  • "implement / engineer" → "build", "set up", "wire up", "put together"
+  • "facilitate" → "help", "make easier"
+  • "streamline" → "speed up", "simplify"
+  • "robust" → "solid", "stable", "reliable"
+  • "seamless" → "smooth"
+  • "extensive" → "deep", "lots of"
+  • "leading" → "running", "in charge of"
+- For answers: speak in first person, like the candidate is saying the words out loud in a normal conversation. Mostly simple sentences. The kind you'd say to a colleague over coffee, polished but not corporate.
+- For questions: warm and curious. Sound like a real interviewer who is interested in the answer, not someone reading from a script.
 ${difficultyBlock}
 ${categoryBlock}
+${topicFocusBlock}
 
 ${isFirstBatch ? `
 INTERVIEW OPENING PHASE
-Before the main interview questions, you may optionally include 2 to 4 casual opener questions from the following list:
+Before the main interview questions, generate 3 to 4 casual opener "questions" that warm up the conversation. These should NOT feel like a Q-and-A interrogation — they should feel like a real human interviewer easing into the chat, sharing a small remark or comment, and then asking. Use the prompt pool below as inspiration but rephrase naturally.
+
+Opener prompt pool (use as inspiration, never word-for-word):
 ${CASUAL_OPENERS.map(q => `- ${q}`).join('\n')}
 
 Rules for opener questions:
-- **ONLY the very first question** generated should start with a greeting (e.g., "Hi there!", "Hello! It's so nice to meet you.").
-- Subsequent openers **MUST NOT** say "Hi", "Hello", "Welcome", or "Nice to meet you" again.
-- Pick 2 to 4 **distinct** topics from the list.
-- Wrap them in natural conversation.
-- Use these to build a friendly rapport before "diving into the business."
+- ABSOLUTE FIRST RULE — the VERY FIRST opener (the first item in your output) MUST start with a warm greeting AND be a small-talk question (day / week / coffee / weather / how-are-you). Do NOT lead with a logistical or background question. Do NOT lead with anything that asks about the candidate's journey, their tech path, their past projects, or their resume — those come LATER as part of the structured interview, not as the first thing said.
+- COVERAGE — across the openers, you SHOULD include:
+  1. The very first opener: a warm greeting + a small-talk question (day / week / coffee / weather).
+  2. One light personal / location prompt (where they're joining from, current city, what they like about it).
+  3. One logistical pre-screening question (work authorization in the U.S., relocation openness, time zone, OR how long they've been in the country). This is important — keep it warm but ask it.
+- NEVER include a "tell me about yourself", "your journey", "your path into tech", "your background", or "how did you get started" question in the opener phase. Those are MAIN questions, not openers.
+- VARY THE GREETING — do not always start with "Hi there!" Mix between styles like:
+  • "Hi! Thanks so much for hopping on today — before we dig in, how's your day going?"
+  • "Hey, great to finally connect. Just so you know, this is a casual chat to start — we'll get into the technical stuff in a bit. How's everything on your end?"
+  • "Hi, really appreciate you taking the time today. Where are you joining in from?"
+  • "Hey! Thanks for making time for this. Anything fun going on today?"
+- SHARE A LITTLE — at least 2 of the openers should include a brief friendly remark BEFORE the question (1 short sentence, then the question). Examples of "shareable" remarks the interviewer can drop in: "I've got a few friends out there", "we get such a mix of backgrounds on these calls", "I always like to start with this one", "the weather's been all over the place here too", "one quick logistical thing before we get rolling". This makes it feel like a back-and-forth, not an interrogation.
+- USE RESUME CONTEXT — if the resume mentions a city, country, or recent move, weave it in naturally. Example: "I see from your resume you're based in [city] — how long have you been out there?" Do not invent locations the resume doesn't support.
+- Subsequent openers MUST NOT repeat any greeting words ("Hi", "Hello", "Welcome", "Nice to meet you", "Great to meet you"). Only the first opener has a greeting.
+- Each opener can be 1 to 2 short sentences (a remark + a question). Use contractions. Sound like a person.
+- DO NOT REPEAT TOPICS — never ask two questions about the same thing (e.g., don't ask "how's your day" AND "how's your week" — pick one). Don't ask the same logistical thing twice.
+- Salary expectations and notice period are OFF-LIMITS in this phase — leave those to a later HR round.
 
 INTERVIEW FORMAT MESSAGE
 One short interviewer-style format statement that acts as a **pivot** from casual talk to the interview.
@@ -333,11 +435,10 @@ function assembleFinalQA(pool, maxCount) {
     !INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
   );
 
-  // Shuffle only the non-intro main questions
-  for (let i = otherMainQuestions.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [otherMainQuestions[i], otherMainQuestions[j]] = [otherMainQuestions[j], otherMainQuestions[i]];
-  }
+  // Don't shuffle. Each batch produces a connected conversation thread, and
+  // shuffling here destroys that continuity (e.g., a Kafka deep-dive
+  // question gets stranded after a leadership question). Preserve the
+  // batch order so questions on the same topic stay grouped.
 
   const combinedQA = [
     ...openers,
@@ -345,6 +446,18 @@ function assembleFinalQA(pool, maxCount) {
     ...singleIntro,
     ...otherMainQuestions
   ];
+
+  // Defensive fallback: if the model failed to produce any openers, the
+  // first item would be a journey/intro question — which feels jarring
+  // ("tell me about your path" with no greeting). Prepend a friendly
+  // greeting so the candidate is welcomed before the real questions start.
+  if (openers.length === 0 && combinedQA.length > 0) {
+    combinedQA.unshift({
+      type: 'opener',
+      question: "Hi, thanks so much for hopping on with me today. Before we get into things, how's your day going so far?",
+      answer: "Hey, doing well, thanks. Glad to be here and excited for our chat."
+    });
+  }
 
   const slicedQA = combinedQA.slice(0, maxCount);
 
