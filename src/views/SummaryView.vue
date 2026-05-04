@@ -27,15 +27,52 @@
       </div>
 
       <div class="setup-form-container">
+        <!-- Overall Summary -->
+        <div v-if="aggregate.answeredCount > 0" class="setup-card overall-card">
+          <div class="card-header highlight">
+            <i class="el-icon-data-analysis"></i>
+            <h3>Overall Performance</h3>
+            <span class="overall-verdict" :class="'verdict-' + verdict.tone">{{ verdict.label }}</span>
+          </div>
+          <div class="card-body">
+            <div class="overall-stats-grid">
+              <div class="overall-stat">
+                <span class="overall-stat-val">{{ aggregate.answeredCount }} / {{ transcripts.length }}</span>
+                <span class="overall-stat-lab">Questions answered</span>
+              </div>
+              <div class="overall-stat">
+                <span class="overall-stat-val">{{ formatDuration(aggregate.totalDurationSec) }}</span>
+                <span class="overall-stat-lab">Total speaking time</span>
+              </div>
+              <div class="overall-stat">
+                <span class="overall-stat-val">{{ aggregate.averageConfidencePct }}%</span>
+                <span class="overall-stat-lab">Avg confidence</span>
+              </div>
+              <div class="overall-stat">
+                <span class="overall-stat-val">{{ aggregate.averagePaceWpm }} WPM</span>
+                <span class="overall-stat-lab">Avg pace</span>
+              </div>
+              <div class="overall-stat">
+                <span class="overall-stat-val">{{ aggregate.totalFillers }}<span class="overall-stat-sub"> ({{ aggregate.fillerPercent }}%)</span></span>
+                <span class="overall-stat-lab">Filler words</span>
+              </div>
+              <div class="overall-stat">
+                <span class="overall-stat-val">{{ aggregate.totalWords }}</span>
+                <span class="overall-stat-lab">Words spoken</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Video Recording Card -->
-        <div v-if="enableVideo" class="setup-card video-card">
+        <div v-if="enableVideo" class="setup-card video-card" ref="videoCard">
           <div class="card-header highlight">
             <i class="el-icon-video-camera"></i>
             <h3>Session Recording</h3>
           </div>
           <div class="card-body centered-body">
             <div v-if="recordedVideoUrl" class="video-preview-wrapper">
-              <video :src="recordedVideoUrl" controls class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @play="onVideoPlayed"></video>
+              <video :src="recordedVideoUrl" controls class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @ended="onVideoEnded"></video>
               <div class="video-actions">
                 <el-button
                     type="success"
@@ -98,13 +135,24 @@
             <div class="header-audio-controls">
               <el-button
                   size="mini"
-                  circle
-                  :type="currentlyPlayingIdx === idx ? 'danger' : 'primary'"
-                  :icon="currentlyPlayingIdx === idx ? 'el-icon-video-pause' : 'el-icon-video-play'"
-                  @click="togglePlayback(idx)"
+                  :type="isPlayingVideoFor(idx) ? 'danger' : 'primary'"
+                  :icon="isPlayingVideoFor(idx) ? 'el-icon-video-pause' : 'el-icon-video-play'"
+                  @click="toggleVideoSegment(idx)"
                   :disabled="!recordedVideoUrl || questionTimestamps[idx] === undefined"
-              ></el-button>
-
+                  :title="recordedVideoUrl && questionTimestamps[idx] !== undefined ? 'Play this question in the video' : 'No video segment available'"
+              >
+                {{ isPlayingVideoFor(idx) ? 'Stop' : 'Play in Video' }}
+              </el-button>
+              <el-button
+                  size="mini"
+                  :type="isPlayingReferenceFor(idx) ? 'danger' : 'default'"
+                  :icon="isPlayingReferenceFor(idx) ? 'el-icon-video-pause' : 'el-icon-headset'"
+                  @click="toggleReferenceTTS(idx)"
+                  :disabled="!localInterviewQA[idx] || !localInterviewQA[idx].answer"
+                  :title="localInterviewQA[idx] && localInterviewQA[idx].answer ? 'Listen to the AI reference answer' : 'No reference answer available'"
+              >
+                {{ isPlayingReferenceFor(idx) ? 'Stop' : 'Play Reference' }}
+              </el-button>
             </div>
           </div>
           <div class="card-body">
@@ -115,23 +163,40 @@
 
             <div class="summary-data-item">
               <label>Your Transcript</label>
-              <div class="transcript-surface" v-html="safeHighlight(transcriptObj)"></div>
+              <div v-if="hasTranscriptContent(transcriptObj)" class="transcript-surface" v-html="safeHighlight(transcriptObj)"></div>
+              <p v-else class="data-text muted">No spoken answer was recorded for this question.</p>
             </div>
 
             <div class="summary-data-item">
-              <label>Analysis & Feedback</label>
+              <label>Analysis &amp; Feedback</label>
               <div class="stats-feedback-row">
                 <div class="mini-stats">
                   <div class="stat-pill">
-                    <span class="stat-val">{{ transcriptWords(transcriptObj).length ? averageConfidence(transcriptWords(transcriptObj)) : 'N/A' }}%</span>
+                    <span class="stat-val">{{ averageConfidencePct(transcriptObj) || 'N/A' }}{{ averageConfidencePct(transcriptObj) ? '%' : '' }}</span>
                     <span class="stat-lab">Confidence</span>
                   </div>
                   <div class="stat-pill">
-                    <span class="stat-val">{{ typeof transcriptObj === 'object' && typeof transcriptObj._fillerWordCount !== 'undefined' ? transcriptObj._fillerWordCount : 'N/A' }}</span>
+                    <span class="stat-val">{{ wordCount(transcriptObj) || 'N/A' }}</span>
+                    <span class="stat-lab">Words</span>
+                  </div>
+                  <div class="stat-pill">
+                    <span class="stat-val">{{ paceWpm(transcriptObj) || 'N/A' }}{{ paceWpm(transcriptObj) ? ' WPM' : '' }}</span>
+                    <span class="stat-lab">Pace</span>
+                  </div>
+                  <div class="stat-pill">
+                    <span class="stat-val">{{ wordCount(transcriptObj) ? formatDuration(answerDurationSec(transcriptObj)) : 'N/A' }}</span>
+                    <span class="stat-lab">Duration</span>
+                  </div>
+                  <div class="stat-pill">
+                    <span class="stat-val">{{ fillerCount(transcriptObj) }}<span v-if="wordCount(transcriptObj)" class="stat-sub"> ({{ fillerPercent(transcriptObj) }}%)</span></span>
                     <span class="stat-lab">Fillers</span>
                   </div>
                 </div>
-                <FeedbackSection v-if="typeof transcriptObj === 'object' && transcriptObj.words?.length" :transcript="transcriptObj" />
+                <FeedbackSection
+                    v-if="hasTranscriptContent(transcriptObj)"
+                    :transcript="transcriptObj"
+                    :reference-answer="localInterviewQA[idx]?.answer || ''"
+                />
               </div>
             </div>
 
@@ -148,9 +213,21 @@
 
 <script>
 import { getTranscriptionStatus, getTranscripts, getInterviewQA, getQuestionTimestamps } from '@/store/interviewStore';
-import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
+import { highlightTranscript } from '@/utils/transcriptUtils';
+import {
+  averageConfidencePct,
+  wordCount,
+  fillerCount,
+  fillerPercent,
+  paceWpm,
+  answerDurationSec,
+  formatDuration,
+  aggregateStats,
+  overallVerdict
+} from '@/utils/summaryStats';
 import { getSetting } from '@/store/settingStore';
 import { getVideoRecording } from '@/store/recordingStore.js';
+import { speakWithTTS } from '@/services/ttsService';
 import FeedbackSection from '@/views/FeedbackSection.vue';
 
 
@@ -164,41 +241,59 @@ export default {
       transcripts: [],
       localInterviewQA: [],
       loadingTranscripts: true,
-      recordingUrls: {},
       enableVideo: false,
       recordedVideoUrl: '',
       videoTimeout: false,
-      currentlyPlayingIdx: null,
       questionTimestamps: [],
+      selectedVoice: '',
+      // Central playback state — only one of these can be active at a time.
+      playback: { kind: null, idx: null }, // kind: 'video' | 'reference' | null
+      _segmentEnd: null,
+      _segmentTimeUpdate: null,
+      _currentTtsAudio: null,
     };
+  },
+  computed: {
+    aggregate() {
+      return aggregateStats(this.transcripts);
+    },
+    verdict() {
+      return overallVerdict(this.aggregate);
+    }
   },
   async mounted() {
     this.localInterviewQA = this.interviewQA && this.interviewQA.length
         ? this.interviewQA
-        : await getInterviewQA() || '[]';
+        : await getInterviewQA() || [];
     this.enableVideo = await getSetting('enableVideo');
-
-    // Fetch question timestamps for seeking
+    this.selectedVoice = (await getSetting('selectedVoice')) || '';
     this.questionTimestamps = await getQuestionTimestamps();
 
     this.pollForVideoBlob();
     this.checkTranscriptionStatus();
   },
+  beforeDestroy() {
+    this.stopAllPlayback();
+  },
   methods: {
-    highlightTranscript,
-    averageConfidence,
+    // Wrappers so the template can call them as plain methods
+    averageConfidencePct,
+    wordCount,
+    fillerCount,
+    fillerPercent,
+    paceWpm,
+    answerDurationSec,
+    formatDuration,
+
+    hasTranscriptContent(transcriptObj) {
+      return wordCount(transcriptObj) > 0;
+    },
     safeHighlight(transcriptObj) {
-      // transcriptObj may be a plain string (from AssemblyAI) or a rich object
       if (!transcriptObj) return '';
       if (typeof transcriptObj === 'string') {
-        // Escape HTML and return as plain text
         return transcriptObj.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       }
       return highlightTranscript(transcriptObj);
-    },
-    transcriptWords(transcriptObj) {
-      if (!transcriptObj || typeof transcriptObj === 'string') return [];
-      return transcriptObj.words || [];
     },
     async pollForVideoBlob(retries = 20, interval = 1000) {
       for (let i = 0; i < retries; i++) {
@@ -209,7 +304,6 @@ export default {
         }
         await new Promise(resolve => setTimeout(resolve, interval));
       }
-      // If not found after retries, show a warning or fallback
       console.warn('Video recording not found after polling.');
       this.recordedVideoUrl = '';
       this.videoTimeout = true;
@@ -221,7 +315,6 @@ export default {
       } else if (inProcess === false) {
         this.pollForTranscripts();
       } else {
-        // Handle undefined or error
         console.warn('Transcription status is undefined, retrying...');
         setTimeout(() => this.checkTranscriptionStatus(), 1000);
       }
@@ -231,58 +324,117 @@ export default {
         const stored = await getTranscripts();
         if (Array.isArray(stored) && stored.length > 0) {
           this.transcripts = stored;
-          await this.loadRecordingUrls();
           this.loadingTranscripts = false;
           return;
         }
         await new Promise(resolve => setTimeout(resolve, interval));
       }
-      // If not found after retries, show a warning or fallback
       console.warn('Transcripts not found after polling.');
       this.transcripts = [];
       this.loadingTranscripts = false;
     },
-    async loadRecordingUrls() {
-      const { getRecording } = await import('@/store/recordingStore');
-      for (let i = 0; i < this.transcripts.length; i++) {
-        const key = `Recording_${i}`;
-        const blob = await getRecording(key);
-        if (blob) {
-          this.$set(this.recordingUrls, key, URL.createObjectURL(blob));
+
+    // ─── Playback management ───────────────────────────────────────────
+    isPlayingVideoFor(idx) {
+      return this.playback.kind === 'video' && this.playback.idx === idx;
+    },
+    isPlayingReferenceFor(idx) {
+      return this.playback.kind === 'reference' && this.playback.idx === idx;
+    },
+    stopAllPlayback() {
+      // Stop video + remove segment-end listener
+      const video = this.$refs.summaryVideo;
+      if (video) {
+        if (!video.paused) video.pause();
+        if (this._segmentTimeUpdate) {
+          video.removeEventListener('timeupdate', this._segmentTimeUpdate);
         }
       }
+      this._segmentTimeUpdate = null;
+      this._segmentEnd = null;
+
+      // Stop TTS
+      if (this._currentTtsAudio) {
+        try {
+          if (typeof this._currentTtsAudio.pause === 'function') this._currentTtsAudio.pause();
+        } catch (e) { /* noop */ }
+        this._currentTtsAudio = null;
+      }
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+      this.playback = { kind: null, idx: null };
     },
-    togglePlayback(idx) {
-      const videoEl = this.$refs.summaryVideo;
-      if (!videoEl) return;
 
-      if (this.currentlyPlayingIdx === idx && !videoEl.paused) {
-        // Same question — pause
-        videoEl.pause();
-        this.currentlyPlayingIdx = null;
-      } else {
-        // Different question or resuming — seek and play
-        const offsetSec = (this.questionTimestamps[idx] || 0) / 1000;
-        videoEl.currentTime = offsetSec;
-        videoEl.play().catch(e => console.error('Video play error:', e));
-        this.currentlyPlayingIdx = idx;
+    toggleVideoSegment(idx) {
+      if (this.isPlayingVideoFor(idx)) {
+        this.stopAllPlayback();
+        return;
+      }
+      this.stopAllPlayback();
 
-        // When video ends, reset button state
-        videoEl.onended = () => { this.currentlyPlayingIdx = null; };
+      const video = this.$refs.summaryVideo;
+      if (!video) return;
+
+      // Scroll the video card into view so the user can actually see it
+      if (this.$refs.videoCard && this.$refs.videoCard.scrollIntoView) {
+        this.$refs.videoCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      const startSec = (this.questionTimestamps[idx] || 0) / 1000;
+      // Stop when we hit the next question's timestamp; for the last question, play to end
+      const nextTs = this.questionTimestamps[idx + 1];
+      const endSec = typeof nextTs === 'number' ? nextTs / 1000 : Infinity;
+
+      this._segmentEnd = endSec;
+      this._segmentTimeUpdate = () => {
+        if (video.currentTime >= this._segmentEnd) {
+          this.stopAllPlayback();
+        }
+      };
+      video.addEventListener('timeupdate', this._segmentTimeUpdate);
+
+      video.currentTime = startSec;
+      video.play().catch(e => console.error('Video play error:', e));
+      this.playback = { kind: 'video', idx };
+    },
+
+    async toggleReferenceTTS(idx) {
+      if (this.isPlayingReferenceFor(idx)) {
+        this.stopAllPlayback();
+        return;
+      }
+      this.stopAllPlayback();
+
+      const text = this.localInterviewQA[idx] && this.localInterviewQA[idx].answer;
+      if (!text) return;
+
+      this.playback = { kind: 'reference', idx };
+      try {
+        const audio = await speakWithTTS(text, this.selectedVoice, () => {
+          // Only clear if THIS playback is still active (a newer one may have replaced it)
+          if (this.isPlayingReferenceFor(idx)) {
+            this.stopAllPlayback();
+          }
+        });
+        this._currentTtsAudio = audio;
+      } catch (e) {
+        console.error('Reference TTS playback failed:', e);
+        this.stopAllPlayback();
       }
     },
+
     onVideoPaused() {
-      // If video is paused externally (user clicks native controls), sync button state
-      this.currentlyPlayingIdx = null;
+      // Sync state when the user clicks the native video controls
+      if (this.playback.kind === 'video') {
+        this.stopAllPlayback();
+      }
     },
-    onVideoPlayed() {
-      // No-op — currentlyPlayingIdx already set by togglePlayback
+    onVideoEnded() {
+      if (this.playback.kind === 'video') {
+        this.stopAllPlayback();
+      }
     },
-    stopPlayback() {
-      const videoEl = this.$refs.summaryVideo;
-      if (videoEl) { videoEl.pause(); videoEl.currentTime = 0; }
-      this.currentlyPlayingIdx = null;
-    },
+
     handleDownload() {
       if (!this.recordedVideoUrl) return;
       const link = document.createElement('a');
@@ -408,6 +560,61 @@ export default {
   text-align: center;
 }
 
+/* Overall Performance Card */
+.overall-card .card-header.highlight {
+  background: linear-gradient(120deg, #eff6ff 0%, #f0fdf4 100%);
+}
+
+.overall-verdict {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.overall-verdict.verdict-good { background: #dcfce7; color: #15803d; }
+.overall-verdict.verdict-ok { background: #fef9c3; color: #a16207; }
+.overall-verdict.verdict-bad { background: #fee2e2; color: #b91c1c; }
+.overall-verdict.verdict-neutral { background: #f1f5f9; color: #475569; }
+
+.overall-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.overall-stat {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.overall-stat-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.overall-stat-sub {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.overall-stat-lab {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
 /* Video Section */
 .video-preview-wrapper {
   width: 100%;
@@ -525,7 +732,8 @@ export default {
 
 .mini-stats {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .stat-pill {
@@ -535,12 +743,19 @@ export default {
   border-radius: 10px;
   display: flex;
   flex-direction: column;
+  min-width: 100px;
 }
 
 .stat-val {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: #1a1a1a;
+}
+
+.stat-sub {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 600;
 }
 
 .stat-lab {
@@ -555,6 +770,7 @@ export default {
 .header-audio-controls {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* Loading State */
@@ -628,6 +844,9 @@ export default {
   .transcript-surface { padding: 14px; font-size: 0.95rem; }
 
   .summary-data-item { flex-direction: column; gap: 4px; }
+
+  .header-audio-controls { width: 100%; }
+  .header-audio-controls .el-button { flex: 1; }
 }
 
 @media (max-width: 480px) {

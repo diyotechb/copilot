@@ -20,17 +20,41 @@
           </div>
           <div class="card-body">
             <div class="upload-group">
-              <label class="group-label">Resume</label>
+              <div class="group-label-row">
+                <label class="group-label">Resume</label>
+                <label v-if="aiSampleGenerationEnabled" class="ai-toggle">
+                  <input type="checkbox" v-model="resumeAiMode" />
+                  <span class="ai-toggle-track"><span class="ai-toggle-knob"></span></span>
+                  <span class="ai-toggle-text">Generate with AI</span>
+                </label>
+              </div>
               <FileUpload
                   label="Resume"
+                  :value="resumeText"
+                  :ai-mode="resumeAiMode"
+                  :generating="generatingResume"
+                  keywords-example="Jane Doe, senior frontend, 5 years, Acme Inc"
                   @input="resumeText = $event"
+                  @generate="handleGenerateResume"
               />
             </div>
             <div class="upload-group">
-              <label class="group-label">Job Description (Optional)</label>
+              <div class="group-label-row">
+                <label class="group-label">Job Description (Optional)</label>
+                <label v-if="aiSampleGenerationEnabled" class="ai-toggle">
+                  <input type="checkbox" v-model="jdAiMode" />
+                  <span class="ai-toggle-track"><span class="ai-toggle-knob"></span></span>
+                  <span class="ai-toggle-text">Generate with AI</span>
+                </label>
+              </div>
               <FileUpload
                   label="Job Description"
+                  :value="jobDescriptionText"
+                  :ai-mode="jdAiMode"
+                  :generating="generatingJD"
+                  keywords-example="Acme Inc, backend engineer, remote, fintech"
                   @input="jobDescriptionText = $event"
+                  @generate="handleGenerateJobDescription"
               />
             </div>
           </div>
@@ -46,26 +70,64 @@
             <div class="settings-grid">
               <div class="setting-field">
                 <label>Interviewer Voice</label>
-                <div class="select-wrapper">
-                  <select v-model="selectedVoice" class="setup-select" @change="onVoiceChange" :disabled="voicesLoading">
-                    <option value="" disabled>Select a voice</option>
-                    <option v-for="voice in voices" :key="voice.id" :value="voice.id">
-                      {{ voice.name }} ({{ voice.gender }})
-                    </option>
-                  </select>
-                  <i class="el-icon-arrow-down select-icon"></i>
+                <div class="voice-row">
+                  <div class="select-wrapper">
+                    <select v-model="selectedVoice" class="setup-select" @change="onVoiceChange" :disabled="voicesLoading">
+                      <option value="" disabled>Select a voice</option>
+                      <option v-for="voice in voices" :key="voice.id" :value="voice.id">
+                        {{ voice.name }} ({{ voice.gender }})
+                      </option>
+                    </select>
+                    <i class="el-icon-arrow-down select-icon"></i>
+                  </div>
+                  <button
+                    type="button"
+                    class="play-sample-btn"
+                    :disabled="!selectedVoice || isPlayingSample"
+                    @click="playSelectedVoice"
+                    :title="selectedVoice ? 'Play voice sample' : 'Select a voice first'"
+                  >
+                    <i :class="isPlayingSample ? 'el-icon-loading' : 'el-icon-video-play'"></i>
+                    <span>{{ isPlayingSample ? 'Playing…' : 'Play' }}</span>
+                  </button>
                 </div>
               </div>
 
               <div class="setting-field">
-                <label>Difficulty Level</label>
+                <div class="difficulty-label-row">
+                  <label>Difficulty Level</label>
+                  <button
+                    type="button"
+                    class="difficulty-help-btn"
+                    :class="{ active: showDifficultyDetails }"
+                    @click="showDifficultyDetails = !showDifficultyDetails"
+                    :title="showDifficultyDetails ? 'Hide details' : 'Show details about each level'"
+                  >
+                    <i class="el-icon-question"></i>
+                  </button>
+                </div>
                 <div class="select-wrapper">
                   <select v-model="interviewDifficulty" class="setup-select" @change="onDifficultyChange">
-                    <option value="Beginner">Beginner</option>
-                    <option value="Intermediate">Intermediate</option>
+                    <option v-for="level in difficultyLevels" :key="level" :value="level">{{ level }}</option>
                   </select>
                   <i class="el-icon-arrow-down select-icon"></i>
                 </div>
+                <p class="difficulty-meta">
+                  <i class="el-icon-time"></i> {{ currentDifficulty.DURATION_TEXT }} &middot; {{ currentDifficulty.COUNT_TEXT }}
+                </p>
+              </div>
+
+              <div v-if="showCategoryField" class="setting-field">
+                <label>Question Category</label>
+                <div class="select-wrapper">
+                  <select v-model="interviewCategory" class="setup-select" @change="onCategoryChange">
+                    <option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ cat }}</option>
+                  </select>
+                  <i class="el-icon-arrow-down select-icon"></i>
+                </div>
+                <p class="difficulty-meta">
+                  <i class="el-icon-collection-tag"></i> {{ currentCategory.DESCRIPTION }}
+                </p>
               </div>
             </div>
 
@@ -215,6 +277,8 @@
           :enableVideo="enableVideo"
           :isGenerating="isGenerating"
           :interviewQA="interviewQA"
+          :progress="generationProgress"
+          :difficulty="interviewDifficulty"
           @update:enableVideo="enableVideo = $event"
           @startInterview="handleStartInterview"
           @back="qaReady = false"
@@ -257,6 +321,45 @@
       </div>
     </el-dialog>
 
+    <!-- Difficulty Details Modal -->
+    <transition name="modal-fade">
+      <div
+        v-if="showDifficultyDetails"
+        class="difficulty-modal-overlay"
+        @click.self="showDifficultyDetails = false"
+      >
+        <div class="difficulty-modal" role="dialog" aria-labelledby="difficulty-modal-title">
+          <div class="difficulty-modal-header">
+            <h3 id="difficulty-modal-title">Difficulty Levels</h3>
+            <button
+              type="button"
+              class="difficulty-modal-close"
+              aria-label="Close"
+              @click="showDifficultyDetails = false"
+            >
+              <i class="el-icon-close"></i>
+            </button>
+          </div>
+          <p class="difficulty-modal-sub">Pick the experience level you want to practice. You can change it any time before starting.</p>
+          <div class="difficulty-details">
+            <div
+              v-for="level in difficultyLevels"
+              :key="level"
+              class="difficulty-detail-card"
+              :class="{ active: interviewDifficulty === level }"
+              @click="selectDifficultyFromModal(level)"
+            >
+              <div class="difficulty-detail-head">
+                <span class="difficulty-detail-title">{{ level }}</span>
+                <span class="difficulty-detail-meta">{{ difficultyConfig[level].DURATION_TEXT }} &middot; {{ difficultyConfig[level].COUNT_TEXT }}</span>
+              </div>
+              <p class="difficulty-detail-desc">{{ difficultyConfig[level].DESCRIPTION }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Custom Confirmation Modal -->
     <ConfirmDialog
       :visible.sync="confirmVisible"
@@ -274,12 +377,13 @@
 
 <script>
 import FileUpload from '../components/FileUpload.vue';
+import { generateSampleResume, generateSampleJobDescription } from '@/services/sampleContentService';
 import InterviewInstructions from './InterviewInstructions.vue';
 import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
 import { clearRecordingsStore } from '@/store/recordingStore.js';
 import { APP_CONFIG } from '@/constants/appConfig';
-import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
+import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA } from '@/store/interviewStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { fetchVoices, playVoiceSample } from '@/services/ttsService';
 
@@ -301,6 +405,15 @@ export default {
       enableVideo: false,
       interviewDifficulty: 'Beginner',
       voicesLoading: false,
+      isPlayingSample: false,
+      resumeAiMode: false,
+      jdAiMode: false,
+      generatingResume: false,
+      generatingJD: false,
+      aiSampleGenerationEnabled: false,
+      generationProgress: { ready: 0, target: APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT, firstBatchDone: false },
+      showDifficultyDetails: false,
+      interviewCategory: APP_CONFIG.CATEGORY_DEFAULT,
       micPermission: 'prompt', // 'granted', 'denied', 'prompt'
       cameraPermission: 'prompt',
       micLoading: false,
@@ -320,10 +433,43 @@ export default {
       }
     };
   },
+  watch: {
+    showDifficultyDetails(open) {
+      if (open) {
+        this._escHandler = (e) => {
+          if (e.key === 'Escape') this.showDifficultyDetails = false;
+        };
+        window.addEventListener('keydown', this._escHandler);
+      } else if (this._escHandler) {
+        window.removeEventListener('keydown', this._escHandler);
+        this._escHandler = null;
+      }
+    }
+  },
   computed: {
     isSubmitDisabled() {
       const permsOk = this.micPermission === 'granted' && (!this.enableVideo || this.cameraPermission === 'granted');
       return !this.resumeText || !this.selectedVoice || this.isGenerating || this.voicesLoading || !permsOk;
+    },
+    difficultyConfig() {
+      return APP_CONFIG.DIFFICULTY;
+    },
+    difficultyLevels() {
+      return Object.keys(APP_CONFIG.DIFFICULTY);
+    },
+    currentDifficulty() {
+      return APP_CONFIG.DIFFICULTY[this.interviewDifficulty] || APP_CONFIG.DIFFICULTY[APP_CONFIG.DIFFICULTY_DEFAULT];
+    },
+    categoryOptions() {
+      return Object.keys(APP_CONFIG.CATEGORY);
+    },
+    currentCategory() {
+      return APP_CONFIG.CATEGORY[this.interviewCategory] || APP_CONFIG.CATEGORY[APP_CONFIG.CATEGORY_DEFAULT];
+    },
+    showCategoryField() {
+      // Category selection is meaningful for Intermediate and Advanced.
+      // Beginner is intentionally a broad warm-up so we keep the mix.
+      return this.interviewDifficulty === 'Intermediate' || this.interviewDifficulty === 'Advanced';
     }
   },
   async mounted() {
@@ -332,7 +478,12 @@ export default {
     const { default: storage } = await import('@/services/storageService');
     await storage.clearInterviewSession();
     await storage.clearRecordingData();
-    
+
+    // Beta feature gate: only enable Generate-with-AI toggles if the user
+    // opted in via Profile Settings → Beta Features.
+    const features = storage.getItem(storage.KEYS.USER_FEATURES, true) || {};
+    this.aiSampleGenerationEnabled = !!features.aiSampleGenerationEnabled;
+
     this.enableVideo = await getSetting('enableVideo');
     const savedShowQuestions = await getSetting('showQuestions');
     if (savedShowQuestions !== null) {
@@ -343,8 +494,14 @@ export default {
       this.selectedVoice = savedVoice;
     }
     const savedDifficulty = await getSetting('interviewDifficulty');
-    if (savedDifficulty) {
+    if (savedDifficulty && APP_CONFIG.DIFFICULTY[savedDifficulty]) {
       this.interviewDifficulty = savedDifficulty;
+    } else {
+      this.interviewDifficulty = APP_CONFIG.DIFFICULTY_DEFAULT;
+    }
+    const savedCategory = await getSetting('interviewCategory');
+    if (savedCategory && APP_CONFIG.CATEGORY[savedCategory]) {
+      this.interviewCategory = savedCategory;
     }
     this.checkPermissions();
   },
@@ -360,6 +517,14 @@ export default {
     },
     onDifficultyChange() {
       saveSetting('interviewDifficulty', this.interviewDifficulty);
+    },
+    onCategoryChange() {
+      saveSetting('interviewCategory', this.interviewCategory);
+    },
+    selectDifficultyFromModal(level) {
+      this.interviewDifficulty = level;
+      this.onDifficultyChange();
+      this.showDifficultyDetails = false;
     },
     async checkPermissions() {
       if (!navigator.permissions || !navigator.permissions.query) return;
@@ -442,12 +607,45 @@ export default {
       this.checkPermissions();
     },
     onVoiceChange() {
-      if (this.selectedVoice) {
+      // Persist immediately; the user can preview via the Play button.
+      saveSetting('selectedVoice', this.selectedVoice);
+    },
+    playSelectedVoice() {
+      if (this.selectedVoice && !this.isPlayingSample) {
         this.playVoiceSample(this.selectedVoice);
       }
     },
-    onDifficultyChange() {
-      saveSetting('interviewDifficulty', this.interviewDifficulty);
+    async handleGenerateResume({ keywords }) {
+      this.generatingResume = true;
+      try {
+        this.resumeText = await generateSampleResume(keywords);
+      } catch (e) {
+        this.showGenerationError('resume');
+      } finally {
+        this.generatingResume = false;
+      }
+    },
+    async handleGenerateJobDescription({ keywords }) {
+      this.generatingJD = true;
+      try {
+        this.jobDescriptionText = await generateSampleJobDescription(keywords);
+      } catch (e) {
+        this.showGenerationError('job description');
+      } finally {
+        this.generatingJD = false;
+      }
+    },
+    showGenerationError(label) {
+      this.confirmConfig = {
+        title: 'Generation Failed',
+        message: `Could not generate the ${label}. Please try again.`,
+        type: 'warning',
+        confirmText: 'OK',
+        showCancel: false,
+        icon: 'el-icon-warning-outline',
+        action: 'ack'
+      };
+      this.confirmVisible = true;
     },
     async fetchVoices() {
       this.voicesLoading = true;
@@ -460,6 +658,7 @@ export default {
       }
     },
     async playVoiceSample(voiceId) {
+      this.isPlayingSample = true;
       try {
         await playVoiceSample(voiceId);
       } catch (e) {
@@ -473,18 +672,31 @@ export default {
           action: 'ack'
         };
         this.confirmVisible = true;
+      } finally {
+        this.isPlayingSample = false;
       }
     },
     async submitSetup() {
       this.isGenerating = true;
       this.qaReady = true;
-
-      await saveSetting('selectedVoice', this.selectedVoice);
+      this.generationProgress = {
+        ready: 0,
+        target: this.currentDifficulty.MIN_Q,
+        firstBatchDone: false
+      };
 
       try {
         this.interviewQA = await generateInterviewQA({
           resumeText: this.resumeText,
-          jobDescriptionText: this.jobDescriptionText
+          jobDescriptionText: this.jobDescriptionText,
+          difficulty: this.interviewDifficulty,
+          category: this.showCategoryField ? this.interviewCategory : 'All',
+          onProgress: (progress) => {
+            this.generationProgress = progress;
+          },
+          onUpdate: (partial) => {
+            this.interviewQA = partial;
+          }
         });
       } catch (e) {
         console.error('Failed to generate interview questions:', e);
@@ -506,6 +718,12 @@ export default {
     async handleStartInterview() {
       // Final store sync before navigating
       saveSetting('enableVideo', this.enableVideo);
+
+      // Persist whatever questions we have right now so InterviewView reads
+      // a fresh snapshot (background generation may still be in flight).
+      if (this.interviewQA && this.interviewQA.length > 0) {
+        await saveInterviewQA(this.interviewQA);
+      }
 
       const mediaConstraints = this.enableVideo ? { video: true, audio: true } : { audio: true };
       navigator.mediaDevices.getUserMedia(mediaConstraints)
@@ -649,6 +867,258 @@ export default {
   margin-bottom: 25px;
 }
 
+.group-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.group-label-row .group-label {
+  margin-bottom: 0;
+}
+
+.ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.ai-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ai-toggle-track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  background: #d1d5db;
+  border-radius: 999px;
+  transition: background-color 0.2s;
+}
+
+.ai-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.ai-toggle input[type="checkbox"]:checked + .ai-toggle-track {
+  background: #2563eb;
+}
+
+.ai-toggle input[type="checkbox"]:checked + .ai-toggle-track .ai-toggle-knob {
+  transform: translateX(14px);
+}
+
+.ai-toggle input[type="checkbox"]:focus-visible + .ai-toggle-track {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.ai-toggle:hover .ai-toggle-text {
+  color: #2563eb;
+}
+
+/* Difficulty section */
+.difficulty-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.difficulty-label-row label {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 !important;
+  line-height: 1;
+}
+
+.difficulty-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.difficulty-help-btn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.difficulty-help-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.difficulty-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.difficulty-meta i {
+  color: #2563eb;
+}
+
+/* Difficulty details modal */
+.difficulty-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.difficulty-modal {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.difficulty-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.difficulty-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #1f2937;
+}
+
+.difficulty-modal-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.difficulty-modal-close:hover {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.difficulty-modal-sub {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.difficulty-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.difficulty-detail-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #f9fafb;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, transform 0.1s;
+}
+
+.difficulty-detail-card:hover {
+  border-color: #93c5fd;
+  background: #f0f7ff;
+}
+
+.difficulty-detail-card:active {
+  transform: scale(0.99);
+}
+
+.difficulty-detail-card.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.difficulty-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.difficulty-detail-title {
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 0.95rem;
+}
+
+.difficulty-detail-meta {
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+.difficulty-detail-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+.modal-fade-enter-active, .modal-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.modal-fade-enter-active .difficulty-modal,
+.modal-fade-leave-active .difficulty-modal {
+  transition: transform 0.18s ease;
+}
+.modal-fade-enter, .modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter .difficulty-modal,
+.modal-fade-leave-to .difficulty-modal {
+  transform: translateY(-8px) scale(0.98);
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -667,6 +1137,46 @@ export default {
 .select-wrapper {
   position: relative;
   width: 100%;
+}
+
+.voice-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.voice-row .select-wrapper {
+  flex: 1;
+}
+
+.play-sample-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background-color: #fff;
+  color: #374151;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+  white-space: nowrap;
+}
+
+.play-sample-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.play-sample-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.play-sample-btn i {
+  font-size: 1.05rem;
 }
 
 .setup-select {

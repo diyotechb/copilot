@@ -3,7 +3,7 @@
     <div class="settings-card">
       <div class="settings-header">
         <h1>Profile Settings</h1>
-        <p>Customize your application experience.</p>
+        <p>Customize your application experience. <span class="autosave-hint"><i class="el-icon-circle-check"></i> Changes save automatically.</span></p>
       </div>
 
       <div class="settings-content">
@@ -12,7 +12,7 @@
           <p class="setting-description">Select the page you want to see immediately after logging in.</p>
           
           <div class="select-wrapper">
-            <select id="landing-page" v-model="selectedLandingPage" class="styled-select">
+            <select id="landing-page" v-model="selectedLandingPage" @change="saveLandingPage" class="styled-select">
               <option v-for="item in availablePages" :key="item.routeName" :value="item.routeName">
                 {{ item.name }}
               </option>
@@ -24,12 +24,22 @@
           <label>Beta Features</label>
           <p class="setting-description">Enable experimental features. These are actively developed and may change.</p>
 
-          <div class="feature-toggle-row">
-            <div class="feature-toggle-info">
-              <span class="feature-name">New Transcription Engine</span>
-              <span class="feature-desc">Enables the improved engine with better accuracy and real-time formatting. Adds a "Try New" button on the transcriptions page.</span>
+          <div class="feature-toggle-list">
+            <div class="feature-toggle-row">
+              <div class="feature-toggle-info">
+                <span class="feature-name">New Transcription Engine</span>
+                <span class="feature-desc">Enables the improved engine with better accuracy and real-time formatting. Adds a "Try New" button on the transcriptions page.</span>
+              </div>
+              <el-switch v-model="features.transcriptionV2Enabled" @change="saveFeatures"></el-switch>
             </div>
-            <el-switch v-model="features.transcriptionV2Enabled"></el-switch>
+
+            <div class="feature-toggle-row">
+              <div class="feature-toggle-info">
+                <span class="feature-name">AI Sample Resume &amp; Job Description</span>
+                <span class="feature-desc">Adds a "Generate with AI" toggle on the Resume Setup page so you can create sample resumes and job descriptions for practice. Uses your OpenAI key.</span>
+              </div>
+              <el-switch v-model="features.aiSampleGenerationEnabled" @change="saveFeatures"></el-switch>
+            </div>
           </div>
         </div>
 
@@ -73,13 +83,6 @@
           </div>
         </div>
 
-        <div class="settings-actions">
-          <button @click="saveSettings" class="save-btn" :disabled="isSaving">
-            <i v-if="!isSaving" class="el-icon-check"></i>
-            <span v-if="isSaving" class="spinner"></span>
-            {{ isSaving ? 'Saving...' : 'Save Preferences' }}
-          </button>
-        </div>
       </div>
     </div>
 
@@ -114,9 +117,9 @@ export default {
     return {
       selectedLandingPage: 'Home',
       features: {
-        transcriptionV2Enabled: false
+        transcriptionV2Enabled: false,
+        aiSampleGenerationEnabled: false
       },
-      isSaving: false,
       storageStats: null,
       isClearingInterviews: false,
       isClearingRecordings: false,
@@ -152,21 +155,31 @@ export default {
     this.refreshStorageStats();
   },
   methods: {
-    async saveSettings() {
-      this.isSaving = true;
+    saveLandingPage() {
       try {
         realStorageService.setItem(realStorageService.KEYS.USER_LANDING_PAGE, this.selectedLandingPage);
-        realStorageService.setItem(realStorageService.KEYS.USER_FEATURES, this.features);
-        this.$message({
-          message: 'Settings saved successfully!',
-          type: 'success'
-        });
+        this.flashSaved();
       } catch (error) {
-        console.error('Failed to save settings:', error);
-        this.$message.error('Failed to save settings. Please try again.');
-      } finally {
-        this.isSaving = false;
+        console.error('Failed to save landing page:', error);
+        this.$message.error('Could not save your preference. Please try again.');
       }
+    },
+    saveFeatures() {
+      try {
+        realStorageService.setItem(realStorageService.KEYS.USER_FEATURES, this.features);
+        this.flashSaved();
+      } catch (error) {
+        console.error('Failed to save features:', error);
+        this.$message.error('Could not save your preference. Please try again.');
+      }
+    },
+    flashSaved() {
+      this.$message({
+        message: 'Saved',
+        type: 'success',
+        duration: 1200,
+        showClose: false
+      });
     },
     async refreshStorageStats() {
       this.storageStats = await realStorageService.getStorageUsage();
@@ -332,36 +345,18 @@ export default {
   color: #94a3b8;
 }
 
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 40px;
-}
-
-.save-btn {
-  background-color: #2563eb;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
+.autosave-hint {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  transition: all 0.2s;
+  gap: 4px;
+  margin-left: 6px;
+  font-size: 0.82rem;
+  color: #16a34a;
+  font-weight: 600;
 }
 
-.save-btn:hover:not(:disabled) {
-  background-color: #1d4ed8;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
-}
-
-.save-btn:disabled {
-  background-color: #94a3b8;
-  cursor: not-allowed;
+.autosave-hint i {
+  font-size: 0.95rem;
 }
 
 .spinner {
@@ -375,6 +370,12 @@ export default {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.feature-toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .feature-toggle-row {

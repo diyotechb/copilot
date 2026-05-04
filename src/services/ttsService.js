@@ -68,8 +68,13 @@ export async function playVoiceSample(voiceId) {
   const audioData = await requestSpeech('This is a sample of the selected voice.', voiceId);
   const url = URL.createObjectURL(new Blob([audioData], { type: 'audio/mp3' }));
   const audio = new Audio(url);
-  audio.onended = () => URL.revokeObjectURL(url);
-  audio.play();
+
+  // Resolve when playback ends so the caller can show a "playing" state.
+  return new Promise((resolve, reject) => {
+    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+    audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Audio playback failed')); };
+    audio.play().catch(reject);
+  });
 }
 
 export async function speakWithTTS(text, voice, onEnd) {

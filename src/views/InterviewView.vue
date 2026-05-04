@@ -42,63 +42,20 @@
             </div>
           </div>
 
-          <!-- Live status rows -->
-          <template v-if="!showQuestionSection">
-            <template v-if="isReading">
-              <div class="transcript-line interviewer thinking">
-                <div class="avatar-column">
-                  <div class="user-avatar-small interviewer-avatar">I</div>
-                </div>
-                <div class="content-column">
-                  <div class="meta-header">
-                    <span class="speaker-label">INTERVIEWER</span>
-                    <span class="time-stamp">{{ nowTime }}</span>
-                  </div>
-                  <div class="text-container">
-                    <div class="status-pill speaking-pill">
-                      <span class="pill-dot"></span> Speaking…
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="transcript-line user thinking">
-                <div class="avatar-column">
-                  <div class="user-avatar-small">Y</div>
-                </div>
-                <div class="content-column">
-                  <div class="meta-header">
-                    <span class="speaker-label">YOU</span>
-                    <span class="time-stamp">{{ nowTime }}</span>
-                  </div>
-                  <div class="text-container">
-                    <div class="status-pill listening-pill">
-                      <span class="pill-dot"></span> Listening…
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </template>
-
-          <!-- When questions ARE visible -->
-          <template v-if="showQuestionSection && isReading">
-            <div class="transcript-line user thinking">
-              <div class="avatar-column">
-                <div class="user-avatar-small">Y</div>
-              </div>
-              <div class="content-column">
-                <div class="meta-header">
-                  <span class="speaker-label">YOU</span>
-                  <span class="time-stamp">{{ nowTime }}</span>
-                </div>
-                <div class="text-container">
-                  <div class="status-pill listening-pill">
-                    <span class="pill-dot"></span> Listening…
-                  </div>
-                </div>
+          <!-- Live status indicator — slim, single-line banner pinned at the
+               bottom of the transcript while something is happening.
+               Replaces the old per-role placeholder rows that looked like
+               ghost messages and shifted the layout when they came/went. -->
+          <transition name="live-status-fade">
+            <div v-if="liveStatus" class="live-status-row">
+              <div class="avatar-column"></div>
+              <div class="live-status-banner" :class="'is-' + liveStatus.kind">
+                <i :class="liveStatus.icon"></i>
+                <span class="live-status-text">{{ liveStatus.text }}</span>
+                <span class="live-status-dots"><span></span><span></span><span></span></span>
               </div>
             </div>
-          </template>
+          </transition>
         </div>
       </div>
 
@@ -139,6 +96,17 @@
           <div class="controls">
             <el-button circle class="record-btn minimal-control-btn" title="Stop Session" @click="stopInterview">
               <i class="el-icon-close"></i>
+            </el-button>
+          </div>
+
+          <div class="controls">
+            <el-button
+                circle
+                class="record-btn minimal-control-btn"
+                title="Repeat Current Question"
+                :disabled="!canRepeatQuestion"
+                @click="repeatCurrentQuestion">
+              <i class="el-icon-refresh-left"></i>
             </el-button>
           </div>
 
@@ -285,13 +253,13 @@ export default {
       lastAudioBlob: null,
       transcriptLoaded: false,
       transcriptLoading: false,
-      showTranscriptSection: false,
-      currentTranscript: null,
       videoMinimized: false,
       streamTimer: null,
       videoRecordingStartTime: null,
       sharedAudioCtx: null,       // shared Web Audio context for TTS+mic mixing
       mixDestination: null,        // MediaStreamDestination — its stream goes into VideoRecorder
+      persistentMicStream: null,   // mic stream held for the entire interview, routed into the recording mix
+      persistentMicSource: null,
       // Confirmation Modal State
       confirmVisible: false,
       confirmConfig: {
@@ -316,6 +284,38 @@ export default {
       const remaining = Math.ceil((1 - this.silenceProgress) * waitTimeSecs);
       return Math.max(0, remaining);
     },
+    levelConfig() {
+      return APP_CONFIG.DIFFICULTY[this.difficultyLevel] || APP_CONFIG.DIFFICULTY[APP_CONFIG.DIFFICULTY_DEFAULT];
+    },
+    showAIAnswer() {
+      return !!this.levelConfig?.SHOW_AI_ANSWER;
+    },
+    canRepeatQuestion() {
+      // Repeat the current question if we are mid-interview, on a real turn,
+      // and not currently in the middle of reading or transitioning.
+      return this.interviewing
+        && !this.transitioning
+        && !this.isReading
+        && this.turn > 0
+        && this.turn <= this.interviewQA.length;
+    },
+    liveStatus() {
+      // Mutually exclusive — the most relevant state wins.
+      if (!this.interviewing) return null;
+      if (this.isReading) {
+        return { kind: 'speaking', icon: 'el-icon-microphone', text: 'Interviewer is speaking' };
+      }
+      if (this.transitioning) {
+        return { kind: 'thinking', icon: 'el-icon-loading', text: 'Loading next question' };
+      }
+      if (this.isPaused) {
+        return { kind: 'paused', icon: 'el-icon-video-pause', text: 'Session paused' };
+      }
+      if (this.showAnswer) {
+        return { kind: 'listening', icon: 'el-icon-headset', text: 'Listening to your answer' };
+      }
+      return null;
+    },
   },
 
   async created() {
@@ -328,6 +328,16 @@ export default {
     this.enableVideo = await getSetting('enableVideo');
     const savedShowQuestions = await getSetting('showQuestions');
     if (savedShowQuestions !== null) this.showQuestionSection = savedShowQuestions;
+
+    // Difficulty hard-overrides the show-questions toggle for Beginner (always on)
+    // and Advanced (always off). Intermediate respects the user's saved choice.
+    const levelConfig = APP_CONFIG.DIFFICULTY[this.difficultyLevel];
+    if (levelConfig?.SHOW_QUESTIONS_MODE === 'always') {
+      this.showQuestionSection = true;
+    } else if (levelConfig?.SHOW_QUESTIONS_MODE === 'never') {
+      this.showQuestionSection = false;
+    }
+
     const savedVoice = await getSetting('selectedVoice');
     this.selectedVoice = savedVoice;
     this.interviewQA = await getInterviewQA();
@@ -479,14 +489,16 @@ export default {
         this.transcriptLoaded = true;
         this.transitioning = false; // allow next advance only after TTS done
 
-        // Push answer entry then stream word-by-word so candidate can read along
-        const answerEntry = {
-          type: 'user',
-          text: '',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        this.interviewTranscript.push(answerEntry);
-        this.streamAnswer(qa.answer, answerEntry);
+        // Show the AI's suggested answer only when the difficulty allows it.
+        if (this.showAIAnswer) {
+          const answerEntry = {
+            type: 'user',
+            text: '',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+          this.interviewTranscript.push(answerEntry);
+          this.streamAnswer(qa.answer, answerEntry);
+        }
       }).then(audio => {
         this.activeInterviewerAudio = audio;
       });
@@ -530,10 +542,33 @@ export default {
       this._pausedStreamTimer = false;
     },
 
+    repeatCurrentQuestion() {
+      if (!this.canRepeatQuestion) return;
+      const qa = this.interviewQA[this.turn - 1];
+      if (!qa || !qa.question) return;
 
-    handleTranscriptReady(transcript) {
-      this.currentTranscript = transcript;
-      this.showTranscriptSection = true;
+      // Cancel any stale TTS audio just in case
+      if (this.activeInterviewerAudio) {
+        if (typeof this.activeInterviewerAudio.pause === 'function') this.activeInterviewerAudio.pause();
+        else if (window.speechSynthesis) window.speechSynthesis.cancel();
+        this.activeInterviewerAudio = null;
+      }
+
+      this.isReading = true;
+      const ttsFunc = (this.sharedAudioCtx && this.mixDestination)
+          ? (text, voice, onEnd) => speakWithTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
+          : speakWithTTS;
+      const audioOrPromise = ttsFunc(qa.question, this.selectedVoice, () => {
+        this.isReading = false;
+      });
+      // speakWithTTS returns the audio element directly; speakWithTTSToContext returns a Promise.
+      Promise.resolve(audioOrPromise).then(audio => {
+        this.activeInterviewerAudio = audio;
+      });
+    },
+
+
+    handleTranscriptReady() {
       this.transcriptLoading = false;
     },
 
@@ -586,6 +621,13 @@ export default {
       // Set up shared AudioContext for TTS + mic mixing into video recording
       this.sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       this.mixDestination = this.sharedAudioCtx.createMediaStreamDestination();
+
+      // Persistent mic capture for the *entire* interview — keeps the
+      // candidate's voice in the recording mix regardless of when
+      // AnswerRecorder mounts/unmounts. AnswerRecorder still does its own
+      // getUserMedia for transcription, which is independent.
+      this._setupPersistentMic();
+
       this.lastTickTime = Date.now();
       this.timerInterval = setInterval(() => {
         const now = Date.now();
@@ -593,8 +635,32 @@ export default {
         this.lastTickTime = now;
       }, APP_CONFIG.INTERVIEW.TIMER_TICK_MS);
     },
+    async _setupPersistentMic() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Bail if interview ended while we were awaiting permission
+        if (!this.sharedAudioCtx || this.sharedAudioCtx.state === 'closed' || !this.mixDestination) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        this.persistentMicStream = stream;
+        this.persistentMicSource = this.sharedAudioCtx.createMediaStreamSource(stream);
+        this.persistentMicSource.connect(this.mixDestination);
+      } catch (e) {
+        console.error('Could not capture persistent mic for video mix:', e);
+      }
+    },
     stopTimer() {
       if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+      // Tear down persistent mic before closing the audio context
+      if (this.persistentMicSource) {
+        try { this.persistentMicSource.disconnect(); } catch (e) { /* noop */ }
+        this.persistentMicSource = null;
+      }
+      if (this.persistentMicStream) {
+        this.persistentMicStream.getTracks().forEach(t => t.stop());
+        this.persistentMicStream = null;
+      }
       if (this.sharedAudioCtx) {
         this.sharedAudioCtx.close();
         this.sharedAudioCtx = null;
@@ -1115,40 +1181,101 @@ export default {
 }
 .system-recorders { display: none; }
 
-/* ── Status pills (Listening / Thinking) ── */
-.status-pill {
+/* ── Live status banner ──
+   Slim, inline, single-line indicator pinned to the bottom of the
+   transcript area. Replaces the old per-role placeholder rows that
+   looked like ghost messages. */
+/* Match transcript-line's flex layout so the banner's left edge sits at
+   the same x-coordinate as the message text in any transcript line.
+   The empty .avatar-column inside reserves the avatar gutter. */
+.live-status-row {
+  display: flex;
+  gap: 12px;
+  margin: 0.75rem 0 0.25rem;
+  align-items: flex-start;
+}
+
+.live-status-banner {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 0.82rem;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 20px;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  width: fit-content;
 }
-.speaking-pill {
+
+.live-status-banner i {
+  font-size: 1rem;
+}
+
+.live-status-banner.is-speaking {
   background: #eff6ff;
-  color: #2563eb;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
 }
-.speaking-pill .pill-dot {
-  width: 7px; height: 7px;
-  background: #2563eb;
-  border-radius: 50%;
-  animation: pillPulse 1.0s ease-in-out infinite;
-}
-.listening-pill {
+
+.live-status-banner.is-listening {
   background: #f0fdf4;
-  color: #16a34a;
+  color: #15803d;
+  border-color: #bbf7d0;
 }
-.listening-pill .pill-dot {
-  width: 7px; height: 7px;
-  background: #16a34a;
+
+.live-status-banner.is-thinking {
+  background: #fefce8;
+  color: #a16207;
+  border-color: #fde68a;
+}
+
+.live-status-banner.is-paused {
+  background: #fafafa;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+
+/* Three-dot wave next to the label, gives it a "live" feel */
+.live-status-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.live-status-dots span {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  animation: pillPulse 1.4s ease-in-out infinite;
+  background: currentColor;
+  opacity: 0.4;
+  animation: liveStatusDot 1.2s ease-in-out infinite;
 }
-@keyframes pillPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.4; transform: scale(0.7); }
+
+.live-status-dots span:nth-child(2) { animation-delay: 0.2s; }
+.live-status-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes liveStatusDot {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50%      { opacity: 1;    transform: translateY(-2px); }
+}
+
+/* Hide the dots when paused — paused isn't actively "live" */
+.live-status-banner.is-paused .live-status-dots {
+  display: none;
+}
+
+.live-status-fade-enter-active,
+.live-status-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.live-status-fade-enter,
+.live-status-fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 
 /* ── Status indicator wrapper ── */

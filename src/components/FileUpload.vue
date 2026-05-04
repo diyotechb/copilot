@@ -7,24 +7,59 @@
       @dragleave.prevent="dragging = false" 
       @drop.prevent="onDrop"
     >
-      <!-- Paste Area -->
-      <textarea 
-        v-model="text" 
-        @paste="onPasteText" 
-        :placeholder="`Paste your ${label.toLowerCase()} content here...`" 
-        class="smart-textarea" 
+      <!-- Paste Area: hidden pre-generation in AI mode so the keywords
+           section takes the full height. Becomes visible (and editable)
+           the moment we have any content (generated or typed). -->
+      <textarea
+        v-show="!hideTextarea"
+        v-model="text"
+        @paste="onPasteText"
+        :placeholder="textareaPlaceholder"
+        :disabled="generating"
+        class="smart-textarea"
       />
 
       <!-- Drag & Drop Overlay -->
-      <div v-if="dragging" class="drop-overlay">
+      <div v-if="dragging && !aiMode" class="drop-overlay">
         <div class="overlay-content">
           <i class="el-icon-upload"></i>
           <p>Drop to extract text</p>
         </div>
       </div>
 
-      <!-- Action Bar & File Info -->
-      <div class="smart-footer">
+      <!-- Action Bar — AI generation mode -->
+      <div v-if="aiMode" class="smart-footer ai-footer" :class="{ 'ai-footer-expanded': hideTextarea }">
+        <div v-if="hideTextarea" class="ai-intro">
+          <i class="el-icon-magic-stick ai-intro-icon"></i>
+          <div class="ai-intro-text">
+            <strong>Create a sample {{ label.toLowerCase() }}</strong>
+            <p>Add a few keywords below and click <em>Generate with AI</em>. You can edit the result after.</p>
+          </div>
+        </div>
+        <input
+          ref="keywordsInput"
+          v-model="keywords"
+          type="text"
+          class="ai-keywords-input"
+          :placeholder="`Keywords (e.g., ${keywordsExample})`"
+          :disabled="generating"
+          @keydown.enter.prevent="emitGenerate"
+        />
+        <div class="ai-footer-actions">
+          <button
+            type="button"
+            class="ai-generate-btn"
+            :disabled="generating"
+            @click="emitGenerate"
+          >
+            <i :class="generating ? 'el-icon-loading' : 'el-icon-magic-stick'"></i>
+            <span>{{ generating ? 'Generating…' : (text ? 'Regenerate' : 'Generate with AI') }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Bar — File upload mode (default) -->
+      <div v-else class="smart-footer">
         <div class="file-info" v-if="file">
           <i class="el-icon-document"></i>
           <span class="file-name">{{ file.name }}</span>
@@ -42,6 +77,11 @@
 
       <input ref="fileInput" type="file" :accept="accept" class="input-hidden" @change="onFileChange" />
     </div>
+
+    <p v-if="aiMode" class="ai-hint">
+      <i class="el-icon-info"></i>
+      Optional. Add details like your name, company, role, or years of experience to personalize the result.
+    </p>
   </div>
 </template>
 
@@ -52,14 +92,34 @@ export default {
   props: {
     label: { type: String, required: true },
     value: { type: String, default: '' },
-    accept: { type: String, default: '.pdf,.doc,.docx,.txt,.md,.rtf' }
+    accept: { type: String, default: '.pdf,.doc,.docx,.txt,.md,.rtf' },
+    aiMode: { type: Boolean, default: false },
+    generating: { type: Boolean, default: false },
+    keywordsExample: { type: String, default: 'frontend, 5 years, fintech' }
   },
   data() {
     return {
       text: this.value,
       file: null,
-      dragging: false
+      dragging: false,
+      keywords: ''
     };
+  },
+  computed: {
+    // The textarea is hidden in AI mode while there's nothing to show yet.
+    // Once content arrives (from Generate, paste, or file drop) it appears
+    // and is fully editable. During generation we keep it visible so the
+    // "Generating …" placeholder is shown.
+    hideTextarea() {
+      return this.aiMode && !this.text && !this.generating;
+    },
+    textareaPlaceholder() {
+      if (this.generating) return `Generating ${this.label.toLowerCase()}…`;
+      if (this.aiMode) {
+        return `Edit the generated ${this.label.toLowerCase()} freely, or regenerate with new keywords below.`;
+      }
+      return `Paste your ${this.label.toLowerCase()} content here...`;
+    }
   },
   watch: {
     text(val) {
@@ -69,9 +129,22 @@ export default {
       if (val !== this.text) {
         this.text = val;
       }
+    },
+    aiMode(on) {
+      // When the user flips AI mode on with an empty textarea, focus the
+      // keywords input so the next thing they touch is the right one.
+      if (on && !this.text) {
+        this.$nextTick(() => {
+          if (this.$refs.keywordsInput) this.$refs.keywordsInput.focus();
+        });
+      }
     }
   },
   methods: {
+    emitGenerate() {
+      if (this.generating) return;
+      this.$emit('generate', { keywords: this.keywords.trim() });
+    },
     openFilePicker() { this.$refs.fileInput.click(); },
     onFileChange(e) { const file = e.target.files[0]; if (file) this.handleFile(file); },
     onDrop(e) {
@@ -286,5 +359,132 @@ export default {
 
 .input-hidden {
   display: none;
+}
+
+/* AI generation footer */
+.ai-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+/* Expanded state: textarea is hidden, so the AI footer fills the
+   container with breathing room and a clear intro. */
+.ai-footer-expanded {
+  background: #fff;
+  padding: 28px 24px;
+  gap: 16px;
+  min-height: 180px;
+  justify-content: center;
+}
+
+.ai-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ai-intro-icon {
+  font-size: 1.4rem;
+  color: #2563eb;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ai-intro-text strong {
+  display: block;
+  font-size: 1rem;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.ai-intro-text p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.ai-intro-text em {
+  font-style: normal;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.ai-keywords-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  color: #374151;
+  background: #fff;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ai-keywords-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.ai-keywords-input:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.ai-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ai-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.ai-generate-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.ai-generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Disabled state: only used while a request is in flight */
+.smart-textarea:disabled {
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.ai-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 4px 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.ai-hint i {
+  font-size: 0.95rem;
+  color: #9ca3af;
 }
 </style>
