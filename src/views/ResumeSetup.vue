@@ -49,8 +49,8 @@
                 <div class="select-wrapper">
                   <select v-model="selectedVoice" class="setup-select" @change="onVoiceChange" :disabled="voicesLoading">
                     <option value="" disabled>Select a voice</option>
-                    <option v-for="voice in voices" :key="voice.ShortName || voice.shortName" :value="voice.ShortName || voice.shortName">
-                      {{ (voice.ShortName || voice.Name || '').split('-').slice(-1)[0] }}<span v-if="voice.Gender || voice.gender"> ({{ voice.Gender || voice.gender }})</span>
+                    <option v-for="voice in voices" :key="voice.id" :value="voice.id">
+                      {{ voice.name }} ({{ voice.gender }})
                     </option>
                   </select>
                   <i class="el-icon-arrow-down select-icon"></i>
@@ -281,7 +281,7 @@ import { clearRecordingsStore } from '@/store/recordingStore.js';
 import { APP_CONFIG } from '@/constants/appConfig';
 import { clearInterviewQAStore, clearTranscriptsStore } from '@/store/interviewStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { fetchVoices, playVoiceSample } from '@/services/azureSpeechService';
+import { fetchVoices, playVoiceSample } from '@/services/ttsService';
 
 export default {
   name: 'ResumeSetup',
@@ -327,7 +327,7 @@ export default {
     }
   },
   async mounted() {
-    this.fetchVoices();
+    await this.fetchVoices();
     // Selective cleanup for a fresh interview session
     const { default: storage } = await import('@/services/storageService');
     await storage.clearInterviewSession();
@@ -339,7 +339,7 @@ export default {
       this.showQuestions = savedShowQuestions;
     }
     const savedVoice = await getSetting('selectedVoice');
-    if (savedVoice) {
+    if (savedVoice && this.voices.some(v => v.id === savedVoice)) {
       this.selectedVoice = savedVoice;
     }
     const savedDifficulty = await getSetting('interviewDifficulty');
@@ -451,25 +451,17 @@ export default {
     },
     async fetchVoices() {
       this.voicesLoading = true;
-      const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      if (!subscriptionKey) {
-        this.voicesLoading = false;
-        return;
-      }
       try {
-        const allVoices = await fetchVoices(subscriptionKey);
-        this.voices = allVoices.filter(v => (v.Locale || v.locale) === 'en-US');
+        this.voices = await fetchVoices();
       } catch (e) {
         this.voices = [];
       } finally {
         this.voicesLoading = false;
       }
     },
-    async playVoiceSample(voiceName) {
-      const subscriptionKey = process.env.VUE_APP_AZURE_SPEECH_KEY;
-      if (!subscriptionKey) return;
+    async playVoiceSample(voiceId) {
       try {
-        await playVoiceSample(voiceName, subscriptionKey);
+        await playVoiceSample(voiceId);
       } catch (e) {
         this.confirmConfig = {
           title: 'Playback Error',

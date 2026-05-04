@@ -248,7 +248,7 @@ import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
 import { getInterviewQA, saveQuestionTimestamps } from '@/store/interviewStore';
 import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
-import { speakWithAzureTTS, speakWithAzureTTSToContext } from '@/services/azureSpeechService';
+import { speakWithTTS, speakWithTTSToContext } from '@/services/ttsService';
 import FeedbackSection from '../views/FeedbackSection.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { APP_CONFIG } from '@/constants/appConfig';
@@ -470,8 +470,8 @@ export default {
       this.questionTimestamps[this.turn - 1] = videoOffsetMs;
 
       const ttsFunc = (this.sharedAudioCtx && this.mixDestination)
-          ? (text, voice, onEnd) => speakWithAzureTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
-          : speakWithAzureTTS;
+          ? (text, voice, onEnd) => speakWithTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
+          : speakWithTTS;
       ttsFunc(qa.question, this.selectedVoice, () => {
         if (!this.interviewing) { this.transitioning = false; return; }
         this.isReading = false;

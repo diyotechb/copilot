@@ -50,7 +50,7 @@ export const APP_CONFIG = {
 
   /**
    * AI & BACKEND SERVICES
-   * Used in: openaiService.js, assemblyAISpeechService.js, azureSpeechService.js
+   * Used in: openaiService.js, assemblyAISpeechService.js, ttsService.js
    */
   SERVICES: {
     OPENAI: {
@@ -68,11 +68,10 @@ export const APP_CONFIG = {
       MAX_POLLING_RETRIES: 60
     },
 
-    AZURE: {
-      REGION: 'eastus',
-      // Azure TTS URLs using the configured region
-      get VOICES_LIST_URL() { return `https://${this.REGION}.tts.speech.microsoft.com/cognitiveservices/voices/list`; },
-      get TTS_URL() { return `https://${this.REGION}.tts.speech.microsoft.com/cognitiveservices/v1`; }
+    OPENAI_TTS: {
+      TTS_URL: 'https://api.openai.com/v1/audio/speech',
+      MODEL: 'tts-1',
+      FORMAT: 'mp3'
     },
 
     // Diyo Service Backend URL (Auth, etc.)
