@@ -147,16 +147,30 @@
     </div>
 
     <div class="instructions-actions">
+      <p v-if="difficultyMeta" class="difficulty-tag">
+        <i class="el-icon-medal"></i>
+        <strong>{{ difficultyMeta.LABEL }}</strong>
+        <span class="difficulty-tag-sep">&middot;</span>
+        <i class="el-icon-time"></i> {{ difficultyMeta.DURATION_TEXT }}
+        <span class="difficulty-tag-sep">&middot;</span>
+        {{ difficultyMeta.COUNT_TEXT }}
+      </p>
       <el-button
           type="primary"
           class="instructions-start-btn"
-          :loading="isGenerating"
-          :disabled="isGenerating"
+          :loading="isGenerating && !canStart"
+          :disabled="!canStart"
           @click="handleStartInterview">
-        {{ isGenerating ? 'Preparing Your Questions…' : "I'm Ready — Start Interview" }}
+        {{ startButtonLabel }}
       </el-button>
       <p v-if="isGenerating" class="generating-hint">
-        <i class="el-icon-loading"></i> Personalising questions from your resume. Almost there!
+        <i class="el-icon-loading"></i>
+        <span v-if="canStart">
+          Generating more questions in the background ({{ readyCount }} ready). You can start now.
+        </span>
+        <span v-else>
+          Personalising questions from your resume… {{ readyCount }} / {{ targetCount }} ready.
+        </span>
       </p>
       <p v-else class="permissions-hint">
         <i class="el-icon-lock"></i> Your devices are only used during the session and never stored.
@@ -172,7 +186,13 @@ export default {
   name: 'InterviewInstructions',
   props: {
     enableVideo: { type: Boolean, default: false },
-    isGenerating: { type: Boolean, default: false }
+    isGenerating: { type: Boolean, default: false },
+    interviewQA: { type: Array, default: () => [] },
+    progress: {
+      type: Object,
+      default: () => ({ ready: 0, target: 0, firstBatchDone: false })
+    },
+    difficulty: { type: String, default: '' }
   },
   data() {
     return {
@@ -189,6 +209,27 @@ export default {
   computed: {
     silenceWaitSeconds() {
       return (APP_CONFIG.INTERVIEW.SILENCE_WAIT_MS) / 1000;
+    },
+    difficultyMeta() {
+      return APP_CONFIG.DIFFICULTY[this.difficulty] || null;
+    },
+    readyCount() {
+      return this.progress?.ready || 0;
+    },
+    targetCount() {
+      return this.progress?.target || APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT;
+    },
+    canStart() {
+      // Allow starting once the first batch (with openers/format) is done
+      // AND we have enough questions in the pool.
+      const threshold = APP_CONFIG.SERVICES.OPENAI.START_THRESHOLD || 15;
+      if (!this.isGenerating) return this.interviewQA.length > 0;
+      return !!this.progress?.firstBatchDone && this.readyCount >= threshold;
+    },
+    startButtonLabel() {
+      if (!this.isGenerating) return "I'm Ready — Start Interview";
+      if (this.canStart) return 'Start Interview Now';
+      return 'Preparing Your Questions…';
     }
   },
   mounted() {
@@ -597,6 +638,25 @@ export default {
   flex-direction: column;
   align-items: center;
   padding-bottom: 30px;
+}
+.difficulty-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 6px 14px;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.difficulty-tag i {
+  font-size: 0.95rem;
+}
+.difficulty-tag-sep {
+  color: #93c5fd;
+  font-weight: 400;
 }
 .instructions-start-btn {
   padding: 16px 56px !important;

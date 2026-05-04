@@ -17,7 +17,57 @@ const CASUAL_OPENERS = [
   "When did you move to the U.S.?"
 ];
 
-export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
+const DIFFICULTY_INSTRUCTIONS = {
+  Beginner: `
+DIFFICULTY: BEGINNER
+- Question topics: introductions, background, simple project descriptions, basic technical concepts, light behavioral questions. Keep things accessible.
+- Avoid: deep system design, complex distributed-systems tradeoffs, advanced architecture debates.
+- Answer length: moderate (3-5 sentences in a single paragraph), conversational.
+- Tone: warm, encouraging, like a friendly recruiter screen or first-round interview.`,
+
+  Intermediate: `
+DIFFICULTY: INTERMEDIATE
+- Question topics: technical deep-dives on technologies/projects in the resume, debugging stories, behavioral STAR-format questions, project tradeoffs, team collaboration, code-review scenarios.
+- Include 2-3 light architecture or design questions (component-level, not full system design).
+- Answer length: detailed and long (single dense paragraph that covers situation, action taken, technical detail, and outcome).
+- Tone: realistic technical interview — professional but conversational.`,
+
+  Advanced: `
+DIFFICULTY: ADVANCED
+- Question topics: system design, architecture decisions, scaling, distributed systems concepts, advanced behavioral (mentoring, cross-team leadership), ownership and tradeoffs at scale.
+- When NO category override is provided (or category is "All"): at least 5-6 of the main questions MUST be system design / architecture deep-dives tied to systems mentioned in the resume.
+- Answer length: long, technical, multi-faceted (single dense paragraph covering design choices, alternatives considered, tradeoffs, and concrete examples). This length applies regardless of category — even behavioral/scenario answers should reflect senior-level depth.
+- Tone: senior-level interview, formal but conversational, treats the candidate as a peer.
+- If a CATEGORY FOCUS section is included below, the category rule overrides the topic mix above. Apply the category strictly while keeping the senior-level depth and tone.`
+};
+
+// CATEGORY further narrows the question style at Intermediate level only.
+// Beginner and Advanced ignore this — their topic mix is fixed by design.
+const CATEGORY_INSTRUCTIONS = {
+  All: '',
+  Technical: `
+CATEGORY FOCUS: TECHNICAL
+- Every "main" question MUST be a technical question.
+- Cover: code-level deep-dives, debugging walk-throughs, framework/library specifics, data-structure or algorithm choices grounded in the resume's projects, technical tradeoffs, performance, testing, and code review.
+- Do NOT generate behavioral or hypothetical "what would you do if…" questions in this batch.
+- Each answer should include 2-3 concrete technical details (specific tools, patterns, error modes, metrics) tied to the resume.`,
+
+  Behavioral: `
+CATEGORY FOCUS: BEHAVIORAL
+- Every "main" question MUST be a behavioral / soft-skills question (use STAR format implicitly).
+- Cover: teamwork, conflict resolution, ownership, communication, mentoring, dealing with ambiguity, handling failure, prioritization, leadership moments, cross-team collaboration.
+- Do NOT generate technical deep-dives, system design, or coding questions in this batch.
+- Each answer should naturally walk through Situation → Task → Action → Result without labeling those parts. Ground the situation in something plausible from the resume.`,
+
+  'Scenario Based': `
+CATEGORY FOCUS: SCENARIO-BASED
+- Every "main" question MUST be a hypothetical scenario / situational question. Frame each as a "what would you do if…" or "imagine you're on a team where…" prompt.
+- Scenarios should test judgment, prioritization, tradeoff thinking, and communication under realistic constraints (production incidents, conflicting stakeholders, ambiguous requirements, tight deadlines, technical-debt vs. feature pressure, on-call decisions).
+- Anchor scenarios to the candidate's domain when possible (use technologies/companies/team sizes from the resume), but the situation itself is hypothetical.
+- Each answer should explain the candidate's reasoning step-by-step within a single paragraph: how they'd assess, prioritize, communicate, and decide.`
+};
+
+export async function generateInterviewQA({ resumeText, jobDescriptionText, difficulty, category, onProgress, onUpdate }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
   if (!apiKey) {
     console.error('********************************************************************************');
@@ -28,10 +78,22 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText }) {
     throw new Error('OpenAI API Key is missing. Question generation cannot proceed.');
   }
   const openaiModel = APP_CONFIG.SERVICES.OPENAI.MODEL;
-  const minCount = APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT;
-  const maxCount = APP_CONFIG.SERVICES.OPENAI.MAX_Q_COUNT;
   const batchSize = APP_CONFIG.SERVICES.OPENAI.BATCH_SIZE;
   const parallelBatches = APP_CONFIG.SERVICES.OPENAI.PARALLEL_BATCHES;
+
+  // Per-difficulty count + prompt block; fall back to default level if missing/unknown.
+  const levelKey = APP_CONFIG.DIFFICULTY[difficulty] ? difficulty : APP_CONFIG.DIFFICULTY_DEFAULT;
+  const levelConfig = APP_CONFIG.DIFFICULTY[levelKey];
+  const minCount = levelConfig.MIN_Q;
+  const maxCount = levelConfig.MAX_Q;
+  const difficultyBlock = DIFFICULTY_INSTRUCTIONS[levelKey] || '';
+
+  // Category narrows topic style; honored at Intermediate and Advanced levels.
+  // Beginner stays a broad warm-up so we ignore category there.
+  const categoryHonored = (levelKey === 'Intermediate' || levelKey === 'Advanced')
+    && CATEGORY_INSTRUCTIONS[category];
+  const categoryKey = categoryHonored ? category : 'All';
+  const categoryBlock = CATEGORY_INSTRUCTIONS[categoryKey] || '';
 
   if (!openaiModel) throw new Error('Missing OpenAI model in configuration');
 
@@ -63,6 +125,8 @@ CORE BEHAVIOR
 - Do not over-focus on Java, Spring Boot, or any specific technology unless the resume strongly supports it.
 - Adapt to the candidate's actual stack and experience.
 - Do not invent unrealistic tools, projects, achievements, or responsibilities.
+${difficultyBlock}
+${categoryBlock}
 
 ${isFirstBatch ? `
 INTERVIEW OPENING PHASE
@@ -205,46 +269,68 @@ Use this exact shape:
     }
   }
 
-  let allQA = [];
-  let batchNum = 1;
+  // Live, deduplicated pool of all received items. Mutated as batches arrive.
+  const seen = new Set();
+  const pool = [];
+  let firstBatchDone = false;
 
-  while (allQA.length < maxCount) {
-    const batchPromises = [];
-    for (let i = 0; i < parallelBatches; i++) {
-      batchPromises.push(fetchBatch(batchNum++));
-    }
-
-    const results = await Promise.all(batchPromises);
-    allQA = allQA.concat(...results);
-
-    // Deduplicate by question text
-    const seen = new Set();
-    allQA = allQA.filter(item => {
+  function addAndDedupe(items) {
+    for (const item of items) {
       const q = item.question?.trim();
-      if (!q || seen.has(q)) return false;
-      seen.add(q);
-      return true;
-    });
+      if (q && !seen.has(q)) {
+        seen.add(q);
+        pool.push(item);
+      }
+    }
   }
 
-  // Handle Flow
-  const openers = allQA.filter(item => item.type === 'opener');
-  const formatStatements = allQA.filter(item => item.type === 'format');
-  let mainQuestions = allQA.filter(item => !item.type || item.type === 'main');
+  async function fetchAndProcess(batchNum) {
+    const result = await fetchBatch(batchNum);
+    addAndDedupe(result);
 
-  const introKeywords = [
-    'tell me about yourself', 'introduce yourself', 'your background', 'introduction',
-    'kick things off', 'your journey', 'how you started', 'how you became', 'your story',
-    'your path', 'developer journey', 'engineering journey', 'kick off'
-  ];
+    if (batchNum === 1) firstBatchDone = true;
+
+    if (onProgress) {
+      onProgress({ ready: pool.length, target: minCount, firstBatchDone });
+    }
+    if (onUpdate) {
+      onUpdate(assembleFinalQA(pool, maxCount));
+    }
+  }
+
+  let batchNum = 1;
+  // Exit as soon as we have enough unique questions; the slice below still caps at maxCount.
+  while (pool.length < minCount) {
+    const batchPromises = [];
+    for (let i = 0; i < parallelBatches; i++) {
+      batchPromises.push(fetchAndProcess(batchNum++));
+    }
+    await Promise.all(batchPromises);
+  }
+
+  const sanitizedQA = assembleFinalQA(pool, maxCount);
+  await saveInterviewQA(sanitizedQA);
+  return sanitizedQA;
+}
+
+const INTRO_KEYWORDS = [
+  'tell me about yourself', 'introduce yourself', 'your background', 'introduction',
+  'kick things off', 'your journey', 'how you started', 'how you became', 'your story',
+  'your path', 'developer journey', 'engineering journey', 'kick off'
+];
+
+function assembleFinalQA(pool, maxCount) {
+  const openers = pool.filter(item => item.type === 'opener');
+  const formatStatements = pool.filter(item => item.type === 'format');
+  const mainQuestions = pool.filter(item => !item.type || item.type === 'main');
+
   const introQuestions = mainQuestions.filter(q =>
-    introKeywords.some(keyword => q.question?.toLowerCase().includes(keyword))
+    INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
   );
-
   const singleIntro = introQuestions.length > 0 ? [introQuestions[0]] : [];
 
   const otherMainQuestions = mainQuestions.filter(q =>
-    !introKeywords.some(keyword => q.question?.toLowerCase().includes(keyword))
+    !INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
   );
 
   // Shuffle only the non-intro main questions
@@ -260,26 +346,18 @@ Use this exact shape:
     ...otherMainQuestions
   ];
 
-  // Limit to MAX_Q_COUNT (ensuring the range 30-45 represents the final set)
   const slicedQA = combinedQA.slice(0, maxCount);
 
-  // SCRUBBING
   const finalQA = slicedQA.map((item, index) => {
     if (index === 0) return item;
-
     let q = item.question || '';
     q = q.replace(/^(hi|hello|welcome|nice to meet you|thanks for joining|good (morning|afternoon|evening))\s*([\w']+\s*)?[,!.]?\s*/gi, '');
-
     if (q.length > 0) q = q.charAt(0).toUpperCase() + q.slice(1);
-
     return { ...item, question: q };
   });
 
-  const sanitizedQA = finalQA.map(item => ({
+  return finalQA.map(item => ({
     question: item.question,
     answer: item.answer
   }));
-
-  await saveInterviewQA(sanitizedQA);
-  return sanitizedQA;
 }

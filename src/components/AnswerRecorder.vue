@@ -8,7 +8,6 @@
 import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import { saveRecording } from '@/store/recordingStore';
 import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
-import { getSetting } from '@/store/settingStore';
 import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
@@ -44,7 +43,6 @@ export default {
       analyser: null,
       silenceTimer: null,
       silenceStart: null,
-      difficultyLevel: null,
       silenceThreshold: APP_CONFIG.INTERVIEW.SILENCE_WAIT_MS,
     };
   },
@@ -144,7 +142,16 @@ export default {
       const data = new Uint8Array(this.analyser.fftSize);
       this.silenceTimer = setInterval(() => {
         this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - APP_CONFIG.INTERVIEW.PCM_MIDPOINT) < APP_CONFIG.INTERVIEW.SILENCE_TOLERANCE);
+
+        // RMS energy detection — see startSilenceDetection() for rationale.
+        let sumSquares = 0;
+        for (let i = 0; i < data.length; i++) {
+          const sample = data[i] - APP_CONFIG.INTERVIEW.PCM_MIDPOINT;
+          sumSquares += sample * sample;
+        }
+        const rms = Math.sqrt(sumSquares / data.length);
+        const isSilent = rms < APP_CONFIG.INTERVIEW.SILENCE_RMS_THRESHOLD;
+
         if (isSilent) {
           if (!this.silenceStart) this.silenceStart = Date.now();
           const elapsed = Date.now() - this.silenceStart;
@@ -188,10 +195,6 @@ export default {
       if (!transcripts) {
         transcripts = [];
       }
-      const difficultyLevel = await getSetting('interviewDifficulty');
-      if (difficultyLevel === 'Beginner') {
-        this.$emit('transcript', transcript);
-      }
       transcripts[this.questionIndex] = transcript;
       await saveTranscripts(transcripts);
       await saveTranscriptionStatus(false);
@@ -219,7 +222,18 @@ export default {
       this.silenceStart = null;
       this.silenceTimer = setInterval(() => {
         this.analyser.getByteTimeDomainData(data);
-        const isSilent = data.every(v => Math.abs(v - APP_CONFIG.INTERVIEW.PCM_MIDPOINT) < APP_CONFIG.INTERVIEW.SILENCE_TOLERANCE);
+
+        // Use RMS energy of the buffer rather than per-sample amplitude
+        // so isolated noise spikes (cough, mouse click, fan blip) don't
+        // reset the silence countdown — only sustained speech does.
+        let sumSquares = 0;
+        for (let i = 0; i < data.length; i++) {
+          const sample = data[i] - APP_CONFIG.INTERVIEW.PCM_MIDPOINT;
+          sumSquares += sample * sample;
+        }
+        const rms = Math.sqrt(sumSquares / data.length);
+        const isSilent = rms < APP_CONFIG.INTERVIEW.SILENCE_RMS_THRESHOLD;
+
         if (isSilent) {
           if (!this.silenceStart) this.silenceStart = Date.now();
           const elapsed = Date.now() - this.silenceStart;
