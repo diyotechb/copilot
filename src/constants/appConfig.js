@@ -88,8 +88,10 @@ export const APP_CONFIG = {
    * Used in: InterviewView.vue, AnswerRecorder.vue
    */
   INTERVIEW: {
-    // Simulated typing speed (Words Per Minute) for the interviewer
-    WPM: 300,
+    // Streaming pace (Words Per Minute) for the AI's reference answer.
+    // Around 200 WPM matches a natural human speaking/reading rhythm — the
+    // answer types out in time with the candidate's own pace.
+    WPM: 200,
 
     // Duration of silence (ms) at the end of an answer to trigger the next question
     SILENCE_WAIT_MS: 3000,

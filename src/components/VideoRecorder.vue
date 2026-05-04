@@ -143,32 +143,55 @@ export default {
           }
         };
         this.mediaRecorder.onstop = async () => {
-          const blob = new Blob(this.recordedChunks, { type: options.mimeType });
-          await saveVideoRecording(blob);
-          if (this.$refs.previewVideo) this.$refs.previewVideo.srcObject = null;
-          if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
-            this.mediaStream = null;
+          try {
+            const blob = new Blob(this.recordedChunks, { type: options.mimeType });
+            await saveVideoRecording(blob);
+          } catch (e) {
+            console.error('Failed to save video recording:', e);
+          } finally {
+            if (this._stopResolve) {
+              const r = this._stopResolve;
+              this._stopResolve = null;
+              r();
+            }
+            if (this.$refs.previewVideo) this.$refs.previewVideo.srcObject = null;
+            if (this.mediaStream) {
+              this.mediaStream.getTracks().forEach(track => track.stop());
+              this.mediaStream = null;
+            }
           }
         };
-        this.mediaRecorder.start();
+        // Emit chunks every 1s so a sudden teardown still has data to flush
+        this.mediaRecorder.start(1000);
         this.$emit('recordingStarted', Date.now());
       } catch (err) {
         console.error('Could not start video recording:', err);
       }
     },
     stopRecording() {
-      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-        setTimeout(() => {
-          if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-            this.mediaRecorder.stop();
-          }
-          // Don't wait for onstop — kill tracks immediately so camera light turns off
+      // Returns a Promise that resolves AFTER the blob has been saved to
+      // IndexedDB, so callers can await before navigating to the summary.
+      return new Promise((resolve) => {
+        if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
           this.forceStopAllTracks();
-        }, 200);
-      } else {
+          resolve();
+          return;
+        }
+        this._stopResolve = resolve;
+        // Flush any buffered audio/video data before stopping
+        try { this.mediaRecorder.requestData(); } catch (e) { /* noop */ }
+        try { this.mediaRecorder.stop(); } catch (e) { resolve(); return; }
+        // Don't wait for onstop to release tracks — turn the camera light off
+        // right away. The onstop handler still runs and resolves the promise.
         this.forceStopAllTracks();
-      }
+        // Safety: never hang forever — resolve after 5s if onstop doesn't fire
+        setTimeout(() => {
+          if (this._stopResolve) {
+            this._stopResolve = null;
+            resolve();
+          }
+        }, 5000);
+      });
     },
     pauseRecording() {
       if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
