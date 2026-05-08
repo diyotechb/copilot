@@ -83,3 +83,33 @@ export async function getTranscriptionStatus() {
   }
   return true;
 }
+
+// Session metadata: difficulty, category, analysisMode, completed flag, etc.
+// Used to drive Summary screen rendering and history saving.
+export async function saveInterviewMeta(meta) {
+  await saveItem(QA_STORE, 'interviewMeta', meta);
+}
+
+export async function getInterviewMeta() {
+  const result = await getItem(QA_STORE, 'interviewMeta');
+  if (result && typeof result === 'object') return result;
+  if (typeof result === 'string') {
+    try { return JSON.parse(result); } catch (e) { return {}; }
+  }
+  return {};
+}
+
+export async function setInterviewCompleted(completed = true) {
+  const meta = await getInterviewMeta();
+  meta.completed = !!completed;
+  meta.endedAt = new Date().toISOString();
+  await saveInterviewMeta(meta);
+}
+
+// Update the live session's analysis mode after the user toggles it on the
+// Summary screen. Safe to call when no live meta exists — just writes.
+export async function setAnalysisMode(mode) {
+  const meta = await getInterviewMeta();
+  meta.analysisMode = mode;
+  await saveInterviewMeta(meta);
+}

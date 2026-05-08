@@ -103,7 +103,7 @@
                     @click="showDifficultyDetails = !showDifficultyDetails"
                     :title="showDifficultyDetails ? 'Hide details' : 'Show details about each level'"
                   >
-                    <i class="el-icon-question"></i>
+                    <i class="el-icon-info"></i>
                   </button>
                 </div>
                 <div class="select-wrapper">
@@ -127,6 +127,40 @@
                 </div>
                 <p class="difficulty-meta">
                   <i class="el-icon-collection-tag"></i> {{ currentCategory.DESCRIPTION }}
+                </p>
+              </div>
+
+              <div v-if="showAnalysisToggle" class="setting-field">
+                <label>Analysis For This Interview</label>
+                <div class="toggle-wrapper" style="margin: 6px 0 0 0;">
+                  <div class="toggle-text">
+                    <span class="toggle-main-label">{{ analysisEnabledThisInterview ? 'On' : 'Off' }}</span>
+                    <p class="toggle-description">When on, completed interviews get detailed content scoring and feedback. Turn off for a raw simulation with no analysis.</p>
+                  </div>
+                  <div
+                    class="modern-switch"
+                    @click="toggleAnalysis"
+                    :class="{ 'is-active': analysisEnabledThisInterview }"
+                  >
+                    <div class="switch-handle">
+                      <i :class="analysisEnabledThisInterview ? 'el-icon-data-line' : 'el-icon-close'"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting-field">
+                <label>Preferred Keywords <span class="optional-tag">Optional</span></label>
+                <input
+                  v-model="preferredKeywords"
+                  type="text"
+                  class="setup-select"
+                  placeholder="e.g., AWS, Kubernetes, microservices, GraphQL"
+                  @change="onPreferredKeywordsChange"
+                />
+                <p class="difficulty-meta">
+                  <i class="el-icon-collection-tag"></i>
+                  Comma-separated. The interviewer will pick "what is X" questions from these and weave them into the reference answers when natural.
                 </p>
               </div>
             </div>
@@ -383,7 +417,31 @@ import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
 import { clearRecordingsStore } from '@/store/recordingStore.js';
 import { APP_CONFIG } from '@/constants/appConfig';
-import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA } from '@/store/interviewStore';
+
+// Best-effort: pull a candidate name out of the resume text. Looks at the
+// first non-empty lines and matches "FirstName LastName" or "FirstName M.
+// LastName" capitalized patterns. Returns '' if nothing recognizable.
+function extractCandidateName(resumeText) {
+  if (!resumeText || typeof resumeText !== 'string') return '';
+  const lines = resumeText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // Take the first 5 non-empty lines — name is usually right at the top
+  for (const line of lines.slice(0, 5)) {
+    // Strip out anything that looks like a separator artifact
+    const cleaned = line.replace(/[|•·–—]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    // Match "John Smith" or "John A Smith" or "John A. Smith" — 2 to 3 words,
+    // each capitalized, letters only. Reject if any word is a known
+    // resume-header term (Resume, Curriculum, etc.).
+    const m = cleaned.match(/^([A-Z][a-zA-Z'’-]{1,20})(\s+[A-Z]\.?)?(\s+[A-Z][a-zA-Z'’-]{1,20})(\s+[A-Z][a-zA-Z'’-]{1,20})?$/);
+    if (m) {
+      const candidate = m[0].trim();
+      const lower = candidate.toLowerCase();
+      if (/(resume|curriculum vitae|cv|cover letter)/i.test(lower)) continue;
+      return candidate;
+    }
+  }
+  return '';
+}
+import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA, saveInterviewMeta } from '@/store/interviewStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { fetchVoices, playVoiceSample } from '@/services/ttsService';
 
@@ -411,6 +469,9 @@ export default {
       generatingResume: false,
       generatingJD: false,
       aiSampleGenerationEnabled: false,
+      analysisBetaEnabled: false,
+      analysisEnabledThisInterview: true,
+      preferredKeywords: '',
       generationProgress: { ready: 0, target: APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT, firstBatchDone: false },
       showDifficultyDetails: false,
       interviewCategory: APP_CONFIG.CATEGORY_DEFAULT,
@@ -470,6 +531,11 @@ export default {
       // Category selection is meaningful for Intermediate and Advanced.
       // Beginner is intentionally a broad warm-up so we keep the mix.
       return this.interviewDifficulty === 'Intermediate' || this.interviewDifficulty === 'Advanced';
+    },
+    showAnalysisToggle() {
+      // Per-interview "AI scoring" toggle is obsolete: detailed analysis
+      // is now on-demand from the Summary screen, regardless of difficulty.
+      return false;
     }
   },
   async mounted() {
@@ -483,6 +549,16 @@ export default {
     // opted in via Profile Settings → Beta Features.
     const features = storage.getItem(storage.KEYS.USER_FEATURES, true) || {};
     this.aiSampleGenerationEnabled = !!features.aiSampleGenerationEnabled;
+    this.analysisBetaEnabled = !!features.analysisEnabled;
+    // Restore last per-interview analysis preference (default true when beta is on)
+    const savedAnalysisChoice = await getSetting('analysisEnabledThisInterview');
+    if (savedAnalysisChoice !== null && savedAnalysisChoice !== undefined) {
+      this.analysisEnabledThisInterview = savedAnalysisChoice;
+    }
+    const savedKeywords = await getSetting('preferredKeywords');
+    if (typeof savedKeywords === 'string') {
+      this.preferredKeywords = savedKeywords;
+    }
 
     this.enableVideo = await getSetting('enableVideo');
     const savedShowQuestions = await getSetting('showQuestions');
@@ -520,6 +596,13 @@ export default {
     },
     onCategoryChange() {
       saveSetting('interviewCategory', this.interviewCategory);
+    },
+    toggleAnalysis() {
+      this.analysisEnabledThisInterview = !this.analysisEnabledThisInterview;
+      saveSetting('analysisEnabledThisInterview', this.analysisEnabledThisInterview);
+    },
+    onPreferredKeywordsChange() {
+      saveSetting('preferredKeywords', this.preferredKeywords);
     },
     selectDifficultyFromModal(level) {
       this.interviewDifficulty = level;
@@ -685,12 +768,44 @@ export default {
         firstBatchDone: false
       };
 
+      // analysisMode = 'basic' for every new session. The interview itself
+      // doesn't depend on the profile-level Answer Analysis flag — it
+      // always records audio and reserves transcript slots so the user
+      // can come back later and analyze, even if the flag was off when
+      // they ran the interview. The flag is checked only on the Summary
+      // screen, where it gates the Transcribe and Generate Detailed
+      // Analysis buttons.
+      const mode = 'basic';
+      // Best-effort candidate name extraction from the first non-empty
+      // line of the resume. Looks for 1-3 capitalized words in a row,
+      // strips trailing email/phone artifacts. Defaults to '' if nothing
+      // recognizable is found — UI uses the date in that case.
+      const candidateName = extractCandidateName(this.resumeText);
+
+      // Parsed list of preferred keywords (comma-separated → array of trimmed strings)
+      const keywordsArr = (this.preferredKeywords || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const sessionMeta = {
+        difficulty: this.interviewDifficulty,
+        category: this.interviewCategory,
+        analysisMode: mode,
+        completed: false,
+        startedAt: new Date().toISOString(),
+        candidateName,
+        preferredKeywords: keywordsArr
+      };
+      await saveInterviewMeta(sessionMeta);
+
       try {
         this.interviewQA = await generateInterviewQA({
           resumeText: this.resumeText,
           jobDescriptionText: this.jobDescriptionText,
           difficulty: this.interviewDifficulty,
           category: this.showCategoryField ? this.interviewCategory : 'All',
+          preferredKeywords: keywordsArr,
           onProgress: (progress) => {
             this.generationProgress = progress;
           },
@@ -981,6 +1096,19 @@ export default {
   margin: 8px 2px 0;
   font-size: 0.85rem;
   color: #4b5563;
+}
+
+.optional-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .difficulty-meta i {

@@ -214,8 +214,7 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
-import { getInterviewQA, saveQuestionTimestamps } from '@/store/interviewStore';
-import { highlightTranscript, averageConfidence } from '@/utils/transcriptUtils';
+import { getInterviewQA, saveQuestionTimestamps, setInterviewCompleted } from '@/store/interviewStore';
 import { speakWithTTS, speakWithTTSToContext } from '@/services/ttsService';
 import FeedbackSection from '../views/FeedbackSection.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -410,8 +409,6 @@ export default {
       this.clearStream();
     },
 
-    highlightTranscript,
-    averageConfidence,
     toggleVideoPreview() {
       this.showVideoPreview = !this.showVideoPreview;
       if (this.showVideoPreview) {
@@ -467,18 +464,7 @@ export default {
 
       const qa = this.interviewQA[this.turn];
       this.turn++;
-
-      this.interviewTranscript.push({
-        type: 'interviewer',
-        text: qa.question,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      });
-      this.isReading = true;
-
-      const videoOffsetMs = this.videoRecordingStartTime
-          ? Date.now() - this.videoRecordingStartTime
-          : this.currentMediaTime;
-      this.questionTimestamps[this.turn - 1] = videoOffsetMs;
+      const turnIdx = this.turn - 1;
 
       // Stream the reference answer such that it BEGINS to appear ~1 second
       // before the TTS reaches the end of the question. That way the
@@ -497,14 +483,36 @@ export default {
         this.streamAnswer(qa.answer, answerEntry);
       };
 
+      // Push the question text and set isReading only when the audio
+      // actually starts playing — fixes the "question text shows up several
+      // seconds before the interviewer starts speaking" delay caused by the
+      // TTS network call. The `transitioning` state stays true until then,
+      // which surfaces the "Loading next question" banner during the wait.
+      let questionShown = false;
+      const showQuestionNow = () => {
+        if (questionShown || !this.interviewing) return;
+        questionShown = true;
+        this.interviewTranscript.push({
+          type: 'interviewer',
+          text: qa.question,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        });
+        this.isReading = true;
+        const videoOffsetMs = this.videoRecordingStartTime
+            ? Date.now() - this.videoRecordingStartTime
+            : this.currentMediaTime;
+        this.questionTimestamps[turnIdx] = videoOffsetMs;
+      };
+
       const ttsFunc = (this.sharedAudioCtx && this.mixDestination)
           ? (text, voice, onEnd) => speakWithTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
           : speakWithTTS;
       ttsFunc(qa.question, this.selectedVoice, () => {
         if (!this.interviewing) { this.transitioning = false; return; }
-        // Safety net — if the timeupdate listener never fired (e.g., short
-        // TTS, browser fallback synthesis with no `currentTime`), make sure
-        // the answer still appears as soon as the question ends.
+        // Safety nets if the `playing` event never fired (e.g., browser
+        // fallback synthesis): make sure the question text and answer have
+        // been shown before we move on.
+        showQuestionNow();
         startAnswerStream();
         this.isReading = false;
         this.showAnswer = true;     // mounts AnswerRecorder → mic on → silence detection starts
@@ -512,12 +520,22 @@ export default {
         this.transitioning = false;
       }).then(audio => {
         this.activeInterviewerAudio = audio;
-        // Pre-trigger: when the TTS audio is ~2 seconds from finishing,
-        // start the answer streaming. The browser fires `timeupdate` at
-        // ~250ms granularity and Vue takes another tick to render, so a
-        // 2-second lead lands the first word ~5-6 words before the
-        // question's last word at typical speech rate.
+        // Show the question text + capture the video timestamp at the
+        // exact moment the TTS audio starts playing, so the on-screen
+        // text and the interviewer's voice arrive together (no more
+        // "question shows up but interviewer is several seconds late").
         if (audio && typeof audio.addEventListener === 'function') {
+          const onPlaying = () => {
+            audio.removeEventListener('playing', onPlaying);
+            showQuestionNow();
+          };
+          audio.addEventListener('playing', onPlaying);
+
+          // Pre-trigger: when the TTS audio is ~2 seconds from finishing,
+          // start the answer streaming. The browser fires `timeupdate` at
+          // ~250ms granularity and Vue takes another tick to render, so a
+          // 2-second lead lands the first word ~5-6 words before the
+          // question's last word at typical speech rate.
           const onTimeUpdate = () => {
             if (!audio.duration || isNaN(audio.duration)) return;
             if (audio.currentTime >= audio.duration - 2) {
@@ -590,6 +608,9 @@ export default {
       const finishUp = () => {
         this.isReading = false;
         this.transitioning = false;
+        // Mark this session as naturally completed (closing message finished).
+        // The Stop button path does NOT come through here.
+        this._naturalCompletion = true;
         this.stopInterview();
       };
       const audioOrPromise = ttsFunc(closingText, this.selectedVoice, finishUp);
@@ -663,6 +684,18 @@ export default {
 
       this.stopTimer();
       await saveQuestionTimestamps(this.questionTimestamps);
+      // Persist completion status: only true if the closing message played
+      // through (set by playClosingMessage's finishUp callback). Manual Stop
+      // button → completed: false → no LLM analysis on the Summary screen.
+      try {
+        await setInterviewCompleted(!!this._naturalCompletion);
+      } catch (e) { /* noop */ }
+
+      // Transcription is now manual: the Summary page shows a Transcribe
+      // button. We don't auto-trigger AssemblyAI here, so abandoned and
+      // completed sessions both behave the same way — no spend until the
+      // candidate decides to analyze.
+
       // Wait for the video blob to land in IndexedDB before navigating away
       await videoStopPromise;
       this.interviewing = false;

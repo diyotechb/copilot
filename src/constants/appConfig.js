@@ -34,38 +34,43 @@ export const APP_CONFIG = {
    * and prompt-style hints for openaiService.js.
    */
   DIFFICULTY: {
+    // NOTE: MIN_Q / MAX_Q now count *main* questions only — they exclude
+    // the casual openers (3-4 items), the format pivot (1 item), the
+    // single intro / "tell me about your journey" question, and the
+    // closing thank-you message. So the actual interview includes ~5-6
+    // additional items on top of these counts.
     Beginner: {
       LABEL: 'Beginner',
-      DURATION_TEXT: '~20 min',
-      COUNT_TEXT: '15-20 questions',
-      MIN_Q: 15,
-      MAX_Q: 20,
-      SHOW_QUESTIONS_MODE: 'optional',   // user can toggle (default on)
+      DURATION_TEXT: '~25 min',
+      COUNT_TEXT: '20-25 main questions',
+      MIN_Q: 20,
+      MAX_Q: 25,
+      SHOW_QUESTIONS_MODE: 'optional',
       DEFAULT_SHOW_QUESTIONS: true,
       SHOW_AI_ANSWER: true,
-      DESCRIPTION: 'Friendly, supportive pace. Questions and a suggested answer appear on screen by default so you can follow along — but you can hide them and use the Repeat button if you want a more realistic try. Great for first-time candidates and warm-up practice.'
+      DESCRIPTION: 'Friendly, supportive pace. Questions and a suggested answer appear on screen by default so you can follow along — but you can hide them and use the Repeat button if you want a more realistic try. 20-25 main questions plus a warm intro and closing.'
     },
     Intermediate: {
       LABEL: 'Intermediate',
-      DURATION_TEXT: '35-40 min',
-      COUNT_TEXT: '22-28 questions',
-      MIN_Q: 22,
-      MAX_Q: 28,
-      SHOW_QUESTIONS_MODE: 'optional',   // user can toggle (default off)
+      DURATION_TEXT: '40-50 min',
+      COUNT_TEXT: '25-30 main questions',
+      MIN_Q: 25,
+      MAX_Q: 30,
+      SHOW_QUESTIONS_MODE: 'optional',
       DEFAULT_SHOW_QUESTIONS: false,
-      SHOW_AI_ANSWER: true,              // shown when questions are visible
-      DESCRIPTION: 'Realistic technical interview. Deep-dive questions on projects, debugging, behavioral STAR scenarios, and tradeoffs. Detailed answers. Toggle questions on screen if you want a guide; use Repeat if you miss a question.'
+      SHOW_AI_ANSWER: true,
+      DESCRIPTION: 'Realistic technical interview. Deep-dive questions on projects, debugging, behavioral STAR scenarios, and tradeoffs. 25-30 main questions plus intro and closing. Toggle questions on screen if you want a guide; use Repeat if you miss a question.'
     },
     Advanced: {
       LABEL: 'Advanced',
-      DURATION_TEXT: '45-50 min',
-      COUNT_TEXT: '24-30 questions',
-      MIN_Q: 24,
-      MAX_Q: 30,
-      SHOW_QUESTIONS_MODE: 'never',      // forced hidden
+      DURATION_TEXT: '55-65 min',
+      COUNT_TEXT: '30-35 main questions',
+      MIN_Q: 30,
+      MAX_Q: 35,
+      SHOW_QUESTIONS_MODE: 'never',
       DEFAULT_SHOW_QUESTIONS: false,
       SHOW_AI_ANSWER: false,
-      DESCRIPTION: 'Senior-level simulation. System design, architecture, scaling, and advanced behavioral questions tied to your resume. Nothing on screen — listen, think, respond. Use Repeat if needed.'
+      DESCRIPTION: 'Senior-level simulation. System design, architecture, scaling, and advanced behavioral questions tied to your resume. 30-35 main questions. Nothing on screen — listen, think, respond. Use Repeat if needed.'
     }
   },
   DIFFICULTY_DEFAULT: 'Beginner',
@@ -122,6 +127,7 @@ export const APP_CONFIG = {
   SERVICES: {
     OPENAI: {
       MODEL: 'gpt-4o-mini',
+      ANALYSIS_MODEL: 'gpt-4o-mini',
       MIN_Q_COUNT: 30,
       MAX_Q_COUNT: 45,
       BATCH_SIZE: 10,

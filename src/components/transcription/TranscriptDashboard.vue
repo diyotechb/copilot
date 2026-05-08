@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard-view">
     <div class="dashboard-header">
-      <h2>Transcripts</h2>
+      <h2>My Transcriptions</h2>
       <div class="dash-actions">
         <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
           Start Recording <i :class="micPermission === 'denied' ? 'el-icon-lock' : 'el-icon-right'"></i>
@@ -28,7 +28,7 @@
       
       <div v-else class="transcript-list">
         <div class="recent-header">
-          <h3 class="recent-title">Recent Transcripts</h3>
+          <h3 class="recent-title">Recent Transcriptions</h3>
           <el-button v-if="history.length > 1" type="text" class="delete-all-btn" @click="$emit('delete-all')">Delete All</el-button>
         </div>
 

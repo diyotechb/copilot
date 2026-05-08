@@ -1,40 +1,220 @@
 <template>
   <div class="setup-page-view">
     <!-- Loading / Processing States -->
-    <div v-if="loadingTranscripts || (enableVideo && !recordedVideoUrl && !videoTimeout)" class="setup-status-view">
+    <div v-if="isLoading" class="setup-status-view">
       <div class="status-content">
         <div class="main-loader"></div>
-        <h3>{{ loadingTranscripts ? 'Preparing Transcripts' : 'Processing Video' }}</h3>
-        <p>The system is finalizing your interview review. This will only take a moment.</p>
+        <h3>{{ loadingLabel }}</h3>
+        <p>{{ loadingMessage }}</p>
+        <p v-if="batchProgress.total > 0" class="batch-progress-line">
+          {{ batchProgress.done }} / {{ batchProgress.total }} answers transcribed
+          <span v-if="batchProgress.failed > 0">· {{ batchProgress.failed }} failed</span>
+        </p>
       </div>
     </div>
 
     <!-- Main Content -->
     <div v-else>
       <div class="setup-view-header">
-        <div class="header-main">
-          <h2>Interview Performance Summary</h2>
-          <p class="header-subtitle">Review your recordings, transcripts, and automated feedback.</p>
+        <!-- Breadcrumb row: "← My Interviews" link, history view only. -->
+        <div v-if="isHistoryView" class="header-breadcrumb">
+          <button
+              type="button"
+              class="back-link-btn"
+              @click="$router.push({ name: 'MyInterviews' })"
+          >
+            <i class="el-icon-arrow-left"></i>
+            <span>My Interviews</span>
+          </button>
         </div>
-        <div class="header-actions">
-          <el-button
-              type="primary"
-              icon="el-icon-refresh-left"
-              @click="$router.push({ name: 'ResumeSetup' })">
-            Start New Session
-          </el-button>
+
+        <div class="header-main-row">
+          <div class="header-main">
+            <div class="title-row">
+              <template v-if="!editingTitle">
+                <h2 class="header-title" @click="startEditTitle" title="Click to rename">{{ displayTitle }}</h2>
+                <button
+                    type="button"
+                    class="rename-btn"
+                    title="Rename interview"
+                    @click="startEditTitle"
+                ><i class="el-icon-edit-outline"></i></button>
+              </template>
+              <input
+                  v-else
+                  ref="titleInput"
+                  v-model="titleDraft"
+                  class="header-title-input"
+                  @blur="saveTitle"
+                  @keyup.enter="saveTitle"
+                  @keyup.esc="cancelTitle"
+                  placeholder="Untitled interview"
+                  maxlength="80"
+              />
+            </div>
+            <p class="header-subtitle">
+              <span v-if="difficulty" class="header-tag">{{ difficulty }}</span>
+              <span v-if="category && category !== 'All'" class="header-tag">{{ category }}</span>
+              <span class="header-tag state-tag" :class="'state-' + interviewState.tone" :title="stateTooltip">{{ interviewState.label }}</span>
+              <span v-if="interviewDateLabel" class="header-date">{{ interviewDateLabel }}</span>
+            </p>
+          </div>
+          <div class="header-actions">
+            <template v-if="completed && transcripts.length">
+              <el-button
+                  v-if="recordedVideoUrl && !isHistoryView"
+                  size="small"
+                  icon="el-icon-video-camera"
+                  @click="handleDownloadVideo"
+              >Recording</el-button>
+              <el-button size="small" icon="el-icon-document" @click="downloadScript">Q&amp;A Script</el-button>
+              <el-button size="small" type="primary" plain icon="el-icon-download" @click="downloadReport">Full Report</el-button>
+            </template>
+            <el-button
+                v-if="!isHistoryView"
+                size="small"
+                type="primary"
+                icon="el-icon-refresh-left"
+                @click="$router.push({ name: 'ResumeSetup' })">
+              New Session
+            </el-button>
+          </div>
         </div>
       </div>
 
       <div class="setup-form-container">
-        <!-- Overall Summary -->
-        <div v-if="aggregate.answeredCount > 0" class="setup-card overall-card">
+        <!-- Banner: profile-level Answer Analysis is off. Audio is still
+             saved with the session — user just can't run transcription or
+             detailed analysis until the toggle is on. -->
+        <div v-if="!isHistoryView && !analysisFeatureEnabled" class="info-banner">
+          <i class="el-icon-info"></i>
+          <span>Answer Analysis is off in Profile Settings → Beta Features. Turn it on there to transcribe your answers and run analysis on this interview. Your recorded audio is saved either way.</span>
+        </div>
+
+        <!-- Banner: incomplete interview — informs the user that only the
+             answers they actually recorded will appear below. They can
+             still transcribe and run analysis on the partial data. -->
+        <div v-if="!completed && !isHistoryView && analysisMode !== 'none'" class="info-banner warning">
+          <i class="el-icon-warning-outline"></i>
+          <span>This interview was stopped before reaching the end. Only the answers you recorded will be shown. You can still transcribe and run detailed analysis on what's available.</span>
+        </div>
+
+        <!-- Primary action: Transcribe. Visible whenever the live session
+             has at least one answer waiting on a transcript and the
+             profile-level Answer Analysis toggle is on. Works the same
+             whether the interview was completed or stopped early. -->
+        <div
+            v-if="!isHistoryView && analysisFeatureEnabled && analysisMode !== 'none' && hasUnresolvedTranscripts && !transcribeRecovering"
+            class="info-banner action"
+        >
+          <i class="el-icon-info"></i>
+          <span>{{ transcribePromptMessage }}</span>
+          <el-button size="small" type="primary" icon="el-icon-microphone" @click="transcribeNow" :loading="transcribeRecovering">
+            Transcribe answers
+          </el-button>
+        </div>
+        <div v-if="transcribeRecovering && analysisFeatureEnabled" class="info-banner action">
+          <i class="el-icon-loading"></i>
+          <span>
+            Transcribing… {{ batchProgress.done }} / {{ batchProgress.total }} done<span v-if="batchProgress.failed > 0">, {{ batchProgress.failed }} failed</span>. Please keep this page open.
+          </span>
+        </div>
+
+        <!-- On-demand Detailed Analysis CTA (no saved analysis yet) -->
+        <div v-if="canRunLLMOnDemand" class="info-banner action">
+          <i class="el-icon-info"></i>
+          <span>{{ detailedCtaMessage }}</span>
+          <div class="cta-actions">
+            <button
+                type="button"
+                class="info-btn cta-info-btn"
+                @click="showFeedbackHelp = true"
+                title="What does detailed analysis include?"
+            ><i class="el-icon-info"></i></button>
+            <el-button size="small" type="primary" @click="openTypeSelector(false)" :disabled="llmLoading || transcribeRecovering">Generate Detailed Analysis</el-button>
+          </div>
+        </div>
+
+        <!-- Processing state — large, prominent, with keep-page-open message.
+             Stays additively next to the saved-state banner so the user
+             keeps their context while waiting for regenerate. -->
+        <div v-if="llmLoading" class="processing-card" ref="processingCard">
+          <div class="processing-icon"><i class="el-icon-loading"></i></div>
+          <div class="processing-body">
+            <div class="processing-headline">{{ llmAnalysis ? 'Regenerating your detailed analysis…' : 'Generating your detailed analysis…' }}</div>
+            <p class="processing-message">
+              This usually takes between 5 and 30 seconds depending on how many questions you answered.
+              <strong>Please keep this page open</strong> while the analysis is being prepared.
+              Your results will appear here automatically once ready.
+            </p>
+            <div class="processing-progress">
+              <div class="processing-bar"><div class="processing-bar-fill"></div></div>
+              <span class="processing-elapsed">{{ llmElapsedLabel }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detailed analysis failed — keep the user informed and offer
+             retry. If a previous analysis is on screen we tell the user
+             that's what they're looking at; otherwise the basic
+             evaluation below carries the load. -->
+        <div
+            v-if="!llmLoading && llmError && analysisFeatureEnabled"
+            class="info-banner warning analysis-mode-banner"
+        >
+          <i class="el-icon-warning-outline"></i>
+          <span class="banner-text">
+            <strong v-if="llmAnalysis">Couldn't regenerate detailed analysis.</strong>
+            <strong v-else>Couldn't generate detailed analysis.</strong>
+            <span v-if="llmAnalysis">The previous analysis is still shown below. {{ llmError }}</span>
+            <span v-else>Showing the basic evaluation only. {{ llmError }}</span>
+          </span>
+          <div class="banner-actions">
+            <el-button size="small" type="primary" plain icon="el-icon-refresh" @click="openTypeSelector(true)">
+              Try again
+            </el-button>
+          </div>
+        </div>
+
+        <!-- Detailed analysis saved — Generate Detailed Analysis re-runs it -->
+        <div
+            v-if="!llmLoading && !llmError && llmAnalysis"
+            class="info-banner saved analysis-mode-banner"
+        >
+          <i class="el-icon-circle-check"></i>
+          <span class="banner-text">
+            <strong>Detailed analysis is saved with this interview.</strong>
+            <span>Per-question feedback and session insights are shown below.</span>
+          </span>
+          <div v-if="analysisFeatureEnabled" class="banner-actions">
+            <el-button size="small" type="primary" plain icon="el-icon-refresh" @click="openTypeSelector(true)" :loading="llmLoading">
+              Generate Detailed Analysis
+            </el-button>
+          </div>
+        </div>
+
+        <!-- Overall Performance (basic + full) -->
+        <div v-if="hasAnyTranscript" class="setup-card overall-card">
           <div class="card-header highlight">
             <i class="el-icon-data-analysis"></i>
-            <h3>Overall Performance</h3>
-            <span class="overall-verdict" :class="'verdict-' + verdict.tone">{{ verdict.label }}</span>
+            <div class="card-title-cluster">
+              <h3>Overall Performance</h3>
+              <span class="overall-verdict" :class="'verdict-' + verdict.tone">{{ verdict.label }}</span>
+              <span v-if="overallRating !== null" class="overall-rating" :class="'rating-' + overallRatingTone">
+                {{ overallRating }} <span class="overall-rating-suffix">/ 10</span>
+              </span>
+            </div>
+            <button
+                type="button"
+                class="info-btn"
+                @click="showMetricsHelp = true"
+                title="What do these metrics mean?"
+            >
+              <i class="el-icon-info"></i>
+            </button>
           </div>
           <div class="card-body">
+            <p v-if="verdict.description" class="verdict-description">{{ verdict.description }}</p>
             <div class="overall-stats-grid">
               <div class="overall-stat">
                 <span class="overall-stat-val">{{ aggregate.answeredCount }} / {{ transcripts.length }}</span>
@@ -45,14 +225,14 @@
                 <span class="overall-stat-lab">Total speaking time</span>
               </div>
               <div class="overall-stat">
-                <span class="overall-stat-val">{{ aggregate.averageConfidencePct }}%</span>
-                <span class="overall-stat-lab">Avg confidence</span>
-              </div>
-              <div class="overall-stat">
                 <span class="overall-stat-val">{{ aggregate.averagePaceWpm }} WPM</span>
                 <span class="overall-stat-lab">Avg pace</span>
               </div>
-              <div class="overall-stat">
+              <div
+                  class="overall-stat"
+                  :class="{ 'overall-stat-clickable': hasSpeakingPatterns, 'is-highlighted': highlightedBlock === 'fillers' }"
+                  @click="onClickFillers"
+              >
                 <span class="overall-stat-val">{{ aggregate.totalFillers }}<span class="overall-stat-sub"> ({{ aggregate.fillerPercent }}%)</span></span>
                 <span class="overall-stat-lab">Filler words</span>
               </div>
@@ -60,12 +240,104 @@
                 <span class="overall-stat-val">{{ aggregate.totalWords }}</span>
                 <span class="overall-stat-lab">Words spoken</span>
               </div>
+              <div
+                  v-if="extraWordsTotalUses > 0"
+                  class="overall-stat"
+                  :class="{ 'overall-stat-clickable': sessionExtraWords.length, 'is-highlighted': highlightedBlock === 'extras' }"
+                  @click="onClickExtras"
+              >
+                <span class="overall-stat-val">{{ extraWordsDistinct }}<span class="overall-stat-sub"> ({{ extraWordsTotalUses }} uses)</span></span>
+                <span class="overall-stat-lab">Off-reference words</span>
+              </div>
+            </div>
+
+            <!-- Session insights pulled from detailed analysis. Lives
+                 inside Overall Performance now so the page reads as one
+                 cohesive recap instead of two duplicate cards. -->
+            <div v-if="showDetailedAnalysis && llmAnalysis && llmAnalysis.session" class="overall-insights">
+              <h4 class="overall-insights-title">Session insights</h4>
+              <div class="insight-row">
+                <span class="insight-label">Strongest area</span>
+                <p class="insight-text">{{ llmAnalysis.session.strongestArea || '—' }}</p>
+              </div>
+              <div class="insight-row">
+                <span class="insight-label">Growth area</span>
+                <p class="insight-text">{{ llmAnalysis.session.growthArea || '—' }}</p>
+              </div>
+              <div v-if="llmAnalysis.session.patterns && llmAnalysis.session.patterns.length" class="insight-row">
+                <span class="insight-label">Patterns observed</span>
+                <ul class="insight-list">
+                  <li v-for="(p, i) in llmAnalysis.session.patterns" :key="i">{{ p }}</li>
+                </ul>
+              </div>
+              <div v-if="llmAnalysis.session.verdict" class="insight-row">
+                <span class="insight-label">Verdict</span>
+                <p class="insight-verdict">{{ llmAnalysis.session.verdict }}</p>
+              </div>
+            </div>
+
+            <!-- Top areas to improve, pulled from detailed analysis -->
+            <div v-if="showDetailedAnalysis && topImprovementFocus.length" class="overall-improvements">
+              <h4 class="overall-improvements-title">Top areas to focus on next</h4>
+              <ol class="overall-improvements-list">
+                <li v-for="item in topImprovementFocus" :key="'imp-' + item.idx">
+                  <span class="overall-improvements-q">Q{{ item.idx + 1 }}</span>
+                  <span class="overall-improvements-text">{{ item.text }}</span>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- Your Speaking Patterns (session-level word patterns) -->
+        <div v-if="hasAnyTranscript && hasSpeakingPatterns" class="setup-card" ref="speakingPatternsCard">
+          <div class="card-header">
+            <i class="el-icon-data-line"></i>
+            <h3>Your Speaking Patterns</h3>
+          </div>
+          <div class="card-body">
+            <div class="basic-analysis-grid">
+              <div
+                  v-if="sessionTopFillers.length"
+                  class="basic-block"
+                  :class="{ 'is-highlighted': highlightedBlock === 'fillers' }"
+                  ref="fillersBlock"
+              >
+                <span class="basic-block-title">
+                  Filler words you used
+                  <span class="basic-block-total">{{ aggregate.totalFillers }} total uses, {{ sessionTopFillers.length }} distinct</span>
+                </span>
+                <p class="patterns-block-hint">"Spacer" words you said while thinking. These don't appear in the reference answers. Try a brief pause instead.</p>
+                <ul class="chip-list">
+                  <li v-for="f in sessionTopFillers" :key="'sf-' + f.filler" class="chip">
+                    {{ f.filler }} <em>× {{ f.count }} time{{ f.count === 1 ? '' : 's' }}</em>
+                  </li>
+                </ul>
+              </div>
+
+              <div
+                  v-if="sessionExtraWords.length"
+                  class="basic-block"
+                  :class="{ 'is-highlighted': highlightedBlock === 'extras' }"
+                  ref="extrasBlock"
+              >
+                <span class="basic-block-title">
+                  Words you used not in any reference
+                  <span class="basic-block-total">{{ extraWordsTotalUses }} total uses, {{ sessionExtraWords.length }} distinct</span>
+                </span>
+                <p class="patterns-block-hint">Content words you said that don't appear in any expected answer. Could be fresh insight; could be off-topic.</p>
+                <ul class="chip-list">
+                  <li v-for="w in sessionExtraWords" :key="'sx-' + w.word" class="chip">
+                    {{ w.word }}<span v-if="w.count > 1"> <em>× {{ w.count }} times</em></span>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Video Recording Card -->
-        <div v-if="enableVideo" class="setup-card video-card" ref="videoCard">
+        <div v-if="enableVideo && !isHistoryView" class="setup-card video-card" ref="videoCard">
           <div class="card-header highlight">
             <i class="el-icon-video-camera"></i>
             <h3>Session Recording</h3>
@@ -73,131 +345,289 @@
           <div class="card-body centered-body">
             <div v-if="recordedVideoUrl" class="video-preview-wrapper">
               <video :src="recordedVideoUrl" controls class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @ended="onVideoEnded"></video>
-              <div class="video-actions">
-                <el-button
-                    type="success"
-                    icon="el-icon-download"
-                    @click="handleDownload">
-                  Download Recording
-                </el-button>
-                <el-button
-                    type="info"
-                    icon="el-icon-document"
-                    @click="downloadScript">
-                  Download Script
-                </el-button>
-              </div>
             </div>
             <div v-else-if="videoTimeout" class="video-missing-alert">
               <i class="el-icon-warning-outline"></i>
               <p>Video recording was not found, but your transcript is available below.</p>
-              <el-button type="info" icon="el-icon-document" @click="downloadScript" style="margin-top:12px;">
-                Download Script
-              </el-button>
             </div>
           </div>
         </div>
 
-        <!-- Download Script (shown when video card is hidden) -->
-        <div v-if="!enableVideo" class="download-bar">
-          <el-button type="info" icon="el-icon-document" @click="downloadScript">
-            Download Script
+        <!-- Per-question section header. Downloads live in the page
+             header (top-right) for live and history views alike. -->
+        <div v-if="transcripts.length" class="questions-header-row">
+          <h3 class="questions-header">Question-by-question</h3>
+        </div>
+
+        <!-- Filter pills: All + each question. Click a question pill to focus
+             on that one only; click All (or Clear selection) to bring back
+             the full list. -->
+        <div v-if="transcripts.length > 1" class="question-jumper">
+          <button
+              type="button"
+              class="jumper-pill jumper-pill-all"
+              :class="{ 'jumper-pill-active': selectedQuestionIdx === null }"
+              @click="selectAllQuestions"
+          >All</button>
+          <button
+              v-for="(t, idx) in transcripts"
+              :key="'j-' + idx"
+              type="button"
+              class="jumper-pill"
+              :class="jumperPillClass(idx)"
+              :title="questionSnippet(idx)"
+              @click="selectQuestion(idx)"
+          >Q{{ idx + 1 }}</button>
+          <button
+              v-if="selectedQuestionIdx !== null"
+              type="button"
+              class="jumper-clear"
+              @click="selectAllQuestions"
+              title="Show all questions"
+          >
+            <i class="el-icon-close"></i> Clear selection
+          </button>
+        </div>
+
+        <!-- Expand-all toolbar — right above the question cards so it's
+             always in view when the user starts reading them. -->
+        <div v-if="transcripts.length && selectedQuestionIdx === null" class="questions-toolbar">
+          <span class="questions-toolbar-hint">Click any question to expand its transcript and feedback.</span>
+          <el-button size="small" plain :icon="allExpanded ? 'el-icon-minus' : 'el-icon-plus'" @click="toggleAllExpanded">
+            {{ allExpanded ? 'Collapse all' : 'Expand all' }}
           </el-button>
         </div>
 
-        <!-- Legend Card -->
-        <div class="setup-card legend-card">
-          <div class="card-header">
-            <i class="el-icon-guide"></i>
-            <h3>Transcript Legend</h3>
-          </div>
-          <div class="card-body">
-            <div class="industrial-legend">
-              <div class="legend-item"><span class="pip pos"></span> Positive</div>
-              <div class="legend-item"><span class="pip neu"></span> Neutral</div>
-              <div class="legend-item"><span class="pip neg"></span> Negative</div>
-              <div class="legend-item"><span class="pip filler">uh</span> Filler Word</div>
-              <div class="legend-item"><span class="pip conf-low"></span> &lt;50% Conf.</div>
-              <div class="legend-item"><span class="pip conf-med"></span> &lt;70% Conf.</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Transcript Blocks -->
+        <!-- Transcript Blocks (collapsible) — filtered by selected question -->
         <div
             v-for="(transcriptObj, idx) in transcripts"
+            v-show="selectedQuestionIdx === null || selectedQuestionIdx === idx"
             :key="idx"
             class="setup-card transcript-block"
+            :class="{ 'is-expanded': isExpanded(idx), 'is-playing-answer': isPlayingAnswerFor(idx) }"
+            :ref="'qcard-' + idx"
         >
-          <div class="card-header">
-            <i class="el-icon-chat-line-round"></i>
-            <h3>Question {{ idx + 1 }}</h3>
-            <div class="header-audio-controls">
+          <div class="card-header q-card-header" @click="toggleExpanded(idx)">
+            <i class="expand-chevron" :class="isExpanded(idx) ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"></i>
+            <div class="q-header-main">
+              <div class="q-header-title-row">
+                <span class="q-number">Q{{ idx + 1 }}</span>
+                <span class="q-snippet">{{ questionSnippet(idx) }}</span>
+              </div>
+              <div class="q-header-meta">
+                <span v-if="hasTranscriptContent(transcriptObj)" class="q-meta-pill">{{ wordCount(transcriptObj) }} words</span>
+                <span v-if="hasTranscriptContent(transcriptObj)" class="q-meta-pill">{{ formatDuration(answerDurationSec(transcriptObj)) }}</span>
+                <span v-if="hasTranscriptContent(transcriptObj)" class="q-meta-pill">{{ fillerCount(transcriptObj) }} fillers</span>
+                <span v-if="!hasTranscriptContent(transcriptObj) && analysisMode !== 'none'" class="q-meta-pill q-meta-warn">No answer</span>
+                <span v-if="showDetailedAnalysis && perQuestionLLM(idx) && perQuestionLLM(idx).score !== null" class="score-pill" title="Delivery score (out of 10)">
+                  {{ perQuestionLLM(idx).score }} / 10
+                </span>
+              </div>
+            </div>
+            <div class="header-audio-controls" @click.stop>
               <el-button
+                  v-if="!isHistoryView"
                   size="mini"
                   :type="isPlayingVideoFor(idx) ? 'danger' : 'primary'"
                   :icon="isPlayingVideoFor(idx) ? 'el-icon-video-pause' : 'el-icon-video-play'"
                   @click="toggleVideoSegment(idx)"
                   :disabled="!recordedVideoUrl || questionTimestamps[idx] === undefined"
-                  :title="recordedVideoUrl && questionTimestamps[idx] !== undefined ? 'Play this question in the video' : 'No video segment available'"
               >
                 {{ isPlayingVideoFor(idx) ? 'Stop' : 'Play in Video' }}
               </el-button>
               <el-button
+                  v-if="!isHistoryView"
                   size="mini"
-                  :type="isPlayingReferenceFor(idx) ? 'danger' : 'default'"
-                  :icon="isPlayingReferenceFor(idx) ? 'el-icon-video-pause' : 'el-icon-headset'"
-                  @click="toggleReferenceTTS(idx)"
-                  :disabled="!localInterviewQA[idx] || !localInterviewQA[idx].answer"
-                  :title="localInterviewQA[idx] && localInterviewQA[idx].answer ? 'Listen to the AI reference answer' : 'No reference answer available'"
+                  class="play-answer-btn"
+                  :class="{ 'is-playing': isPlayingAnswerFor(idx) }"
+                  :type="isPlayingAnswerFor(idx) ? 'danger' : 'default'"
+                  :icon="isPlayingAnswerFor(idx) ? 'el-icon-video-pause' : 'el-icon-video-play'"
+                  @click="toggleYourAnswer(idx)"
+                  :disabled="!hasAudioRecorded(idx)"
+                  :title="hasAudioRecorded(idx) ? 'Listen to your spoken answer' : 'No audio recorded for this question'"
               >
-                {{ isPlayingReferenceFor(idx) ? 'Stop' : 'Play Reference' }}
+                <span v-if="isPlayingAnswerFor(idx)" class="playing-dot" aria-hidden="true"></span>
+                {{ isPlayingAnswerFor(idx) ? 'Stop' : 'Play Your Answer' }}
               </el-button>
             </div>
           </div>
-          <div class="card-body">
+          <div v-show="isExpanded(idx)" class="card-body">
             <div class="summary-data-item">
               <label>The Question</label>
               <p class="data-text">{{ localInterviewQA[idx]?.question || '(No question found)' }}</p>
             </div>
 
-            <div class="summary-data-item">
+            <!-- Transcript (only when transcription was enabled) -->
+            <div v-if="analysisMode !== 'none'" class="summary-data-item">
               <label>Your Transcript</label>
               <div v-if="hasTranscriptContent(transcriptObj)" class="transcript-surface" v-html="safeHighlight(transcriptObj)"></div>
               <p v-else class="data-text muted">No spoken answer was recorded for this question.</p>
             </div>
 
-            <div class="summary-data-item">
-              <label>Analysis &amp; Feedback</label>
-              <div class="stats-feedback-row">
-                <div class="mini-stats">
-                  <div class="stat-pill">
-                    <span class="stat-val">{{ averageConfidencePct(transcriptObj) || 'N/A' }}{{ averageConfidencePct(transcriptObj) ? '%' : '' }}</span>
-                    <span class="stat-lab">Confidence</span>
+            <!-- Stats + bullets -->
+            <div v-if="analysisMode !== 'none' && hasTranscriptContent(transcriptObj)" class="summary-data-item">
+              <label>Stats</label>
+              <div class="mini-stats">
+                <div class="stat-pill">
+                  <span class="stat-val">{{ wordCount(transcriptObj) }}</span>
+                  <span class="stat-lab">Words</span>
+                  <span class="stat-hint">total spoken</span>
+                </div>
+                <div class="stat-pill">
+                  <span class="stat-val">{{ paceWpm(transcriptObj) || 'N/A' }}{{ paceWpm(transcriptObj) ? ' WPM' : '' }}</span>
+                  <span class="stat-lab">Pace</span>
+                  <span class="stat-hint" :class="paceTone(transcriptObj)">{{ paceHint(transcriptObj) }}</span>
+                </div>
+                <div class="stat-pill">
+                  <span class="stat-val">{{ formatDuration(answerDurationSec(transcriptObj)) }}</span>
+                  <span class="stat-lab">Duration</span>
+                  <span class="stat-hint">how long you spoke</span>
+                </div>
+                <div class="stat-pill">
+                  <span class="stat-val">{{ fillerCount(transcriptObj) }}<span class="stat-sub"> ({{ fillerPercent(transcriptObj) }}%)</span></span>
+                  <span class="stat-lab">Fillers</span>
+                  <span class="stat-hint" :class="fillerTone(transcriptObj)">{{ fillerHint(transcriptObj) }}</span>
+                </div>
+              </div>
+              <p class="stats-explainer">
+                Good interview pace: 110–180 WPM. Polished delivery: under 5% fillers. Above 15% fillers reads as distracting.
+              </p>
+            </div>
+
+            <!-- Basic word-level analysis (basic + full) -->
+            <div v-if="analysisMode !== 'none' && hasTranscriptContent(transcriptObj)" class="summary-data-item basic-analysis">
+              <label>Basic Analysis</label>
+              <div class="basic-analysis-grid">
+                <div v-if="topWordsFor(idx).length" class="basic-block">
+                  <span class="basic-block-title">Most repeated</span>
+                  <ul class="chip-list">
+                    <li v-for="w in topWordsFor(idx)" :key="w.word" class="chip">{{ w.word }} <em>×{{ w.count }}</em></li>
+                  </ul>
+                </div>
+                <div v-if="topPhrasesFor(idx).length" class="basic-block">
+                  <span class="basic-block-title">Repeated phrases</span>
+                  <ul class="chip-list">
+                    <li v-for="p in topPhrasesFor(idx)" :key="p.phrase" class="chip">"{{ p.phrase }}" <em>×{{ p.count }}</em></li>
+                  </ul>
+                </div>
+                <div v-if="topFillersFor(idx).length" class="basic-block">
+                  <span class="basic-block-title">Fillers used</span>
+                  <ul class="chip-list">
+                    <li v-for="f in topFillersFor(idx)" :key="f.filler" class="chip">{{ f.filler }} <em>×{{ f.count }}</em></li>
+                  </ul>
+                </div>
+                <div v-if="extraWordsFor(idx).length" class="basic-block">
+                  <span class="basic-block-title">Words not in reference</span>
+                  <ul class="chip-list">
+                    <li v-for="w in extraWordsFor(idx)" :key="w.word" class="chip">{{ w.word }}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Per-question detailed feedback -->
+            <div v-if="showDetailedAnalysis && perQuestionLLM(idx)" class="summary-data-item llm-block">
+              <label>Detailed Feedback</label>
+
+              <!-- Delivery dimension -->
+              <div v-if="showDelivery" class="llm-dimension">
+                <div class="llm-dimension-header">
+                  <span>Delivery quality</span>
+                  <span v-if="typeof perQuestionLLM(idx).deliveryScore === 'number'" class="dimension-score">{{ perQuestionLLM(idx).deliveryScore }} / 10</span>
+                </div>
+                <div v-if="hasDeliveryNotes(idx)" class="delivery-notes-grid">
+                  <div v-if="deliveryNote(idx, 'grammar')" class="delivery-note">
+                    <span class="delivery-note-label">Grammar</span>
+                    <p>{{ deliveryNote(idx, 'grammar') }}</p>
                   </div>
-                  <div class="stat-pill">
-                    <span class="stat-val">{{ wordCount(transcriptObj) || 'N/A' }}</span>
-                    <span class="stat-lab">Words</span>
+                  <div v-if="deliveryNote(idx, 'tone')" class="delivery-note">
+                    <span class="delivery-note-label">Tone</span>
+                    <p>{{ deliveryNote(idx, 'tone') }}</p>
                   </div>
-                  <div class="stat-pill">
-                    <span class="stat-val">{{ paceWpm(transcriptObj) || 'N/A' }}{{ paceWpm(transcriptObj) ? ' WPM' : '' }}</span>
-                    <span class="stat-lab">Pace</span>
+                  <div v-if="deliveryNote(idx, 'fillers')" class="delivery-note">
+                    <span class="delivery-note-label">Fillers</span>
+                    <p>{{ deliveryNote(idx, 'fillers') }}</p>
                   </div>
-                  <div class="stat-pill">
-                    <span class="stat-val">{{ wordCount(transcriptObj) ? formatDuration(answerDurationSec(transcriptObj)) : 'N/A' }}</span>
-                    <span class="stat-lab">Duration</span>
+                  <div v-if="deliveryNote(idx, 'pace')" class="delivery-note">
+                    <span class="delivery-note-label">Pace</span>
+                    <p>{{ deliveryNote(idx, 'pace') }}</p>
                   </div>
-                  <div class="stat-pill">
-                    <span class="stat-val">{{ fillerCount(transcriptObj) }}<span v-if="wordCount(transcriptObj)" class="stat-sub"> ({{ fillerPercent(transcriptObj) }}%)</span></span>
-                    <span class="stat-lab">Fillers</span>
+                  <div v-if="deliveryNote(idx, 'clarity')" class="delivery-note">
+                    <span class="delivery-note-label">Clarity</span>
+                    <p>{{ deliveryNote(idx, 'clarity') }}</p>
                   </div>
                 </div>
-                <FeedbackSection
-                    v-if="hasTranscriptContent(transcriptObj)"
-                    :transcript="transcriptObj"
-                    :reference-answer="localInterviewQA[idx]?.answer || ''"
-                />
               </div>
+
+              <!-- Content dimension -->
+              <div v-if="showContent" class="llm-dimension">
+                <div class="llm-dimension-header">
+                  <span>Answer evaluation</span>
+                  <span v-if="typeof perQuestionLLM(idx).contentScore === 'number'" class="dimension-score">{{ perQuestionLLM(idx).contentScore }} / 10</span>
+                </div>
+                <div v-if="hasContentNotes(idx)" class="content-notes-grid">
+                  <div v-if="contentNote(idx, 'correctness')" class="content-note">
+                    <span class="content-note-label">Correctness</span>
+                    <p>{{ contentNote(idx, 'correctness') }}</p>
+                  </div>
+                  <div v-if="contentNote(idx, 'completeness')" class="content-note">
+                    <span class="content-note-label">Completeness</span>
+                    <p>{{ contentNote(idx, 'completeness') }}</p>
+                  </div>
+                  <div v-if="contentNote(idx, 'structure')" class="content-note">
+                    <span class="content-note-label">Structure</span>
+                    <p>{{ contentNote(idx, 'structure') }}</p>
+                  </div>
+                </div>
+                <div v-if="(perQuestionLLM(idx).keyPointsHit && perQuestionLLM(idx).keyPointsHit.length) || (perQuestionLLM(idx).keyPointsMissed && perQuestionLLM(idx).keyPointsMissed.length)" class="llm-row">
+                  <span class="llm-row-title">Key points vs reference</span>
+                  <div class="coverage-row">
+                    <div v-if="perQuestionLLM(idx).keyPointsHit && perQuestionLLM(idx).keyPointsHit.length">
+                      <strong>Hit:</strong>
+                      <ul class="chip-list inline">
+                        <li v-for="h in perQuestionLLM(idx).keyPointsHit" :key="'h-' + h" class="chip">{{ h }}</li>
+                      </ul>
+                    </div>
+                    <div v-if="perQuestionLLM(idx).keyPointsMissed && perQuestionLLM(idx).keyPointsMissed.length">
+                      <strong>Missed:</strong>
+                      <ul class="chip-list inline">
+                        <li v-for="m in perQuestionLLM(idx).keyPointsMissed" :key="'m-' + m" class="chip">{{ m }}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Strengths / weaknesses (always show when present) -->
+              <div v-if="perQuestionLLM(idx).strengths && perQuestionLLM(idx).strengths.length" class="llm-row">
+                <span class="llm-row-title">Strengths</span>
+                <ul><li v-for="(b, i) in perQuestionLLM(idx).strengths" :key="i">{{ b }}</li></ul>
+              </div>
+              <div v-if="perQuestionLLM(idx).weaknesses && perQuestionLLM(idx).weaknesses.length" class="llm-row">
+                <span class="llm-row-title">Weaknesses</span>
+                <ul><li v-for="(b, i) in perQuestionLLM(idx).weaknesses" :key="i">{{ b }}</li></ul>
+              </div>
+
+              <!-- Improvements dimension -->
+              <div v-if="showImprovements && perQuestionLLM(idx).improvements && perQuestionLLM(idx).improvements.length" class="llm-row">
+                <span class="llm-row-title">Improvement plan</span>
+                <ol class="improvement-list">
+                  <li v-for="(b, i) in perQuestionLLM(idx).improvements" :key="i">{{ b }}</li>
+                </ol>
+              </div>
+              <div v-if="perQuestionLLM(idx).tryNext" class="llm-row">
+                <span class="llm-row-title">Top thing to try next time</span>
+                <p>{{ perQuestionLLM(idx).tryNext }}</p>
+              </div>
+            </div>
+
+            <!-- Stat-derived feedback bullets (Pace / Fillers / Length) -->
+            <div v-if="analysisMode !== 'none' && hasTranscriptContent(transcriptObj)" class="summary-data-item">
+              <label>Quick Feedback</label>
+              <FeedbackSection
+                  :transcript="transcriptObj"
+                  :reference-answer="localInterviewQA[idx]?.answer || ''"
+              />
             </div>
 
             <div class="summary-data-item">
@@ -208,14 +638,200 @@
         </div>
       </div>
     </div>
+
+    <!-- Analysis-type selector — pops up when the user clicks Generate
+         Detailed Analysis. Lets them pick which dimensions to evaluate. -->
+    <transition name="modal-fade">
+      <div
+          v-if="showTypeSelector"
+          class="metrics-modal-overlay"
+          @click.self="cancelTypeSelector"
+      >
+        <div class="metrics-modal type-selector-modal" role="dialog">
+          <div class="metrics-modal-header">
+            <h3>{{ typeSelectorIsRegenerate ? 'Generate detailed analysis again' : 'Generate detailed analysis' }}</h3>
+            <button
+                type="button"
+                class="metrics-modal-close"
+                aria-label="Close"
+                @click="cancelTypeSelector"
+            ><i class="el-icon-close"></i></button>
+          </div>
+          <div class="metrics-modal-body">
+            <p class="type-selector-intro">
+              Pick what you want analyzed. You can include one, two, or all three. The more you pick, the slower it runs.
+            </p>
+            <div class="type-option" :class="{ 'is-checked': selectedAnalysisTypes.delivery }" @click="toggleType('delivery')">
+              <input type="checkbox" :checked="selectedAnalysisTypes.delivery" @click.stop @change="toggleType('delivery')" />
+              <div class="type-option-body">
+                <div class="type-option-title">Delivery quality</div>
+                <p class="type-option-desc">Grammar, tone, fillers, pace, and clarity. Evaluates how you spoke, not whether your answer was right.</p>
+              </div>
+            </div>
+            <div class="type-option" :class="{ 'is-checked': selectedAnalysisTypes.content }" @click="toggleType('content')">
+              <input type="checkbox" :checked="selectedAnalysisTypes.content" @click.stop @change="toggleType('content')" />
+              <div class="type-option-body">
+                <div class="type-option-title">Answer evaluation</div>
+                <p class="type-option-desc">Whether your answer was correct, complete, and well-structured. Compares against the reference answer.</p>
+              </div>
+            </div>
+            <div class="type-option" :class="{ 'is-checked': selectedAnalysisTypes.improvements }" @click="toggleType('improvements')">
+              <input type="checkbox" :checked="selectedAnalysisTypes.improvements" @click.stop @change="toggleType('improvements')" />
+              <div class="type-option-body">
+                <div class="type-option-title">Improvement plan</div>
+                <p class="type-option-desc">Concrete things you should practice next time, ranked by impact.</p>
+              </div>
+            </div>
+            <div class="type-selector-actions">
+              <el-button size="small" @click="cancelTypeSelector">Cancel</el-button>
+              <el-button
+                  size="small"
+                  type="primary"
+                  :disabled="!hasAnyTypeSelected"
+                  @click="confirmTypeSelector"
+              >
+                Generate
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Detailed-feedback help modal -->
+    <transition name="modal-fade">
+      <div
+          v-if="showFeedbackHelp"
+          class="metrics-modal-overlay"
+          @click.self="showFeedbackHelp = false"
+      >
+        <div class="metrics-modal" role="dialog">
+          <div class="metrics-modal-header">
+            <h3>What detailed analysis covers</h3>
+            <button
+                type="button"
+                class="metrics-modal-close"
+                aria-label="Close"
+                @click="showFeedbackHelp = false"
+            ><i class="el-icon-close"></i></button>
+          </div>
+          <div class="metrics-modal-body">
+            <section class="help-section">
+              <h4>What it evaluates</h4>
+              <p>Detailed analysis evaluates <strong>how you spoke</strong>, not whether your answer was correct. It listens to your delivery and rates it on the dimensions below. A wrong answer delivered with great composure can still earn a high score.</p>
+            </section>
+            <section class="help-section">
+              <h4>For every question</h4>
+              <ul>
+                <li><strong>A delivery score from 1 to 10.</strong> Based on grammar, tone, fillers, pace, and clarity. Not based on whether the answer was right.</li>
+                <li><strong>Grammar.</strong> Sentence structure, agreement, broken phrases, awkward constructions.</li>
+                <li><strong>Tone.</strong> Whether you sounded confident, hesitant, professional, casual, or monotone.</li>
+                <li><strong>Fillers.</strong> How filler words and verbal tics affected your answer.</li>
+                <li><strong>Pace.</strong> Whether you sounded rushed, slow, choppy, or smooth.</li>
+                <li><strong>Clarity.</strong> Structure and organization. Did you ramble or get to the point.</li>
+                <li><strong>Try this next time.</strong> One concrete delivery improvement you can practice.</li>
+              </ul>
+            </section>
+            <section class="help-section">
+              <h4>For the whole session</h4>
+              <ul>
+                <li><strong>Strongest area.</strong> One sentence on the strongest aspect of your delivery, with evidence.</li>
+                <li><strong>Growth area.</strong> One sentence on the biggest delivery growth area, with evidence.</li>
+                <li><strong>Patterns observed.</strong> Delivery habits noticed across multiple answers.</li>
+                <li><strong>Overall verdict.</strong> A one-sentence read on your delivery for the session.</li>
+              </ul>
+            </section>
+            <section class="help-section">
+              <h4>Once generated</h4>
+              <p>Detailed analysis is saved with this interview. You can switch back to the basic view any time, and switch back to detailed without rerunning. Click Regenerate if you want a fresh take.</p>
+            </section>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Metrics help modal -->
+    <transition name="modal-fade">
+      <div
+          v-if="showMetricsHelp"
+          class="metrics-modal-overlay"
+          @click.self="showMetricsHelp = false"
+      >
+        <div class="metrics-modal" role="dialog" aria-labelledby="metrics-modal-title">
+          <div class="metrics-modal-header">
+            <h3 id="metrics-modal-title">How to read this summary</h3>
+            <button
+                type="button"
+                class="metrics-modal-close"
+                aria-label="Close"
+                @click="showMetricsHelp = false"
+            ><i class="el-icon-close"></i></button>
+          </div>
+
+          <div class="metrics-modal-body">
+            <section class="help-section">
+              <h4>Overall verdict</h4>
+              <p>The verdict pill at the top reflects how you delivered, not what you said. It looks at two things: pace and filler-word usage.</p>
+              <ul>
+                <li><strong class="tone-good">Strong.</strong> Natural pace and low filler usage across the session.</li>
+                <li><strong class="tone-ok">Solid.</strong> Mostly steady delivery, with one of the two areas outside the natural range.</li>
+                <li><strong class="tone-bad">Needs work.</strong> Both pace and fillers are off in many answers.</li>
+              </ul>
+              <p class="help-note">The verdict description below the pill tells you exactly which numbers led to that label.</p>
+            </section>
+
+            <section class="help-section">
+              <h4>Pace (Words Per Minute)</h4>
+              <p>How fast you spoke. Calculated as words spoken divided by speaking duration.</p>
+              <ul>
+                <li><strong class="tone-warn">Below 110 WPM.</strong> Sounds slow or hesitant. Try to commit to your sentences without long pauses mid-thought.</li>
+                <li><strong class="tone-good">110 to 180 WPM.</strong> Natural conversational rhythm. This is where you want to be in most interviews.</li>
+                <li><strong class="tone-warn">Above 180 WPM.</strong> Sounds rushed. Slow down, especially on technical names and key conclusions.</li>
+              </ul>
+            </section>
+
+            <section class="help-section">
+              <h4>Filler words</h4>
+              <p>Words and phrases used as verbal "spacers" when you're thinking. They don't add meaning. Common ones include <em>um, uh, like, you know, kind of, sort of, basically, actually</em>. We count both single words and short phrases.</p>
+              <ul>
+                <li><strong class="tone-good">Under 5% of your speech.</strong> Polished delivery.</li>
+                <li><strong class="tone-warn">5 to 15%.</strong> Noticeable, but not distracting.</li>
+                <li><strong class="tone-bad">Over 15%.</strong> Distracting and worth practicing. The fix is usually pausing instead of saying "um".</li>
+              </ul>
+            </section>
+
+            <section class="help-section">
+              <h4>Per-question delivery score (1 to 10)</h4>
+              <p>Only shown when detailed analysis has been generated. The score reflects <em>how you spoke</em>, not whether your answer was right. Higher scores mean cleaner grammar, steadier tone, fewer fillers, a natural pace, and a clear structure.</p>
+              <ul>
+                <li><strong>1 to 3.</strong> Heavy fillers, broken sentences, monotone or rushed. Hard to follow.</li>
+                <li><strong>4 to 6.</strong> Understandable but uneven — noticeable fillers, off pace, or weak structure.</li>
+                <li><strong>7 to 8.</strong> Confident and clear delivery with only minor delivery hiccups.</li>
+                <li><strong>9 to 10.</strong> Polished, composed, well-paced. Sounds practiced and assured.</li>
+              </ul>
+            </section>
+
+            <section class="help-section">
+              <h4>Basic Analysis chips</h4>
+              <p>Word-level patterns extracted from your transcript.</p>
+              <ul>
+                <li><strong>Most repeated.</strong> Content words you used many times. Useful for spotting overuse.</li>
+                <li><strong>Repeated phrases.</strong> Two- or three-word phrases you used more than once. Catches verbal tics like "I think" or "kind of like".</li>
+                <li><strong>Fillers used.</strong> Actual filler words and phrases you used, ranked by frequency.</li>
+                <li><strong>Words not in reference.</strong> Content words you said that aren't in the reference answer. Helpful for spotting tangents.</li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script>
-import { getTranscriptionStatus, getTranscripts, getInterviewQA, getQuestionTimestamps } from '@/store/interviewStore';
+import { getTranscriptionStatus, getTranscripts, getInterviewQA, getQuestionTimestamps, getInterviewMeta, saveInterviewMeta, setAnalysisMode } from '@/store/interviewStore';
 import { highlightTranscript } from '@/utils/transcriptUtils';
 import {
-  averageConfidencePct,
   wordCount,
   fillerCount,
   fillerPercent,
@@ -225,16 +841,27 @@ import {
   aggregateStats,
   overallVerdict
 } from '@/utils/summaryStats';
+import {
+  topRepeatedWords,
+  topRepeatedPhrases,
+  topFillerWordsUsed,
+  extraWordsNotInReference,
+  sessionTopFillerWords,
+  sessionExtraWordsNotInReference
+} from '@/utils/basicAnalysis';
 import { getSetting } from '@/store/settingStore';
-import { getVideoRecording } from '@/store/recordingStore.js';
-import { speakWithTTS } from '@/services/ttsService';
+import { getVideoRecording, getRecording } from '@/store/recordingStore.js';
+import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
+import { saveCompletedSession, updateHistoryEntry, getSessionById } from '@/store/interviewHistoryStore';
+import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
+import storageService from '@/services/storageService';
 import FeedbackSection from '@/views/FeedbackSection.vue';
-
 
 export default {
   name: 'SummaryView',
-  components: {
-    FeedbackSection,
+  components: { FeedbackSection },
+  props: {
+    sessionId: { type: String, default: '' }
   },
   data() {
     return {
@@ -246,56 +873,479 @@ export default {
       videoTimeout: false,
       questionTimestamps: [],
       selectedVoice: '',
-      // Central playback state — only one of these can be active at a time.
-      playback: { kind: null, idx: null }, // kind: 'video' | 'reference' | null
+      analysisMode: 'none', // 'none' | 'basic' | 'full'
+      completed: false,
+      difficulty: '',
+      category: 'All',
+      candidateName: '',
+      preferredKeywords: [],
+      // Date the interview happened. ISO string. Comes from history
+      // entry.savedAt on saved sessions, or live meta.startedAt for the
+      // freshly-completed flow.
+      interviewDate: '',
+      editingTitle: false,
+      titleDraft: '',
+      expandedSet: {},      // map: idx → true when that card is open
+      selectedQuestionIdx: null, // null = show all; number = show only that one
+      showMetricsHelp: false,
+      showFeedbackHelp: false,
+      llmAnalysis: null,
+      llmLoading: false,
+      llmError: '',
+      llmElapsedSec: 0,
+      _llmTimerId: null,
+      // Reflects the Profile Settings → Beta Features → "Answer Analysis"
+      // toggle. When false the Generate Detailed Analysis button + CTA
+      // banner are hidden (basic stats are still shown).
+      analysisFeatureEnabled: false,
+      // Analysis-type selector modal state
+      showTypeSelector: false,
+      selectedAnalysisTypes: { delivery: true, content: true, improvements: true },
+      // Captures what was actually generated, so the UI shows only the
+      // sections the user asked for the last time they ran the analysis.
+      activeAnalysisTypes: null,
+      // Block to flash when the user clicks a corresponding stat tile.
+      // Cleared after a short delay.
+      highlightedBlock: '',
+      _highlightTimerId: null,
+      // Live progress of the batch transcription job. `total` is 0 when
+      // there's nothing to do; non-zero values mean the batch is running.
+      batchProgress: { done: 0, failed: 0, total: 0, complete: false },
+      // True while a manual "Transcribe now" recovery is in flight, so the
+      // recovery banner can show its own loading state.
+      transcribeRecovering: false,
+      historyEntryId: '',
+      isHistoryView: false,
+      // Central playback state
+      playback: { kind: null, idx: null },
       _segmentEnd: null,
       _segmentTimeUpdate: null,
-      _currentTtsAudio: null,
+      _currentAnswerAudio: null,
+      _currentAnswerUrl: null,
     };
   },
   computed: {
+    isLoading() {
+      if (this.isHistoryView) return false; // history loads synchronously
+      // Only block the page on the initial metadata + transcripts read.
+      // Transcription itself is now manual via the Transcribe button.
+      return this.loadingTranscripts;
+    },
+    loadingLabel() {
+      return 'Loading your interview…';
+    },
+    loadingMessage() {
+      return 'Reading your session data. This will only take a moment.';
+    },
+    displayTitle() {
+      const name = (this.candidateName || '').trim();
+      return name || 'Interview Summary';
+    },
+    interviewDateLabel() {
+      const iso = this.interviewDate;
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleString([], {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        return '';
+      }
+    },
     aggregate() {
       return aggregateStats(this.transcripts);
     },
     verdict() {
       return overallVerdict(this.aggregate);
+    },
+    hasAnyTranscript() {
+      return this.analysisMode !== 'none' && this.aggregate.answeredCount > 0;
+    },
+    // True when detailed delivery analysis should be visible. Gates per-
+    // question feedback, session insights, score pills, average delivery
+    // score, and the focus list. Also hidden during regen so the previous
+    // report doesn't flash next to the processing card.
+    showDetailedAnalysis() {
+      return !!this.llmAnalysis && !this.llmLoading;
+    },
+    // One-word status that reflects the actual state of the data, not the
+    // user's setting at session start. Drives the header chip on the
+    // Summary page and the matching chip in the MyInterviews list, so
+    // the user always knows what's been done and what they can do next.
+    interviewState() {
+      if (!this.analysisMode || this.analysisMode === 'none') {
+        return { label: 'No analysis', tone: 'none' };
+      }
+      const transcripts = Array.isArray(this.transcripts) ? this.transcripts : [];
+      const pending = transcripts.some(t => t && typeof t === 'object' && t.pending);
+      const failed = transcripts.some(t => typeof t === 'string' && t === '[Transcription error]');
+      if (pending) return { label: 'Pending', tone: 'pending' };
+      if (this.llmAnalysis) return { label: 'Detailed', tone: 'detailed' };
+      if (failed) return { label: 'Errors', tone: 'failed' };
+      if (transcripts.length === 0) return { label: 'No data', tone: 'none' };
+      return { label: 'Basic', tone: 'basic' };
+    },
+    stateTooltip() {
+      switch (this.interviewState.tone) {
+        case 'pending': return 'Some answers still need to be transcribed.';
+        case 'failed': return 'Some answers couldn\'t be transcribed. Run them again to recover.';
+        case 'basic': return 'Basic analysis is ready. Generate detailed analysis to add LLM feedback.';
+        case 'detailed': return 'Detailed analysis is saved with this interview.';
+        case 'none': return 'Analysis was off for this session, or no answers were recorded.';
+        default: return '';
+      }
+    },
+    // CTA visible only when every prerequisite is satisfied:
+    //   - feature enabled in profile,
+    //   - the session has answers,
+    //   - transcripts have been generated (no pending / errored slots),
+    //   - no detailed analysis is already saved or running.
+    // Hiding the button until transcripts exist makes the flow strictly
+    // sequential — the user can't click into a state that needs work it
+    // hasn't done yet.
+    canRunLLMOnDemand() {
+      const hasTranscripts = Array.isArray(this.transcripts) && this.transcripts.length > 0;
+      return this.analysisFeatureEnabled
+        && this.analysisMode !== 'none'
+        && hasTranscripts
+        && !this.hasUnresolvedTranscripts
+        && this.aggregate.answeredCount > 0
+        && !this.llmAnalysis
+        && !this.llmLoading
+        && !this.llmError;
+    },
+    canRerunLLM() {
+      return !!this.llmAnalysis && !this.llmLoading;
+    },
+    perQuestionScores() {
+      if (!this.llmAnalysis || !Array.isArray(this.llmAnalysis.perQuestion)) return [];
+      return this.llmAnalysis.perQuestion
+        .map(q => (q && typeof q.score === 'number') ? q.score : null)
+        .filter(s => s !== null);
+    },
+    averageContentScore() {
+      const scores = this.perQuestionScores;
+      if (!scores.length) return null;
+      const sum = scores.reduce((a, b) => a + b, 0);
+      return Math.round((sum / scores.length) * 10) / 10; // one decimal
+    },
+    averageContentScoreTone() {
+      const s = this.averageContentScore;
+      if (s === null) return 'neutral';
+      if (s >= 7) return 'good';
+      if (s >= 5) return 'ok';
+      return 'bad';
+    },
+    llmElapsedLabel() {
+      const s = Math.max(0, this.llmElapsedSec);
+      return `${s}s elapsed`;
+    },
+    hasAnyTypeSelected() {
+      const t = this.selectedAnalysisTypes || {};
+      return !!(t.delivery || t.content || t.improvements);
+    },
+    typeSelectorIsRegenerate() {
+      return !!this.llmAnalysis;
+    },
+    activeTypes() {
+      // Either the types saved with the last analysis, or default-on for
+      // backwards-compat with sessions saved before multi-type.
+      return this.activeAnalysisTypes
+        || (this.llmAnalysis && this.llmAnalysis.analysisTypes)
+        || { delivery: true, content: false, improvements: true };
+    },
+    showDelivery() { return !!this.activeTypes.delivery; },
+    showContent() { return !!this.activeTypes.content; },
+    showImprovements() { return !!this.activeTypes.improvements; },
+    // Top three improvement focuses, pulled from the per-question
+    // "tryNext" suggestions. Falls back to the session-level "growthArea"
+    // sentence when those bullets aren't available.
+    topImprovementFocus() {
+      if (!this.llmAnalysis) return [];
+      const out = [];
+      const seen = new Set();
+      const perQ = Array.isArray(this.llmAnalysis.perQuestion) ? this.llmAnalysis.perQuestion : [];
+      // Collect the lowest-scored questions first so the most-needed
+      // improvements bubble up.
+      const ranked = perQ
+        .map((q, idx) => ({ q, idx, score: (q && typeof q.score === 'number') ? q.score : 10 }))
+        .sort((a, b) => a.score - b.score);
+      for (const r of ranked) {
+        const next = r.q && r.q.tryNext;
+        if (!next || typeof next !== 'string') continue;
+        const key = next.trim().toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ idx: r.idx, score: r.score, text: next.trim() });
+        if (out.length >= 3) break;
+      }
+      return out;
+    },
+    allExpanded() {
+      if (!this.transcripts.length) return false;
+      for (let i = 0; i < this.transcripts.length; i++) {
+        if (!this.expandedSet[i]) return false;
+      }
+      return true;
+    },
+    sessionTopFillers() {
+      return sessionTopFillerWords(this.transcripts, 8);
+    },
+    sessionExtraWords() {
+      return sessionExtraWordsNotInReference(this.transcripts, this.localInterviewQA, 12);
+    },
+    extraWordsDistinct() {
+      return this.sessionExtraWords.length;
+    },
+    extraWordsTotalUses() {
+      return this.sessionExtraWords.reduce((sum, w) => sum + (w.count || 0), 0);
+    },
+    // True when at least one answer is still pending or had a transcription
+    // error. The recovery banner uses this to offer Transcribe-now.
+    hasUnresolvedTranscripts() {
+      if (!Array.isArray(this.transcripts) || !this.transcripts.length) return false;
+      return this.transcripts.some(t => {
+        if (typeof t === 'string' && t === '[Transcription error]') return true;
+        if (t && typeof t === 'object' && t.pending) return true;
+        return false;
+      });
+    },
+    detailedCtaMessage() {
+      return 'Get detailed feedback on how you answered — grammar, tone, fillers, structure, plus correctness vs. the reference. Generated once, then saved.';
+    },
+    transcribePromptMessage() {
+      const pending = this.transcripts.filter(t => t && typeof t === 'object' && t.pending).length;
+      const failed = this.transcripts.filter(t => typeof t === 'string' && t === '[Transcription error]').length;
+      const incomplete = !this.completed
+        ? ' Your interview was stopped early — only the answers you recorded will be transcribed.'
+        : '';
+      if (failed && !pending) {
+        return `${failed} answer${failed === 1 ? '' : 's'} couldn't be transcribed last time. Run them again to see your basic analysis.${incomplete}`;
+      }
+      if (pending && !failed) {
+        return `Transcribe ${pending} recorded answer${pending === 1 ? '' : 's'} to unlock your basic analysis.${incomplete}`;
+      }
+      return `${pending} pending and ${failed} failed transcription${(pending + failed) === 1 ? '' : 's'}. Run them now?${incomplete}`;
+    },
+    // Compact 1-10 rating shown next to the Overall Performance title.
+    // Falls back to a rule-based score (pace + fillers) when no detailed
+    // analysis is available, so the chip is always present once any
+    // answer has been transcribed.
+    overallRating() {
+      if (this.showDetailedAnalysis && this.averageContentScore !== null) {
+        return this.averageContentScore;
+      }
+      const a = this.aggregate || {};
+      if (!a.answeredCount) return null;
+
+      // Pace component (0-10): natural conversational range scores high.
+      let paceScore = 5;
+      const wpm = a.averagePaceWpm || 0;
+      if (wpm >= 110 && wpm <= 180) paceScore = 9;
+      else if (wpm >= 90 && wpm < 110) paceScore = 7;
+      else if (wpm > 180 && wpm <= 210) paceScore = 7;
+      else if (wpm > 0 && wpm < 90) paceScore = 4;
+      else if (wpm > 210) paceScore = 4;
+
+      // Filler component (0-10): under 5% scores high, over 15% low.
+      let fillerScore = 5;
+      const fp = a.fillerPercent || 0;
+      if (fp < 3) fillerScore = 10;
+      else if (fp < 5) fillerScore = 9;
+      else if (fp < 10) fillerScore = 7;
+      else if (fp < 15) fillerScore = 6;
+      else if (fp < 20) fillerScore = 4;
+      else fillerScore = 2;
+
+      return Math.round(((paceScore + fillerScore) / 2) * 10) / 10;
+    },
+    overallRatingTone() {
+      const r = this.overallRating;
+      if (r === null) return 'neutral';
+      if (r >= 7.5) return 'good';
+      if (r >= 5) return 'ok';
+      return 'bad';
+    },
+    hasSpeakingPatterns() {
+      return this.sessionTopFillers.length || this.sessionExtraWords.length;
     }
   },
   async mounted() {
-    this.localInterviewQA = this.interviewQA && this.interviewQA.length
-        ? this.interviewQA
-        : await getInterviewQA() || [];
-    this.enableVideo = await getSetting('enableVideo');
-    this.selectedVoice = (await getSetting('selectedVoice')) || '';
-    this.questionTimestamps = await getQuestionTimestamps();
+    // Read the user's feature toggle once. Changes from Profile Settings
+    // require a page reload to take effect, which matches the rest of the
+    // app's beta-features flow.
+    const features = storageService.getItem(storageService.KEYS.USER_FEATURES, true) || {};
+    this.analysisFeatureEnabled = !!features.analysisEnabled;
 
-    this.pollForVideoBlob();
-    this.checkTranscriptionStatus();
+    // Determine source: live session vs history
+    if (this.sessionId) {
+      await this.loadFromHistory(this.sessionId);
+    } else {
+      await this.loadFromLiveSession();
+    }
+  },
+  watch: {
+    showMetricsHelp(open) {
+      if (open) {
+        this._metricsEscHandler = (e) => { if (e.key === 'Escape') this.showMetricsHelp = false; };
+        window.addEventListener('keydown', this._metricsEscHandler);
+      } else if (this._metricsEscHandler) {
+        window.removeEventListener('keydown', this._metricsEscHandler);
+        this._metricsEscHandler = null;
+      }
+    },
+    showFeedbackHelp(open) {
+      if (open) {
+        this._feedbackEscHandler = (e) => { if (e.key === 'Escape') this.showFeedbackHelp = false; };
+        window.addEventListener('keydown', this._feedbackEscHandler);
+      } else if (this._feedbackEscHandler) {
+        window.removeEventListener('keydown', this._feedbackEscHandler);
+        this._feedbackEscHandler = null;
+      }
+    }
   },
   beforeDestroy() {
     this.stopAllPlayback();
+    this.stopLLMTimer();
+    if (this._highlightTimerId) clearTimeout(this._highlightTimerId);
+    if (this._metricsEscHandler) window.removeEventListener('keydown', this._metricsEscHandler);
+    if (this._feedbackEscHandler) window.removeEventListener('keydown', this._feedbackEscHandler);
   },
   methods: {
-    // Wrappers so the template can call them as plain methods
-    averageConfidencePct,
-    wordCount,
-    fillerCount,
-    fillerPercent,
-    paceWpm,
-    answerDurationSec,
-    formatDuration,
+    // Stat passthroughs for the template
+    wordCount, fillerCount, fillerPercent, paceWpm, answerDurationSec, formatDuration,
 
     hasTranscriptContent(transcriptObj) {
       return wordCount(transcriptObj) > 0;
     },
-    safeHighlight(transcriptObj) {
-      if (!transcriptObj) return '';
-      if (typeof transcriptObj === 'string') {
-        return transcriptObj.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // True when an audio blob was recorded for this question, regardless
+    // of whether it's been transcribed yet. The transcripts array slot
+    // serves as a marker — AnswerRecorder writes a pending object only
+    // after a non-empty MediaRecorder blob lands. This is what gates the
+    // "Play Your Answer" button so it works before transcription too.
+    hasAudioRecorded(idx) {
+      const t = this.transcripts[idx];
+      if (t === undefined || t === null) return false;
+      if (typeof t === 'string') return t.length > 0; // includes '[Transcription error]'
+      return true; // object form (pending marker or real transcript)
+    },
+    isExpanded(idx) {
+      return !!this.expandedSet[idx];
+    },
+    toggleExpanded(idx) {
+      // Use $set so Vue's reactivity catches the new key.
+      this.$set(this.expandedSet, idx, !this.expandedSet[idx]);
+    },
+    toggleAllExpanded() {
+      const next = !this.allExpanded;
+      const map = {};
+      for (let i = 0; i < this.transcripts.length; i++) {
+        if (next) map[i] = true;
       }
+      this.expandedSet = map;
+    },
+    questionSnippet(idx) {
+      const text = (this.localInterviewQA[idx] && this.localInterviewQA[idx].question) || '';
+      if (text.length <= 90) return text;
+      return text.slice(0, 87).trim() + '…';
+    },
+    selectQuestion(idx) {
+      this.selectedQuestionIdx = idx;
+      // Auto-expand the selected card so the user lands on its details.
+      this.$set(this.expandedSet, idx, true);
+    },
+    selectAllQuestions() {
+      this.selectedQuestionIdx = null;
+    },
+    jumperPillClass(idx) {
+      const t = this.transcripts[idx];
+      const cls = [];
+      if (this.selectedQuestionIdx === idx) cls.push('jumper-pill-active');
+      if (!this.hasTranscriptContent(t) && this.analysisMode !== 'none') cls.push('jumper-pill-empty');
+      return cls.join(' ');
+    },
+    paceHint(transcriptObj) {
+      const wpm = paceWpm(transcriptObj);
+      if (!wpm) return '—';
+      if (wpm < 110) return 'a bit slow';
+      if (wpm > 180) return 'a bit rushed';
+      return 'natural rhythm';
+    },
+    paceTone(transcriptObj) {
+      const wpm = paceWpm(transcriptObj);
+      if (!wpm) return 'tone-neutral';
+      if (wpm < 110 || wpm > 180) return 'tone-warn';
+      return 'tone-good';
+    },
+    fillerHint(transcriptObj) {
+      const pct = fillerPercent(transcriptObj);
+      if (pct < 5) return 'polished';
+      if (pct < 15) return 'noticeable';
+      return 'too many';
+    },
+    fillerTone(transcriptObj) {
+      const pct = fillerPercent(transcriptObj);
+      if (pct < 5) return 'tone-good';
+      if (pct < 15) return 'tone-warn';
+      return 'tone-bad';
+    },
+    safeHighlight(transcriptObj) {
       return highlightTranscript(transcriptObj);
     },
+
+    async loadFromLiveSession() {
+      this.isHistoryView = false;
+      this.localInterviewQA = await getInterviewQA() || [];
+      this.enableVideo = await getSetting('enableVideo');
+      this.selectedVoice = (await getSetting('selectedVoice')) || '';
+      this.questionTimestamps = await getQuestionTimestamps();
+
+      const meta = await getInterviewMeta();
+      this.analysisMode = (meta && meta.analysisMode) || 'none';
+      this.completed = !!(meta && meta.completed);
+      this.difficulty = (meta && meta.difficulty) || '';
+      this.category = (meta && meta.category) || 'All';
+      this.candidateName = (meta && meta.candidateName) || '';
+      this.preferredKeywords = (meta && Array.isArray(meta.preferredKeywords)) ? meta.preferredKeywords : [];
+      this.interviewDate = (meta && (meta.endedAt || meta.startedAt)) || '';
+
+      this.pollForVideoBlob();
+      this.checkTranscriptionStatus();
+    },
+
+    async loadFromHistory(id) {
+      this.isHistoryView = true;
+      const entry = await getSessionById(id);
+      if (!entry) {
+        this.loadingTranscripts = false;
+        return;
+      }
+      this.historyEntryId = entry.id;
+      this.localInterviewQA = entry.qaList || [];
+      this.transcripts = entry.transcripts || [];
+      this.questionTimestamps = entry.questionTimestamps || [];
+      this.analysisMode = entry.analysisMode || 'none';
+      this.completed = true;
+      this.candidateName = entry.candidateName || '';
+      this.preferredKeywords = Array.isArray(entry.preferredKeywords) ? entry.preferredKeywords : [];
+      this.difficulty = entry.difficulty || '';
+      this.category = entry.category || 'All';
+      this.interviewDate = entry.savedAt || '';
+      this.llmAnalysis = entry.llmAnalysis || null;
+      this.activeAnalysisTypes = (this.llmAnalysis && this.llmAnalysis.analysisTypes) || null;
+      this.enableVideo = false; // we don't snapshot the video into history
+      this.selectedVoice = (await getSetting('selectedVoice')) || '';
+      this.loadingTranscripts = false;
+    },
+
     async pollForVideoBlob(retries = 20, interval = 1000) {
+      if (this.isHistoryView) return;
       for (let i = 0; i < retries; i++) {
         const videoBlob = await getVideoRecording();
         if (videoBlob) {
@@ -304,45 +1354,360 @@ export default {
         }
         await new Promise(resolve => setTimeout(resolve, interval));
       }
-      console.warn('Video recording not found after polling.');
       this.recordedVideoUrl = '';
       this.videoTimeout = true;
     },
     async checkTranscriptionStatus() {
-      const inProcess = await getTranscriptionStatus();
-      if (inProcess === true) {
-        setTimeout(() => this.checkTranscriptionStatus(), 1000);
-      } else if (inProcess === false) {
-        this.pollForTranscripts();
-      } else {
-        console.warn('Transcription status is undefined, retrying...');
-        setTimeout(() => this.checkTranscriptionStatus(), 1000);
-      }
-    },
-    async pollForTranscripts(retries = 10, interval = 1500) {
-      for (let i = 0; i < retries; i++) {
-        const stored = await getTranscripts();
-        if (Array.isArray(stored) && stored.length > 0) {
-          this.transcripts = stored;
-          this.loadingTranscripts = false;
-          return;
-        }
-        await new Promise(resolve => setTimeout(resolve, interval));
-      }
-      console.warn('Transcripts not found after polling.');
-      this.transcripts = [];
+      // No more auto-polling. Transcription is purely manual now —
+      // whatever transcripts are already on disk get rendered, and the
+      // Transcribe button drives any new work. We just read the current
+      // state once and hand off.
+      this.transcripts = (await getTranscripts()) || [];
       this.loadingTranscripts = false;
+      await this.afterTranscriptsReady();
     },
 
-    // ─── Playback management ───────────────────────────────────────────
+    // Once transcripts have landed (or we know there won't be any),
+    // save to history and trigger LLM analysis if applicable.
+    async afterTranscriptsReady() {
+      if (this.isHistoryView) return;
+
+      // Save to history regardless of completion. Incomplete sessions
+      // still preserve whatever was answered + recorded so the candidate
+      // can come back, transcribe later, and review.
+      if (this.localInterviewQA && this.localInterviewQA.length) {
+        try {
+          this.historyEntryId = await saveCompletedSession({
+            difficulty: this.difficulty,
+            category: this.category,
+            analysisMode: this.analysisMode,
+            candidateName: this.candidateName,
+            preferredKeywords: this.preferredKeywords,
+            qaList: this.localInterviewQA,
+            transcripts: this.transcripts,
+            questionTimestamps: this.questionTimestamps,
+            completed: !!this.completed,
+            llmAnalysis: null
+          });
+        } catch (e) {
+          console.error('Failed to save session to history:', e);
+        }
+      }
+
+      // Detailed (LLM) analysis is now strictly on-demand for every
+      // interview type. The user triggers it from the Summary screen via
+      // the Generate Detailed Analysis button.
+    },
+
+    // Opens the analysis-type selector modal. `isRegen` is informational;
+    // the modal title changes but the underlying flow is the same — the
+    // user picks types, confirms, and runLLMAnalysis(force=true) runs.
+    openTypeSelector(isRegen) {
+      if (this.llmLoading) return;
+      // Pre-fill the checkboxes with the most recent selection if we have
+      // one, otherwise default to all-on.
+      const last = this.activeAnalysisTypes
+        || (this.llmAnalysis && this.llmAnalysis.analysisTypes)
+        || null;
+      this.selectedAnalysisTypes = last
+        ? { delivery: !!last.delivery, content: !!last.content, improvements: !!last.improvements }
+        : { delivery: true, content: true, improvements: true };
+      // If for some reason all three end up unchecked (legacy data),
+      // default to delivery so the Generate button is enabled.
+      if (!this.selectedAnalysisTypes.delivery
+          && !this.selectedAnalysisTypes.content
+          && !this.selectedAnalysisTypes.improvements) {
+        this.selectedAnalysisTypes.delivery = true;
+      }
+      this.showTypeSelector = true;
+      // isRegen is implied by !!this.llmAnalysis; nothing to store here.
+      void isRegen;
+    },
+    cancelTypeSelector() {
+      this.showTypeSelector = false;
+    },
+    toggleType(key) {
+      this.selectedAnalysisTypes = {
+        ...this.selectedAnalysisTypes,
+        [key]: !this.selectedAnalysisTypes[key]
+      };
+    },
+    confirmTypeSelector() {
+      if (!this.hasAnyTypeSelected) return;
+      this.showTypeSelector = false;
+      const types = { ...this.selectedAnalysisTypes };
+      this.runLLMAnalysis(true, types);
+    },
+    async runLLMAnalysis(force = false, analysisTypes = null) {
+      if (this.llmLoading) return;
+      if (!force && this.llmAnalysis) return;
+      const isRegenerate = !!this.llmAnalysis;
+      // Default to all-on if the caller didn't pass anything (e.g. legacy
+      // entry point). The modal always passes an explicit choice now.
+      const types = analysisTypes
+        || this.activeAnalysisTypes
+        || (this.llmAnalysis && this.llmAnalysis.analysisTypes)
+        || { delivery: true, content: true, improvements: true };
+
+      // Defensive gate: refuse to call the LLM without transcripts. The
+      // CTA is hidden in this state, but we double-check here so a stale
+      // open type-selector modal can't dispatch a no-op request.
+      if (!this.isHistoryView && this.hasUnresolvedTranscripts) {
+        this.notify('Transcribe your answers first.', 'warning');
+        return;
+      }
+      this.llmLoading = true;
+      this.llmError = '';
+      this.startLLMTimer();
+      // Make the processing card visible immediately so the user sees
+      // something happen, even if they were scrolled down.
+      this.$nextTick(() => {
+        const node = this.$refs.processingCard;
+        if (node && node.scrollIntoView) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+      this.notify(isRegenerate ? 'Regenerating detailed analysis…' : 'Generating detailed analysis…', 'info');
+      try {
+        const result = await analyzeInterviewSession({
+          qaList: this.localInterviewQA,
+          transcripts: this.transcripts,
+          difficulty: this.difficulty,
+          category: this.category,
+          analysisTypes: types
+        });
+        // Tag the result with the types we actually requested so the UI
+        // knows which sections to show, even on subsequent page loads.
+        if (result && typeof result === 'object') {
+          result.analysisTypes = { ...types };
+        }
+        this.activeAnalysisTypes = { ...types };
+        this.llmAnalysis = result;
+        // Promote the session to 'full' analysis mode. This is what makes
+        // the on-demand CTA path stick — once detailed runs, the session
+        // is treated as detailed everywhere (header chip, MyInterviews
+        // mode label, future page loads).
+        const wasUpgrade = this.analysisMode !== 'full';
+        if (wasUpgrade) {
+          this.analysisMode = 'full';
+          if (!this.isHistoryView) {
+            setAnalysisMode('full').catch(() => {});
+          }
+        }
+        if (this.historyEntryId) {
+          const patch = { llmAnalysis: result, transcripts: this.transcripts };
+          if (wasUpgrade) patch.analysisMode = 'full';
+          updateHistoryEntry(this.historyEntryId, patch).catch(() => {});
+        }
+        this.notify(isRegenerate ? 'Detailed analysis regenerated.' : 'Detailed analysis is ready.', 'success');
+      } catch (e) {
+        console.error('LLM analysis failed:', e);
+        this.llmError = e.message || 'Unknown error';
+        this.notify(`Could not generate detailed analysis. ${this.llmError}`, 'error');
+      } finally {
+        this.llmLoading = false;
+        this.stopLLMTimer();
+      }
+    },
+    startLLMTimer() {
+      this.llmElapsedSec = 0;
+      if (this._llmTimerId) clearInterval(this._llmTimerId);
+      this._llmTimerId = setInterval(() => {
+        this.llmElapsedSec += 1;
+      }, 1000);
+    },
+    stopLLMTimer() {
+      if (this._llmTimerId) {
+        clearInterval(this._llmTimerId);
+        this._llmTimerId = null;
+      }
+    },
+    notify(message, type) {
+      if (this.$message) {
+        this.$message({ message, type, duration: type === 'error' ? 5000 : 2500 });
+      }
+    },
+
+    // User-driven transcription. Called from the Transcribe button in the
+    // primary banner, and indirectly from runLLMAnalysis when the user
+    // jumps straight to detailed analysis without transcribing first.
+    async transcribeNow() {
+      const ok = await this._ensureTranscribed({ silent: false });
+      if (ok) {
+        await this.refreshHistorySnapshot();
+      }
+    },
+    // Internal helper. Runs the batch transcribe job, updates state, and
+    // returns true on success. `silent` suppresses the success toast (used
+    // when called as part of the Generate Detailed flow so we don't
+    // double-notify).
+    async _ensureTranscribed({ silent = false } = {}) {
+      if (this.transcribeRecovering) return false;
+      // Profile-flag guard. Belt-and-braces — the UI already hides the
+      // Transcribe button when the toggle is off, but never trust the UI.
+      if (!this.analysisFeatureEnabled) {
+        this.notify('Turn on Answer Analysis in Profile Settings to transcribe.', 'warning');
+        return false;
+      }
+      this.transcribeRecovering = true;
+      try {
+        const total = (this.localInterviewQA && this.localInterviewQA.length) || this.transcripts.length;
+        if (!total) {
+          this.notify('No questions to transcribe.', 'warning');
+          return false;
+        }
+        const pending = await hasPendingTranscriptions(total);
+        if (!pending) {
+          this.transcripts = (await getTranscripts()) || [];
+          return true;
+        }
+        await transcribeAllAnswers({
+          totalQuestions: total,
+          onProgress: (p) => { this.batchProgress = { ...p }; }
+        });
+        this.transcripts = (await getTranscripts()) || [];
+        const failed = this.batchProgress.failed || 0;
+        if (failed > 0) {
+          this.notify(`Transcription finished, but ${failed} answer${failed === 1 ? '' : 's'} couldn't be processed.`, 'warning');
+        } else if (!silent) {
+          this.notify('Transcription complete. Basic analysis is ready.', 'success');
+        }
+        return true;
+      } catch (e) {
+        console.error('[SummaryView] transcribeNow failed:', e);
+        this.notify('Transcription failed. Check your connection and try again.', 'error');
+        return false;
+      } finally {
+        this.transcribeRecovering = false;
+      }
+    },
+    // Refreshes the saved history entry with the latest transcripts so the
+    // MyInterviews list (and any future re-open of this session) sees the
+    // updated text + basic-analysis-derived numbers.
+    async refreshHistorySnapshot() {
+      if (!this.historyEntryId) return;
+      try {
+        await updateHistoryEntry(this.historyEntryId, {
+          transcripts: this.transcripts,
+          analysisMode: this.analysisMode
+        });
+      } catch (e) {
+        console.warn('Could not refresh history snapshot:', e);
+      }
+    },
+
+    // ─── Title rename ───────────────────────────────────────────────
+    startEditTitle() {
+      this.titleDraft = this.candidateName || '';
+      this.editingTitle = true;
+      this.$nextTick(() => {
+        const inp = this.$refs.titleInput;
+        if (inp && inp.focus) {
+          inp.focus();
+          if (inp.select) inp.select();
+        }
+      });
+    },
+    cancelTitle() {
+      this.editingTitle = false;
+      this.titleDraft = '';
+    },
+    async saveTitle() {
+      if (!this.editingTitle) return; // already saved (blur fires after Enter)
+      const next = (this.titleDraft || '').trim();
+      this.editingTitle = false;
+      this.titleDraft = '';
+      if (next === (this.candidateName || '').trim()) return;
+      this.candidateName = next;
+      try {
+        if (!this.isHistoryView) {
+          // Live session — patch the meta we already loaded.
+          const meta = await getInterviewMeta();
+          await saveInterviewMeta({ ...(meta || {}), candidateName: next });
+        }
+      } catch (e) {
+        console.warn('Failed to persist title to live meta:', e);
+      }
+      try {
+        if (this.historyEntryId) {
+          await updateHistoryEntry(this.historyEntryId, { candidateName: next });
+        }
+      } catch (e) {
+        console.warn('Failed to persist title to history:', e);
+      }
+    },
+    onClickFillers() {
+      if (!this.hasSpeakingPatterns) return;
+      this.scrollAndHighlight('fillers', this.$refs.fillersBlock);
+    },
+    onClickExtras() {
+      if (!this.sessionExtraWords.length) return;
+      this.scrollAndHighlight('extras', this.$refs.extrasBlock);
+    },
+    scrollAndHighlight(key, node) {
+      const target = node || this.$refs.speakingPatternsCard;
+      if (target && target.scrollIntoView) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      this.highlightedBlock = key;
+      if (this._highlightTimerId) clearTimeout(this._highlightTimerId);
+      this._highlightTimerId = setTimeout(() => {
+        this.highlightedBlock = '';
+        this._highlightTimerId = null;
+      }, 1800);
+    },
+
+    // ─── Basic analysis cached lookups ───
+    topWordsFor(idx) {
+      return topRepeatedWords(this.transcripts[idx]);
+    },
+    topPhrasesFor(idx) {
+      return topRepeatedPhrases(this.transcripts[idx]);
+    },
+    topFillersFor(idx) {
+      return topFillerWordsUsed(this.transcripts[idx]);
+    },
+    extraWordsFor(idx) {
+      const ref = this.localInterviewQA[idx]?.answer || '';
+      return extraWordsNotInReference(this.transcripts[idx], ref);
+    },
+    perQuestionLLM(idx) {
+      if (!this.llmAnalysis || !Array.isArray(this.llmAnalysis.perQuestion)) return null;
+      return this.llmAnalysis.perQuestion[idx] || null;
+    },
+    deliveryNote(idx, key) {
+      const q = this.perQuestionLLM(idx);
+      if (!q || !q.deliveryNotes) return '';
+      const v = q.deliveryNotes[key];
+      return typeof v === 'string' ? v.trim() : '';
+    },
+    hasDeliveryNotes(idx) {
+      const q = this.perQuestionLLM(idx);
+      if (!q || !q.deliveryNotes) return false;
+      return ['grammar', 'tone', 'fillers', 'pace', 'clarity']
+        .some(k => typeof q.deliveryNotes[k] === 'string' && q.deliveryNotes[k].trim());
+    },
+    contentNote(idx, key) {
+      const q = this.perQuestionLLM(idx);
+      if (!q || !q.contentNotes) return '';
+      const v = q.contentNotes[key];
+      return typeof v === 'string' ? v.trim() : '';
+    },
+    hasContentNotes(idx) {
+      const q = this.perQuestionLLM(idx);
+      if (!q || !q.contentNotes) return false;
+      return ['correctness', 'completeness', 'structure']
+        .some(k => typeof q.contentNotes[k] === 'string' && q.contentNotes[k].trim());
+    },
+
+    // ─── Playback management ───
     isPlayingVideoFor(idx) {
       return this.playback.kind === 'video' && this.playback.idx === idx;
     },
-    isPlayingReferenceFor(idx) {
-      return this.playback.kind === 'reference' && this.playback.idx === idx;
+    isPlayingAnswerFor(idx) {
+      return this.playback.kind === 'answer' && this.playback.idx === idx;
     },
     stopAllPlayback() {
-      // Stop video + remove segment-end listener
       const video = this.$refs.summaryVideo;
       if (video) {
         if (!video.paused) video.pause();
@@ -352,90 +1717,67 @@ export default {
       }
       this._segmentTimeUpdate = null;
       this._segmentEnd = null;
-
-      // Stop TTS
-      if (this._currentTtsAudio) {
-        try {
-          if (typeof this._currentTtsAudio.pause === 'function') this._currentTtsAudio.pause();
-        } catch (e) { /* noop */ }
-        this._currentTtsAudio = null;
+      if (this._currentAnswerAudio) {
+        try { this._currentAnswerAudio.pause(); } catch (e) { /* noop */ }
+        this._currentAnswerAudio = null;
       }
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-
+      if (this._currentAnswerUrl) {
+        try { URL.revokeObjectURL(this._currentAnswerUrl); } catch (e) { /* noop */ }
+        this._currentAnswerUrl = null;
+      }
       this.playback = { kind: null, idx: null };
     },
-
     toggleVideoSegment(idx) {
-      if (this.isPlayingVideoFor(idx)) {
-        this.stopAllPlayback();
-        return;
-      }
+      if (this.isPlayingVideoFor(idx)) { this.stopAllPlayback(); return; }
       this.stopAllPlayback();
-
       const video = this.$refs.summaryVideo;
       if (!video) return;
-
-      // Scroll the video card into view so the user can actually see it
       if (this.$refs.videoCard && this.$refs.videoCard.scrollIntoView) {
         this.$refs.videoCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-
       const startSec = (this.questionTimestamps[idx] || 0) / 1000;
-      // Stop when we hit the next question's timestamp; for the last question, play to end
       const nextTs = this.questionTimestamps[idx + 1];
       const endSec = typeof nextTs === 'number' ? nextTs / 1000 : Infinity;
-
       this._segmentEnd = endSec;
       this._segmentTimeUpdate = () => {
-        if (video.currentTime >= this._segmentEnd) {
-          this.stopAllPlayback();
-        }
+        if (video.currentTime >= this._segmentEnd) this.stopAllPlayback();
       };
       video.addEventListener('timeupdate', this._segmentTimeUpdate);
-
       video.currentTime = startSec;
       video.play().catch(e => console.error('Video play error:', e));
       this.playback = { kind: 'video', idx };
     },
-
-    async toggleReferenceTTS(idx) {
-      if (this.isPlayingReferenceFor(idx)) {
-        this.stopAllPlayback();
-        return;
-      }
+    async toggleYourAnswer(idx) {
+      if (this.isPlayingAnswerFor(idx)) { this.stopAllPlayback(); return; }
       this.stopAllPlayback();
-
-      const text = this.localInterviewQA[idx] && this.localInterviewQA[idx].answer;
-      if (!text) return;
-
-      this.playback = { kind: 'reference', idx };
       try {
-        const audio = await speakWithTTS(text, this.selectedVoice, () => {
-          // Only clear if THIS playback is still active (a newer one may have replaced it)
-          if (this.isPlayingReferenceFor(idx)) {
-            this.stopAllPlayback();
-          }
-        });
-        this._currentTtsAudio = audio;
+        const blob = await getRecording(`Recording_${idx}`);
+        if (!blob) {
+          // No saved recording for this question — silently no-op.
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => {
+          if (this.isPlayingAnswerFor(idx)) this.stopAllPlayback();
+        };
+        audio.onerror = () => {
+          if (this.isPlayingAnswerFor(idx)) this.stopAllPlayback();
+        };
+        this._currentAnswerAudio = audio;
+        this._currentAnswerUrl = url;
+        this.playback = { kind: 'answer', idx };
+        await audio.play();
       } catch (e) {
-        console.error('Reference TTS playback failed:', e);
+        console.error('Could not play your answer:', e);
         this.stopAllPlayback();
       }
     },
+    onVideoPaused() { if (this.playback.kind === 'video') this.stopAllPlayback(); },
+    onVideoEnded() { if (this.playback.kind === 'video') this.stopAllPlayback(); },
 
-    onVideoPaused() {
-      // Sync state when the user clicks the native video controls
-      if (this.playback.kind === 'video') {
-        this.stopAllPlayback();
-      }
-    },
-    onVideoEnded() {
-      if (this.playback.kind === 'video') {
-        this.stopAllPlayback();
-      }
-    },
-
-    handleDownload() {
+    // ─── Downloads ───
+    handleDownloadVideo() {
       if (!this.recordedVideoUrl) return;
       const link = document.createElement('a');
       link.href = this.recordedVideoUrl;
@@ -454,11 +1796,89 @@ export default {
         text += `Q: ${qa.question || ''}\n\n`;
         text += `A: ${qa.answer || ''}\n\n`;
       });
-      const blob = new Blob([text], { type: 'text/plain' });
+      this._downloadTextFile(text, 'interview-script.txt');
+    },
+    downloadReport() {
+      const lines = [];
+      const sep = '='.repeat(60);
+      const dash = '-'.repeat(40);
+      lines.push('INTERVIEW PERFORMANCE REPORT');
+      lines.push(sep);
+      lines.push(`Difficulty: ${this.difficulty || '—'}`);
+      lines.push(`Category: ${this.category || 'All'}`);
+      lines.push(`Analysis mode: ${this.analysisMode}`);
+      lines.push(`Completed: ${this.completed ? 'yes' : 'no'}`);
+      lines.push('');
+      if (this.aggregate.answeredCount > 0) {
+        lines.push('OVERALL');
+        lines.push(dash);
+        lines.push(`Questions answered: ${this.aggregate.answeredCount} / ${this.transcripts.length}`);
+        lines.push(`Total speaking time: ${formatDuration(this.aggregate.totalDurationSec)}`);
+        lines.push(`Avg pace: ${this.aggregate.averagePaceWpm} WPM`);
+        lines.push(`Filler words: ${this.aggregate.totalFillers} (${this.aggregate.fillerPercent}%)`);
+        lines.push(`Words spoken: ${this.aggregate.totalWords}`);
+        lines.push(`Verdict: ${this.verdict.label}`);
+        lines.push('');
+      }
+      if (this.analysisMode === 'full' && this.llmAnalysis && this.llmAnalysis.session) {
+        const s = this.llmAnalysis.session;
+        lines.push('SESSION INSIGHTS');
+        lines.push(dash);
+        lines.push(`Strongest area: ${s.strongestArea || '—'}`);
+        lines.push(`Growth area: ${s.growthArea || '—'}`);
+        if (Array.isArray(s.patterns) && s.patterns.length) {
+          lines.push('Patterns:');
+          for (const p of s.patterns) lines.push(`  - ${p}`);
+        }
+        lines.push(`Verdict: ${s.verdict || '—'}`);
+        lines.push('');
+      }
+      this.localInterviewQA.forEach((qa, idx) => {
+        lines.push(`QUESTION ${idx + 1}`);
+        lines.push(dash);
+        lines.push(`Q: ${qa.question || ''}`);
+        lines.push('');
+        const t = this.transcripts[idx];
+        const candidate = (typeof t === 'string') ? t : (t && t.text) || '';
+        if (this.analysisMode !== 'none') {
+          lines.push(`Your answer: ${candidate || '[no spoken answer]'}`);
+          lines.push('');
+          if (candidate) {
+            lines.push(`Words: ${wordCount(t)} | Pace: ${paceWpm(t)} WPM | Duration: ${formatDuration(answerDurationSec(t))} | Fillers: ${fillerCount(t)} (${fillerPercent(t)}%)`);
+          }
+        }
+        const llm = this.analysisMode === 'full' ? this.perQuestionLLM(idx) : null;
+        if (llm) {
+          lines.push(`Delivery score: ${llm.score}/10`);
+          const dn = llm.deliveryNotes || {};
+          if (dn.grammar) lines.push(`  Grammar: ${dn.grammar}`);
+          if (dn.tone) lines.push(`  Tone: ${dn.tone}`);
+          if (dn.fillers) lines.push(`  Fillers: ${dn.fillers}`);
+          if (dn.pace) lines.push(`  Pace: ${dn.pace}`);
+          if (dn.clarity) lines.push(`  Clarity: ${dn.clarity}`);
+          if (llm.strengths?.length) {
+            lines.push('Delivery strengths:');
+            for (const b of llm.strengths) lines.push(`  + ${b}`);
+          }
+          if (llm.weaknesses?.length) {
+            lines.push('Delivery weaknesses:');
+            for (const b of llm.weaknesses) lines.push(`  - ${b}`);
+          }
+          if (llm.tryNext) lines.push(`Try next: ${llm.tryNext}`);
+        }
+        lines.push('');
+        lines.push(`Reference answer: ${qa.answer || ''}`);
+        lines.push('');
+        lines.push('');
+      });
+      this._downloadTextFile(lines.join('\n'), 'interview-report.txt');
+    },
+    _downloadTextFile(content, filename) {
+      const blob = new Blob([content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'interview-script.txt';
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -482,13 +1902,44 @@ export default {
 
 .setup-view-header {
   display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 32px auto 24px;
+  max-width: 1000px;
+  width: 100%;
+}
+
+.header-breadcrumb { margin-bottom: -4px; }
+
+.back-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 6px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.back-link-btn:hover { background: #f1f5f9; color: #0f172a; }
+.back-link-btn i { font-size: 1.05rem; }
+
+.header-main-row {
+  display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin: 40px 0 30px 0;
-  max-width: 1000px;
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .header-main h2 {
@@ -497,6 +1948,68 @@ export default {
   margin: 0;
   font-weight: 700;
 }
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.header-title {
+  font-size: 28px;
+  color: #0f172a;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  cursor: text;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.header-title:hover { background: rgba(99, 102, 241, 0.06); }
+
+.header-title-input {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #0f172a;
+  border: 1px solid #c7d2fe;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 4px 10px;
+  outline: none;
+  width: min(480px, 90%);
+  font-family: inherit;
+}
+.header-title-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); }
+
+/* Rename pencil sits next to the title but only fades in on hover so
+   it doesn't compete with the title at rest. */
+.rename-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+.rename-btn i { font-size: 0.9rem; }
+.rename-btn:focus,
+.title-row:hover .rename-btn { opacity: 1; }
+.rename-btn:hover { background: #f1f5f9; color: #4f46e5; }
 
 .header-subtitle {
   color: #666;
@@ -514,44 +2027,216 @@ export default {
   padding-bottom: 60px;
 }
 
-/* Cards */
-.setup-card {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.04);
+.info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  border-radius: 12px;
+  font-size: 0.92rem;
+}
+
+.info-banner.warning {
+  background: #fefce8;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.info-banner.action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+  color: #5b21b6;
+}
+
+.info-banner.action span { flex: 1; min-width: 200px; }
+
+.cta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.cta-info-btn {
+  width: 26px;
+  height: 26px;
+}
+
+.info-banner.saved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #047857;
+}
+.info-banner.saved span { flex: 1; min-width: 200px; }
+
+/* Analysis-mode banner — wraps the active mode label, the switch link,
+   and the always-visible Generate Detailed Analysis button. */
+.info-banner.analysis-mode-banner {
+  align-items: center;
+}
+.info-banner.analysis-mode-banner .banner-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 220px;
+  gap: 2px;
+}
+.info-banner.analysis-mode-banner .banner-text strong { font-weight: 700; }
+.info-banner.analysis-mode-banner .banner-text span { flex: none; min-width: 0; }
+.info-banner.analysis-mode-banner .banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Processing card — shown while detailed analysis is being generated.
+   Big, calm, and explicit about asking the user to keep the page open. */
+.processing-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 24px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
+}
+
+.processing-icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ede9fe;
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.processing-body { flex: 1; min-width: 0; }
+.processing-headline {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #4c1d95;
+  margin-bottom: 6px;
+}
+.processing-message {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #5b21b6;
+  line-height: 1.55;
+}
+.processing-message strong { color: #4c1d95; }
+
+.processing-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.processing-bar {
+  flex: 1;
+  height: 6px;
+  background: #ede9fe;
+  border-radius: 999px;
   overflow: hidden;
-  border: 1px solid #f0f2f5;
+}
+.processing-bar-fill {
+  height: 100%;
+  width: 35%;
+  background: linear-gradient(90deg, #c4b5fd, #7c3aed, #c4b5fd);
+  background-size: 200% 100%;
+  border-radius: 999px;
+  animation: processing-shimmer 1.4s linear infinite;
+}
+@keyframes processing-shimmer {
+  0%   { background-position: 200% 0; transform: translateX(-30%); }
+  50%  { background-position: 0 0;   transform: translateX(50%); }
+  100% { background-position: -200% 0; transform: translateX(220%); }
+}
+.processing-elapsed {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #6d28d9;
+  white-space: nowrap;
+}
+
+
+.info-banner i { font-size: 1.05rem; margin-top: 2px; }
+
+.setup-card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e7eaf0;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -12px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.setup-card:hover {
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 12px 28px -10px rgba(15, 23, 42, 0.12);
+  border-color: #dde1e8;
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 25px;
-  background: #fcfcfd;
-  border-bottom: 1px solid #f0f2f5;
+  padding: 18px 28px;
+  background: #ffffff;
+  border-bottom: 1px solid #eef0f4;
 }
 
 .card-header.highlight {
-  background: #f0f7ff;
+  background: linear-gradient(180deg, #fafbff 0%, #ffffff 100%);
 }
 
 .card-header i {
-  font-size: 1.25rem;
-  color: #2563eb;
+  font-size: 1.05rem;
+  color: #475569;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border-radius: 8px;
+  flex-shrink: 0;
 }
-
 .card-header h3 {
   margin: 0;
-  font-size: 1.1rem;
-  color: #1a1a1a;
-  font-weight: 600;
+  font-size: 1.08rem;
+  color: #0f172a;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   flex: 1;
 }
 
-.card-body {
-  padding: 25px;
+/* Title + inline chip cluster — keeps the rating glued to the title
+   instead of floating it to the right edge of the header. */
+.card-title-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
 }
+.card-title-cluster h3 { flex: 0 0 auto; }
+
+.card-body { padding: 24px 28px; }
 
 .centered-body {
   display: flex;
@@ -560,10 +2245,203 @@ export default {
   text-align: center;
 }
 
-/* Overall Performance Card */
-.overall-card .card-header.highlight {
-  background: linear-gradient(120deg, #eff6ff 0%, #f0fdf4 100%);
+/* Insights card */
+.insights-card .card-header.highlight { background: #f8fafc; }
+.insights-spinner { font-size: 0.85rem; color: #64748b; }
+.insight-row { margin-bottom: 14px; }
+.insight-row:last-child { margin-bottom: 0; }
+.insight-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #94a3b8;
+  margin-bottom: 4px;
 }
+.insight-text { margin: 0; font-size: 1rem; color: #1e293b; line-height: 1.55; }
+.insight-list { margin: 0; padding-left: 20px; color: #1e293b; }
+.insight-list li { margin-bottom: 4px; line-height: 1.5; }
+.insight-verdict {
+  margin: 0;
+  font-size: 1rem;
+  color: #1e293b;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Overall card */
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  margin-right: 8px;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.info-btn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.metrics-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.metrics-modal {
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+}
+.metrics-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.metrics-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #1f2937;
+}
+.metrics-modal-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: background-color 0.15s, color 0.15s;
+}
+.metrics-modal-close:hover { background: #e5e7eb; color: #1f2937; }
+
+.metrics-modal-body {
+  padding: 8px 24px 24px;
+}
+.help-section {
+  padding: 16px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.help-section:last-child { border-bottom: none; }
+.help-section h4 {
+  margin: 0 0 6px 0;
+  font-size: 1rem;
+  color: #1f2937;
+  font-weight: 700;
+}
+.help-section p {
+  margin: 0 0 10px 0;
+  font-size: 0.92rem;
+  color: #475569;
+  line-height: 1.55;
+}
+.help-section ul {
+  margin: 0;
+  padding-left: 22px;
+  color: #475569;
+}
+.help-section ul li {
+  margin-bottom: 6px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.help-note {
+  margin-top: 8px;
+  font-size: 0.85rem !important;
+  color: #64748b !important;
+  font-style: italic;
+}
+.help-section .tone-good { color: #15803d; }
+.help-section .tone-ok   { color: #a16207; }
+.help-section .tone-warn { color: #a16207; }
+.help-section .tone-bad  { color: #b91c1c; }
+
+/* Analysis-type selector modal */
+.type-selector-modal { width: 480px; max-width: 90vw; }
+.type-selector-intro {
+  margin: 14px 0 16px 0;
+  font-size: 0.92rem;
+  color: #475569;
+}
+.type-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.type-option:hover { border-color: #cbd5e1; }
+.type-option.is-checked {
+  border-color: #c4b5fd;
+  background: #faf5ff;
+  box-shadow: 0 0 0 1px #c4b5fd inset;
+}
+.type-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #7c3aed;
+  cursor: pointer;
+}
+.type-option-body { flex: 1; min-width: 0; }
+.type-option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 0.98rem;
+  margin-bottom: 4px;
+}
+.type-option-title i { color: #7c3aed; }
+.type-option-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+.type-selector-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.18s ease; }
+.modal-fade-enter-active .metrics-modal,
+.modal-fade-leave-active .metrics-modal { transition: transform 0.18s ease; }
+.modal-fade-enter, .modal-fade-leave-to { opacity: 0; }
+.modal-fade-enter .metrics-modal,
+.modal-fade-leave-to .metrics-modal { transform: translateY(-8px) scale(0.98); }
 
 .overall-verdict {
   padding: 4px 12px;
@@ -572,12 +2450,48 @@ export default {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  background: #f1f5f9;
+  color: #475569;
 }
-
 .overall-verdict.verdict-good { background: #dcfce7; color: #15803d; }
-.overall-verdict.verdict-ok { background: #fef9c3; color: #a16207; }
-.overall-verdict.verdict-bad { background: #fee2e2; color: #b91c1c; }
-.overall-verdict.verdict-neutral { background: #f1f5f9; color: #475569; }
+.overall-verdict.verdict-ok   { background: #fef9c3; color: #a16207; }
+.overall-verdict.verdict-bad  { background: #fee2e2; color: #b91c1c; }
+.overall-verdict.verdict-neutral { background: #f1f5f9; color: #64748b; }
+
+/* Numeric rating chip in the Overall Performance header. Sits next to
+   the title; tone matches the rule-based or LLM-derived score. */
+.overall-rating {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 999px;
+  letter-spacing: -0.01em;
+  background: #f1f5f9;
+  color: #475569;
+}
+.overall-rating-suffix {
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.overall-rating.rating-good { background: #dcfce7; color: #15803d; }
+.overall-rating.rating-ok   { background: #fef9c3; color: #a16207; }
+.overall-rating.rating-bad  { background: #fee2e2; color: #b91c1c; }
+.overall-rating.rating-neutral { background: #f1f5f9; color: #64748b; }
+
+.verdict-description {
+  margin: 0 0 18px 0;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #334155;
+}
 
 .overall-stats-grid {
   display: grid;
@@ -592,20 +2506,93 @@ export default {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.overall-stat-val {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: #1a1a1a;
+.overall-stat-clickable {
+  cursor: pointer;
 }
-
-.overall-stat-sub {
-  font-size: 0.85rem;
+.overall-stat-clickable:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+.overall-stat-hint {
+  margin-top: 6px;
+  font-size: 0.72rem;
   font-weight: 600;
-  color: #64748b;
+  color: #6366f1;
+  letter-spacing: 0.2px;
 }
 
+.overall-stat.is-highlighted,
+.basic-block.is-highlighted {
+  animation: stat-pulse 1.6s ease-out;
+}
+@keyframes stat-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.45); }
+  40%  { box-shadow: 0 0 0 10px rgba(124, 58, 237, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
+}
+
+.overall-stat-val { font-size: 1.35rem; font-weight: 700; color: #1a1a1a; }
+.overall-stat-val.tone-good { color: #15803d; }
+.overall-stat-val.tone-ok   { color: #a16207; }
+.overall-stat-val.tone-bad  { color: #b91c1c; }
+.overall-stat-val.tone-neutral { color: #475569; }
+
+.overall-stat-score {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.overall-insights {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #f1f5f9;
+}
+.overall-insights-title,
+.overall-improvements-title {
+  margin: 0 0 12px 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #475569;
+}
+
+.overall-improvements {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #f1f5f9;
+}
+.overall-improvements-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.overall-improvements-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #1e293b;
+}
+.overall-improvements-q {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+.overall-improvements-text { flex: 1; }
+.overall-stat-sub { font-size: 0.85rem; font-weight: 600; color: #64748b; }
 .overall-stat-lab {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -615,119 +2602,52 @@ export default {
   margin-top: 4px;
 }
 
-/* Video Section */
-.video-preview-wrapper {
-  width: 100%;
-  max-width: 800px;
+/* Reports & Downloads card */
+.reports-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.reports-hint {
+  margin: 14px 0 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
 }
 
+/* Video Section */
+.video-preview-wrapper { width: 100%; max-width: 800px; }
 .summary-video {
   width: 100%;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.1);
   background: black;
 }
+.video-missing-alert { padding: 30px; color: #64748b; }
+.video-missing-alert i { font-size: 2rem; margin-bottom: 10px; color: #cbd5e1; }
 
-.download-bar {
-  display: flex;
-  justify-content: flex-start;
-  padding: 0 4px;
-}
-
-.video-actions {
-  margin-top: 20px;
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-
-.video-missing-alert {
-  padding: 30px;
-  color: #64748b;
-}
-
-.video-missing-alert i {
-  font-size: 2rem;
-  margin-bottom: 10px;
-  color: #fbbf24;
-}
-
-/* Legend */
-.industrial-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  justify-content: center;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
-  color: #475569;
-  font-weight: 500;
-}
-
-.pip {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-}
-
-.pip.pos { background: rgba(34,197,94,0.15); border: 1px solid #22c55e; }
-.pip.neu { background: rgba(59,130,246,0.10); border: 1px solid #3b82f6; }
-.pip.neg { background: rgba(239,68,68,0.15); border: 1px solid #ef4444; }
-.pip.filler { color: #a855f7; font-weight: 800; background: none; border: none; font-size: 0.8rem; width: auto; height: auto; }
-.pip.conf-low { background: #fee2e2; border: 1px solid #dc2626; }
-.pip.conf-med { background: #fef9c3; border: 1px solid #ca8a04; }
-
-/* Transcript Data Items */
-.summary-data-item {
-  margin-bottom: 25px;
-}
-
-.summary-data-item:last-child {
-  margin-bottom: 0;
-}
-
+/* Transcript */
+.summary-data-item { margin-bottom: 22px; }
+.summary-data-item:last-child { margin-bottom: 0; }
 .summary-data-item label {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.6px;
   color: #94a3b8;
   margin-bottom: 8px;
 }
-
-.data-text {
-  font-size: 1.05rem;
-  color: #1e293b;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.data-text.muted {
-  color: #64748b;
-}
-
+.data-text { font-size: 1.02rem; color: #1e293b; line-height: 1.6; margin: 0; }
+.data-text.muted { color: #64748b; }
 .transcript-surface {
   background: #f8fafc;
-  padding: 20px;
+  padding: 18px;
   border-radius: 12px;
   border: 1px solid #f1f5f9;
-  font-size: 1.1rem;
+  font-size: 1.02rem;
   line-height: 1.7;
   color: #334155;
-}
-
-/* Mini Stats & Feedback */
-.stats-feedback-row {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  white-space: pre-wrap;
 }
 
 .mini-stats {
@@ -735,7 +2655,6 @@ export default {
   flex-wrap: wrap;
   gap: 12px;
 }
-
 .stat-pill {
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -745,19 +2664,8 @@ export default {
   flex-direction: column;
   min-width: 100px;
 }
-
-.stat-val {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #1a1a1a;
-}
-
-.stat-sub {
-  font-size: 0.78rem;
-  color: #64748b;
-  font-weight: 600;
-}
-
+.stat-val { font-size: 1.12rem; font-weight: 700; color: #1a1a1a; }
+.stat-sub { font-size: 0.78rem; color: #64748b; font-weight: 600; }
 .stat-lab {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -765,96 +2673,558 @@ export default {
   font-weight: 700;
   letter-spacing: 0.5px;
 }
+.stat-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+}
+.stat-hint.tone-good { color: #15803d; }
+.stat-hint.tone-warn { color: #a16207; }
+.stat-hint.tone-bad  { color: #b91c1c; }
+.stat-hint.tone-neutral { color: #64748b; }
 
-/* Audio Controls in Header */
+.stats-explainer {
+  margin: 12px 0 0 0;
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* Basic analysis */
+.basic-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+/* Hint paragraph used inside the session-level Speaking Patterns blocks
+   (which otherwise reuse the per-question `.basic-block` styling). */
+.patterns-block-hint {
+  margin: 0 0 10px 0;
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+.basic-block {
+  border: 1px solid #f1f5f9;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fafbfc;
+}
+.basic-block-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+.basic-block-total {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.chip-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip-list.inline { gap: 6px; margin-top: 4px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: #1e293b;
+}
+.chip em { color: #64748b; font-style: normal; font-weight: 600; }
+.chip.muted { background: #f8fafc; color: #64748b; }
+
+/* LLM block */
+/* ── Detailed Feedback (LLM) — unified slate + indigo palette ────── */
+.llm-block {
+  background: #ffffff;
+  padding: 22px 24px;
+  border-radius: 12px;
+  border: 1px solid #e7eaf0;
+}
+.llm-block > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.ai-section-icon { color: #6366f1 !important; font-size: 0.9rem; }
+
+.llm-block-hint {
+  margin: 4px 0 18px 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+/* Section divider between dimensions */
+.llm-dimension {
+  margin: 0 0 24px 0;
+  padding-top: 22px;
+  border-top: 1px solid #eef0f4;
+}
+.llm-dimension:first-of-type { border-top: none; padding-top: 4px; }
+.llm-dimension:last-child { margin-bottom: 12px; }
+
+.llm-dimension-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  margin-bottom: 14px;
+}
+.llm-dimension-header i {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: #4f46e5;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.dimension-score {
+  margin-left: auto;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 11px;
+  border-radius: 999px;
+  letter-spacing: -0.01em;
+}
+
+/* Notes grids — same look for delivery and content */
+.delivery-notes-grid,
+.content-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.delivery-note,
+.content-note {
+  background: #f8fafc;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.delivery-note:hover,
+.content-note:hover {
+  background: #ffffff;
+  border-color: #dbe1ea;
+}
+.delivery-note-label,
+.content-note-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.delivery-note p,
+.content-note p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #1e293b;
+  line-height: 1.55;
+}
+
+/* Sub-rows (Strengths, Weaknesses, Improvement plan, Top thing to try…) */
+.llm-row { margin-bottom: 18px; }
+.llm-row:last-child { margin-bottom: 0; }
+.llm-row-title {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+.llm-row p { margin: 0; font-size: 0.94rem; color: #1e293b; line-height: 1.55; }
+.llm-row ul { margin: 0; padding-left: 20px; color: #1e293b; }
+.llm-row ul li { margin-bottom: 6px; line-height: 1.55; font-size: 0.94rem; }
+
+.coverage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 0.9rem;
+  color: #1e293b;
+}
+.coverage-row strong {
+  display: inline-block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.improvement-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #1e293b;
+}
+.improvement-list li {
+  margin-bottom: 8px;
+  line-height: 1.55;
+  font-size: 0.94rem;
+}
+
+/* Per-question score pill in the Q card header */
+.score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.score-pill i { font-size: 0.85rem; }
+
 .header-audio-controls {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-/* Loading State */
+/* "Play Your Answer" button — when active, a small red pulsing dot sits
+   to the left of the label so the playing state is unmistakable, even
+   at the small button size. */
+.play-answer-btn .playing-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffffff;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: play-dot-pulse 1.1s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+}
+@keyframes play-dot-pulse {
+  0%   { transform: scale(1);   opacity: 1; box-shadow: 0 0 0 0    rgba(255, 255, 255, 0.7); }
+  60%  { transform: scale(1.1); opacity: 0.85; box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+  100% { transform: scale(1);   opacity: 1; box-shadow: 0 0 0 0    rgba(255, 255, 255, 0); }
+}
+
+/* Subtle highlight on the question card whose audio is currently playing
+   so the user knows where the sound is coming from at a glance. */
+.transcript-block.is-playing-answer {
+  border-color: #fecaca;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+.transcript-block.is-playing-answer .q-card-header {
+  background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
+}
+
+/* ── Header tags (under page title) ── */
+.header-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.header-subtitle-text {
+  font-size: 0.95rem;
+  color: #64748b;
+}
+.header-date {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #64748b;
+  margin-left: 4px;
+}
+.header-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.header-tag-full { background: #ecfdf5; color: #047857; }
+.header-tag-basic { background: #eff6ff; color: #1e40af; }
+.header-tag-none { background: #f1f5f9; color: #64748b; }
+
+/* Interview state chip — same scale as the difficulty/category chips
+   above it, but coloured by the actual state of the data so the user
+   sees at a glance what's been done and what's available next. */
+.state-tag.state-detailed { background: #ecfdf5; color: #047857; }
+.state-tag.state-basic    { background: #eff6ff; color: #1e40af; }
+.state-tag.state-pending  { background: #fef9c3; color: #854d0e; }
+.state-tag.state-failed   { background: #fee2e2; color: #b91c1c; }
+.state-tag.state-none     { background: #f1f5f9; color: #64748b; }
+
+/* ── Per-question section header + collapsible card header ── */
+.questions-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 4px 0;
+}
+.questions-header {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #1e293b;
+  font-weight: 700;
+}
+.questions-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.questions-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 4px 4px 0;
+  background: #f8fafc;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.questions-toolbar-hint {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.question-jumper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 10px;
+  margin: 0 4px;
+}
+.jumper-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 6px;
+}
+.jumper-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.jumper-pill:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+.jumper-pill-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.jumper-pill-active:hover {
+  background: #1d4ed8;
+  color: #fff;
+}
+.jumper-pill-empty {
+  color: #cbd5e1;
+  background: #fff;
+  border-style: dashed;
+}
+
+.jumper-pill-all {
+  margin-right: 4px;
+}
+
+.jumper-clear {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.12s, background-color 0.12s;
+}
+.jumper-clear:hover {
+  background: #f1f5f9;
+  color: #b91c1c;
+}
+.jumper-clear i { font-size: 0.85rem; }
+
+.q-card-header {
+  cursor: pointer;
+  align-items: center;
+  user-select: none;
+  transition: background-color 0.12s;
+}
+.q-card-header:hover { background: #f8fafc; }
+.transcript-block.is-expanded .q-card-header { border-bottom: 1px solid #f0f2f5; }
+
+.expand-chevron {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  width: 14px;
+  text-align: center;
+}
+
+.q-header-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.q-header-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.q-number {
+  font-weight: 700;
+  color: #475569;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.q-snippet {
+  color: #1f2937;
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.q-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.q-meta-pill {
+  font-size: 0.72rem;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.q-meta-pill.q-meta-warn {
+  background: #fef9c3;
+  color: #a16207;
+}
+
 .setup-status-view {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 80vh;
 }
-
 .main-loader {
   border: 4px solid #f3f4f6;
-  border-top: 4px solid #2563eb;
+  border-top: 4px solid #475569;
   border-radius: 50%;
   width: 50px;
   height: 50px;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px auto;
 }
-
+.batch-progress-line {
+  margin-top: 4px !important;
+  font-size: 0.88rem;
+  color: #64748b;
+  font-weight: 600;
+}
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-@media (max-width: 900px) {
-  .setup-page-view { padding: 0 20px; }
-}
 
+@media (max-width: 900px) { .setup-page-view { padding: 0 20px; } }
 @media (max-width: 768px) {
-  .setup-page-view {
-    padding: 0 14px;
-    height: auto;
-    overflow-y: visible;
-  }
-
-  .setup-view-header {
-    flex-direction: column;
-    align-items: flex-start;
-    margin: 20px 0 18px 0;
-    gap: 12px;
-  }
-
+  .setup-page-view { padding: 0 14px; height: auto; overflow-y: visible; }
+  .setup-view-header { flex-direction: column; align-items: flex-start; margin: 20px 0 18px 0; gap: 12px; }
   .header-main h2  { font-size: 1.35rem; }
   .header-subtitle { font-size: 0.9rem; }
-
-  .header-actions        { width: 100%; }
-  .header-actions .el-button { width: 100%; }
-
+  .header-actions, .header-actions .el-button { width: 100%; }
   .setup-form-container { gap: 16px; }
-
   .card-header { padding: 14px 18px; }
   .card-body   { padding: 18px 14px; }
-
   .summary-video { border-radius: 8px; }
-
-  .video-actions {
-    flex-direction: column;
-    gap: 10px;
-  }
-  .video-actions .el-button { width: 100%; }
-
-  .industrial-legend {
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-
-  .mini-stats       { flex-direction: column; gap: 8px; }
-  .stat-pill        { width: 100%; }
-
+  .reports-grid { flex-direction: column; }
+  .reports-grid .el-button { width: 100%; }
+  .mini-stats { flex-direction: column; gap: 8px; }
+  .stat-pill   { width: 100%; }
   .transcript-surface { padding: 14px; font-size: 0.95rem; }
-
   .summary-data-item { flex-direction: column; gap: 4px; }
-
   .header-audio-controls { width: 100%; }
   .header-audio-controls .el-button { flex: 1; }
-}
-
-@media (max-width: 480px) {
-  .setup-page-view { padding: 0 10px; }
-  .header-main h2  { font-size: 1.2rem; }
-  .header-subtitle { font-size: 0.85rem; }
-  .card-header h3  { font-size: 0.95rem; }
-  .card-header     { padding: 12px 14px; }
-  .card-body       { padding: 14px 12px; }
 }
 </style>

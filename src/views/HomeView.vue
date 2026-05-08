@@ -9,11 +9,11 @@
           Get real-time feedback and video analysis to boost your confidence.
         </p>
         <div class="hero-actions">
-          <el-button v-if="canStartInterview" type="primary" class="primary-hero-btn" @click="startNewInterview">
-            Practice Interview <i class="el-icon-right"></i>
+          <el-button v-if="canStartInterview" type="primary" class="primary-hero-btn" @click="goToMyInterviews">
+            <i class="el-icon-chat-line-square"></i> My Interviews <i class="el-icon-right"></i>
           </el-button>
           <el-button v-if="canViewTranscriptions" class="secondary-hero-btn" @click="$router.push({name: 'TranscriptionsView'})">
-            <i class="el-icon-document"></i> View Transcriptions
+            <i class="el-icon-microphone"></i> My Transcriptions
           </el-button>
         </div>
       </div>
@@ -27,7 +27,7 @@
 
     <div class="features-section">
       <div class="feature-card">
-        <div class="feature-icon"><i class="el-icon-document"></i></div>
+        <div class="feature-icon"><i class="el-icon-tickets"></i></div>
         <h3>Resume Matching</h3>
         <p>The system analyzes your resume to generate relevant industry-specific questions.</p>
       </div>
@@ -37,9 +37,9 @@
         <p>Record your sessions to review non-verbal cues and body language.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon"><i class="el-icon-cpu"></i></div>
+        <div class="feature-icon"><i class="el-icon-data-analysis"></i></div>
         <h3>Detailed Evaluation</h3>
-        <p>Instant analysis of filler words, confidence, and response quality.</p>
+        <p>Instant analysis of filler words, pacing, and response quality.</p>
       </div>
     </div>
   </div>
@@ -66,9 +66,9 @@ export default {
     }
   },
   methods: {
-    startNewInterview() {
+    goToMyInterviews() {
       if (authService.isLoggedIn()) {
-        this.$router.push({ name: 'ResumeSetup' });
+        this.$router.push({ name: 'MyInterviews' });
       } else {
         this.$router.push({ name: 'Login' });
       }

@@ -117,7 +117,7 @@ function pickTopicsForBatch(n = 2) {
   return shuffled.slice(0, n);
 }
 
-export async function generateInterviewQA({ resumeText, jobDescriptionText, difficulty, category, onProgress, onUpdate }) {
+export async function generateInterviewQA({ resumeText, jobDescriptionText, difficulty, category, preferredKeywords, onProgress, onUpdate }) {
   const apiKey = process.env.VUE_APP_OPENAPI_TOKEN_KEY;
   if (!apiKey) {
     console.error('********************************************************************************');
@@ -148,6 +148,20 @@ export async function generateInterviewQA({ resumeText, jobDescriptionText, diff
   if (!openaiModel) throw new Error('Missing OpenAI model in configuration');
 
   const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+
+  // Preferred-keywords block: shown to every batch so all batches have a
+  // chance to weave them into answers and to anchor a "what is X" question
+  // on one of these terms. Trimmed/dedupd here once.
+  const cleanedKeywords = Array.isArray(preferredKeywords)
+    ? [...new Set(preferredKeywords.map(s => (s || '').toString().trim()).filter(Boolean))]
+    : [];
+  const preferredKeywordsBlock = cleanedKeywords.length
+    ? `\nPREFERRED KEYWORDS (CANDIDATE-SPECIFIED — IMPORTANT)
+The candidate explicitly listed these topics they want to focus on: ${cleanedKeywords.join(', ')}.
+- For Category B (conceptual / "what is" / "how does") questions, prioritize asking about these terms first. At least 1-2 conceptual questions per batch should target one of these keywords.
+- When generating the candidate-style ANSWERS, naturally weave references to these keywords where they plausibly fit. Don't force them — but if an answer can plausibly mention one of these terms (especially when describing tools, technologies, or approaches), include it.
+- These keywords are in addition to whatever appears in the resume — treat them as "topics the candidate wants the AI answers to demonstrate familiarity with".\n`
+    : '';
 
   async function fetchBatch(batchNum) {
     const isFirstBatch = (batchNum === 1);
@@ -184,6 +198,12 @@ CORE BEHAVIOR
 - Adapt to the candidate's actual stack and experience.
 - Do not invent unrealistic tools, projects, achievements, or responsibilities.
 
+ZERO-TOLERANCE WORD LIST — these words and any inflections of them are FORBIDDEN in every question and every answer. Treat this as a hard constraint, not guidance:
+  ensure, ensuring, ensured, ensures, leverage, leveraging, leveraged, utilize, utilizing, utilized, implement, implementing, implemented, employed, streamline, streamlined, extensive, facilitate, facilitating, facilitated, robust, seamless, spearhead, orchestrate, synergize, deliverables, holistic, paradigm.
+Plain replacements you should default to:
+  ensure → "make sure"; leverage / utilize → "use"; implement / engineer → "build" / "set up" / "wire up"; facilitate → "help"; streamline → "speed up"; robust → "stable" / "reliable"; seamless → "smooth"; extensive → "deep" / "lots of"; leading → "running" / "in charge of".
+Re-read your output before returning. If ANY banned word slipped in, rewrite the sentence using the plain replacement.
+
 ANTI-REPETITION (STRICT)
 - Each question in this batch must explore a DIFFERENT angle. Do not ask two questions about the same project, the same technology, or the same situation.
 - Do not produce near-duplicates by paraphrasing. "How did you scale Kafka?" and "What was your experience scaling Kafka?" are duplicates — pick one.
@@ -215,6 +235,7 @@ PHRASING & TONE — HUMAN CONVERSATION (STRICT)
 ${difficultyBlock}
 ${categoryBlock}
 ${topicFocusBlock}
+${preferredKeywordsBlock}
 
 ${isFirstBatch ? `
 INTERVIEW OPENING PHASE
@@ -242,31 +263,60 @@ Rules for opener questions:
 - DO NOT REPEAT TOPICS — never ask two questions about the same thing (e.g., don't ask "how's your day" AND "how's your week" — pick one). Don't ask the same logistical thing twice.
 - Salary expectations and notice period are OFF-LIMITS in this phase — leave those to a later HR round.
 
-INTERVIEW FORMAT MESSAGE
-One short interviewer-style format statement that acts as a **pivot** from casual talk to the interview.
-Examples of tone:
-- "I've really enjoyed the chat so far. To give you a head's up on the format, we'll spend a few minutes on introductions..."
-- "That's great. Now, transitioning into the interview itself, we'll start with a quick intro..."
-- "I'm glad to hear that. To set the stage for our session today, I'll begin with a couple of basics..."
-Rules:
-- **STRICTLY FORBIDDEN**: Do not use "Hi", "Hello", "Welcome", or any greeting that implies you are meeting the candidate for the first time.
-- Keep it natural and act as a bridge from the previous casual topic.
-- Sound like a real interviewer moving the meeting forward.
-- This MUST come AFTER any casual openers and BEFORE any introduction or project questions.
-- The "answer" for this format message MUST be a short, natural candidate acknowledgment (e.g., "Sounds good," or "That works for me, I'm ready to dive in.").
+INTERVIEW FORMAT MESSAGE (STRICT SEPARATION)
+Generate exactly ONE short interviewer-style format statement that acts as a pivot from casual talk to the structured interview.
+
+CRITICAL RULES — read carefully:
+- The format message MUST be a SEPARATE JSON object with type: "format".
+- DO NOT merge the format pivot with the intro question. The pivot is one item, the "tell me about your journey" question is the NEXT, separate item with type: "main".
+- The format message itself MUST NOT contain a question. It is a transitional statement only — one short sentence, NO question mark inside it.
+- The format message MUST come AFTER all casual openers and BEFORE any "tell me about yourself" / journey / background question.
+
+Examples of correctly-shaped format messages (statement only, no question):
+- "I've really enjoyed the chat so far. Let's transition into the interview now."
+- "That's great. Let's move into the actual questions."
+- "I'm glad to hear that. Let me give you a quick heads-up on the format before we dig in."
+- "Sounds good. We'll start with a quick intro and then get into your work."
+
+INCORRECT (do not produce these — the question and the pivot are merged):
+- "That's great. Now, transitioning into the interview itself, we'll start with a quick intro. Great, so to kick things off, could you tell me a bit about your journey?"
+  ↑ This bundles the pivot AND the intro question into ONE item. Split them apart.
+
+Other rules:
+- STRICTLY FORBIDDEN: Do not use "Hi", "Hello", "Welcome", or any greeting that implies you are meeting the candidate for the first time.
+- The "answer" for this format message MUST be a short, natural candidate acknowledgment ("Sounds good," / "That works for me, I'm ready to dive in.").
 ` : 'DO NOT include any opening phase, casual openers, or format messages. Generate ONLY main interview questions. **ABSOLUTELY NO GREETINGS** like "Hi", "Hello", or "Welcome" allowed in these questions.'}
 
 QUESTION DISTRIBUTION
-The main interview questions should include a balanced mix of:
-- tell me about yourself / background questions (This should be the first "main" question. It should follow the format message naturally, e.g., "Great, so to kick things off, could you tell me a bit about your journey...")
-- current or recent project questions
-- technical deep-dive questions
-- architecture and system design questions
-- debugging / production issue questions
-- behavioral questions
-- team collaboration / Agile questions
-- leadership / ownership questions
-- tradeoff and decision-making questions
+The main interview questions should include a balanced mix across these categories:
+
+A. INTRO — exactly ONE "tell me about yourself / your journey" question. This MUST be the FIRST main question (right after the format pivot). Do not generate more than one intro/journey question per batch. Do not generate any intro/journey questions in non-first batches.
+
+B. CONCEPTUAL / DEFINITIONAL — questions that test fundamentals, not project experience. These are vital and currently underrepresented. Use "what is", "how does", "explain", "what's the difference", "when would you choose":
+  - "What is X and how does it differ from Y?"
+  - "How does Z work under the hood?"
+  - "Can you explain the difference between A and B?"
+  - "When would you reach for X versus Y?"
+  - "Walk me through what happens when you do X."
+  Anchor these to technologies / patterns / tools mentioned in the resume — but the question is about understanding, not project context.
+
+C. PROJECT / EXPERIENCE — "on your X project, how did you...", "describe the system you built at..." — anchored to specific resume projects.
+
+D. TECHNICAL DEEP-DIVE — debugging stories, performance tuning, code review, refactoring decisions.
+
+E. ARCHITECTURE / SYSTEM DESIGN — component boundaries, data flow, scaling, integration points.
+
+F. BEHAVIORAL — STAR-format situational stories: teamwork, conflict, ownership, communication, mentoring, ambiguity, failure handling.
+
+G. SCENARIO / TRADEOFFS — hypothetical "what would you do if..." or "how would you decide between..." prompts that test judgment.
+
+QUESTION TYPE VARIETY (STRICT)
+- Across the main questions in this batch, MIX category types. Do not generate 5 in a row of the same type.
+- AT LEAST 2 of the main questions in this batch MUST be from category B (conceptual / "what is" / "how does"). This is the most underused category — the model tends to default to project deep-dives. Force variety here.
+- Do NOT make every main question a project deep-dive. A real interview mixes "what is X" with "how did you use X" with "why did you choose X over Y".
+
+NO CLOSURE LANGUAGE (STRICT)
+- Do NOT use closure-signaling phrasing in any question: "Lastly", "Finally", "To wrap up", "Last question", "Last but not least", "To close out", "For my last question". The interview ends with a system-generated closing message — your questions should never signal the end. Treat every question as if there are more to come.
 
 QUESTION STYLE & TONE
 - Be friendly, warm, and natural. Avoid robotic or "straight" questioning.
@@ -386,6 +436,19 @@ Use this exact shape:
     }
   }
 
+  // Count of MAIN questions in the pool — excludes openers, format
+  // pivots, and intro/journey questions. This is what minCount/maxCount
+  // are sized against now (per user request: openers/intro/closing
+  // shouldn't be counted toward the question budget).
+  function mainQuestionCount() {
+    return pool.filter(item => {
+      if (item.type === 'opener' || item.type === 'format') return false;
+      const q = (item.question || '').toLowerCase();
+      if (INTRO_KEYWORDS.some(k => q.includes(k))) return false;
+      return true;
+    }).length;
+  }
+
   async function fetchAndProcess(batchNum) {
     const result = await fetchBatch(batchNum);
     addAndDedupe(result);
@@ -393,7 +456,7 @@ Use this exact shape:
     if (batchNum === 1) firstBatchDone = true;
 
     if (onProgress) {
-      onProgress({ ready: pool.length, target: minCount, firstBatchDone });
+      onProgress({ ready: mainQuestionCount(), target: minCount, firstBatchDone });
     }
     if (onUpdate) {
       onUpdate(assembleFinalQA(pool, maxCount));
@@ -401,13 +464,18 @@ Use this exact shape:
   }
 
   let batchNum = 1;
-  // Exit as soon as we have enough unique questions; the slice below still caps at maxCount.
-  while (pool.length < minCount) {
+  // Exit when we have enough MAIN questions (not counting openers / format
+  // pivot / intro). Hard safety cap on rounds so we don't loop forever
+  // if dedup keeps eating responses.
+  let rounds = 0;
+  const MAX_ROUNDS = 6;
+  while (mainQuestionCount() < minCount && rounds < MAX_ROUNDS) {
     const batchPromises = [];
     for (let i = 0; i < parallelBatches; i++) {
       batchPromises.push(fetchAndProcess(batchNum++));
     }
     await Promise.all(batchPromises);
+    rounds++;
   }
 
   const sanitizedQA = assembleFinalQA(pool, maxCount);
@@ -421,36 +489,131 @@ const INTRO_KEYWORDS = [
   'your path', 'developer journey', 'engineering journey', 'kick off'
 ];
 
+// Words that should not appear in any non-final question — they signal
+// the interview is wrapping up. Caught by the closure-language scrubber
+// below so the model can use them in the LAST question if it wants, but
+// not the middle ones.
+const CLOSURE_PHRASES = [
+  /\blastly\b/i,
+  /\bfinally\b/i,
+  /\b(to\s+)?wrap\s*(up|things\s*up)\b/i,
+  /\blast(\s+but\s+not\s+least)\b/i,
+  /\blast\s+question\b/i,
+  /\bto\s+close\s+(out|things)\b/i,
+  /\bfor\s+my\s+last\s+question\b/i
+];
+
+// Tiny stopword + stemmer used by the semantic-dedup pass. Lowercase,
+// strip non-letters, drop short/common words, crude suffix stripping.
+const DEDUP_STOPWORDS = new Set([
+  'the','a','an','is','are','was','were','be','been','being','have','has','had',
+  'do','does','did','will','would','can','could','should','may','might','must',
+  'and','or','but','so','if','as','at','by','for','in','of','on','to','with','from',
+  'into','about','after','again','before','between','down','just','more','most',
+  'now','off','once','only','other','out','own','same','such','than','then','there',
+  'through','too','very','when','where','which','who','whom','why','how','what',
+  'while','still','also','because','since','i','you','we','they','it','me','us',
+  'my','your','his','her','its','our','their','some','any','each','every','no',
+  'this','that','these','those','here','well','really','tell','share','describe',
+  'walk','explain','give','let','think','tell','sounds','interesting','great',
+  'ok','okay','um','uh','like'
+]);
+
+function _stem(w) {
+  if (w.length > 5 && (w.endsWith('ings') || w.endsWith('ying'))) return w.slice(0, -3);
+  if (w.length > 4 && w.endsWith('ing')) return w.slice(0, -3);
+  if (w.length > 4 && w.endsWith('ed'))  return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('s'))   return w.slice(0, -1);
+  return w;
+}
+
+function _signature(text) {
+  if (!text) return new Set();
+  const tokens = text.toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !DEDUP_STOPWORDS.has(w))
+    .map(_stem);
+  return new Set(tokens);
+}
+
+function _jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let intersect = 0;
+  for (const x of a) if (b.has(x)) intersect++;
+  return intersect / (a.size + b.size - intersect);
+}
+
+// Drop near-duplicate questions in order. Keeps the first occurrence;
+// any subsequent question whose content-token overlap (Jaccard, after
+// stemming + stopword removal) exceeds the threshold is dropped.
+// 0.5 catches paraphrases like "describe the X platform" / "key components
+// of the X platform", "your journey as a developer" / "your journey in
+// software development", without merging genuinely different questions.
+function dedupSemantically(items, threshold = 0.5) {
+  const kept = [];
+  const sigs = [];
+  for (const item of items) {
+    const sig = _signature(item.question);
+    let isDup = false;
+    for (const k of sigs) {
+      if (_jaccard(sig, k) >= threshold) { isDup = true; break; }
+    }
+    if (!isDup) { kept.push(item); sigs.push(sig); }
+  }
+  return kept;
+}
+
 function assembleFinalQA(pool, maxCount) {
-  const openers = pool.filter(item => item.type === 'opener');
+  const rawOpeners = pool.filter(item => item.type === 'opener');
   const formatStatements = pool.filter(item => item.type === 'format');
   const mainQuestions = pool.filter(item => !item.type || item.type === 'main');
 
-  const introQuestions = mainQuestions.filter(q =>
+  // Fix: strip intro/journey-keyword items out of openers — those are
+  // misclassified main questions (e.g., "tell me about your journey").
+  // They get re-routed into the intro pool below, where only one survives.
+  const intrusiveIntroOpeners = rawOpeners.filter(q =>
     INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
   );
-  const singleIntro = introQuestions.length > 0 ? [introQuestions[0]] : [];
-
-  const otherMainQuestions = mainQuestions.filter(q =>
+  const openers = rawOpeners.filter(q =>
     !INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
   );
 
-  // Don't shuffle. Each batch produces a connected conversation thread, and
-  // shuffling here destroys that continuity (e.g., a Kafka deep-dive
-  // question gets stranded after a leadership question). Preserve the
-  // batch order so questions on the same topic stay grouped.
+  // Combine intro candidates from both main and (rescued) opener buckets,
+  // keep only the first one as the interview's single "tell me about
+  // yourself" moment.
+  const introCandidatesFromMain = mainQuestions.filter(q =>
+    INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
+  );
+  const allIntros = [...introCandidatesFromMain, ...intrusiveIntroOpeners];
+  const singleIntro = allIntros.length > 0 ? [allIntros[0]] : [];
 
+  let otherMainQuestions = mainQuestions.filter(q =>
+    !INTRO_KEYWORDS.some(keyword => q.question?.toLowerCase().includes(keyword))
+  );
+
+  // Semantic dedup: drop near-duplicates that exact-text dedup missed
+  // (e.g., "how did you set up Kafka?" / "how have you managed Kafka data
+  // flow?", or "describe the platform" / "key components of the platform").
+  otherMainQuestions = dedupSemantically(otherMainQuestions, 0.5);
+
+  // Cap MAIN questions only at maxCount. Openers, format, and the single
+  // intro are NOT counted toward the budget — they're preserved on top.
+  const cappedMain = otherMainQuestions.slice(0, maxCount);
+
+  // Don't shuffle. Each batch produces a connected conversation thread, and
+  // shuffling here destroys that continuity. Preserve order so questions on
+  // the same topic stay grouped.
   const combinedQA = [
     ...openers,
     ...(formatStatements.length > 0 ? [formatStatements[0]] : []),
     ...singleIntro,
-    ...otherMainQuestions
+    ...cappedMain
   ];
 
   // Defensive fallback: if the model failed to produce any openers, the
-  // first item would be a journey/intro question — which feels jarring
-  // ("tell me about your path" with no greeting). Prepend a friendly
-  // greeting so the candidate is welcomed before the real questions start.
+  // first item would be a journey/intro question — which feels jarring.
+  // Prepend a friendly greeting so the candidate is welcomed.
   if (openers.length === 0 && combinedQA.length > 0) {
     combinedQA.unshift({
       type: 'opener',
@@ -459,12 +622,32 @@ function assembleFinalQA(pool, maxCount) {
     });
   }
 
-  const slicedQA = combinedQA.slice(0, maxCount);
+  const slicedQA = combinedQA;
+  const lastIndex = slicedQA.length - 1;
 
+  // Per-item scrubbing pass:
+  // - First item keeps its greeting; everything else has any leading
+  //   "Hi/Hello/Welcome/Nice to meet you" stripped (the model sometimes
+  //   adds a redundant greeting on later items).
+  // - Closure language ("Lastly", "Finally", "to wrap up", etc.) is
+  //   scrubbed from every question EXCEPT the last one — those were
+  //   generated mid-flow and only sound natural at the actual end.
   const finalQA = slicedQA.map((item, index) => {
-    if (index === 0) return item;
     let q = item.question || '';
-    q = q.replace(/^(hi|hello|welcome|nice to meet you|thanks for joining|good (morning|afternoon|evening))\s*([\w']+\s*)?[,!.]?\s*/gi, '');
+    if (index !== 0) {
+      q = q.replace(/^(hi|hello|welcome|nice to meet you|thanks for joining|good (morning|afternoon|evening))\s*([\w']+\s*)?[,!.]?\s*/gi, '');
+    }
+    if (index !== lastIndex) {
+      for (const re of CLOSURE_PHRASES) {
+        q = q.replace(re, (match) => {
+          // Replace "Lastly," → "Now," (keeps sentence flow). Otherwise just drop.
+          if (/^lastly/i.test(match) || /^finally/i.test(match)) return 'Now';
+          return '';
+        });
+      }
+      // Cleanup any double spaces / leading commas left by the substitution
+      q = q.replace(/^[\s,]+/, '').replace(/\s{2,}/g, ' ').trim();
+    }
     if (q.length > 0) q = q.charAt(0).toUpperCase() + q.slice(1);
     return { ...item, question: q };
   });

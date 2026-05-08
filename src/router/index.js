@@ -1,11 +1,13 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
+import { Message } from 'element-ui'
 import Login from '@/views/auth/Login.vue'
 import Signup from '@/views/auth/Signup.vue'
 import ResetPassword from '@/views/auth/ResetPassword.vue'
 import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
+import MyInterviews from '@/views/MyInterviews.vue'
 import { getInterviewQA } from '@/store/interviewStore'
 import TranscriptionsView from '@/views/TranscriptionsView.vue';
 import ProfileSettings from '@/views/ProfileSettings.vue';
@@ -68,6 +70,18 @@ const routes = [
     path: '/summary',
     name: 'SummaryView',
     component: SummaryView,
+    // Pass ?sessionId=… as the `sessionId` prop so SummaryView can render
+    // a saved history entry instead of the live session.
+    props: route => ({ sessionId: route.query.sessionId || '' }),
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
+    }
+  },
+  {
+    path: '/interviews',
+    name: 'MyInterviews',
+    component: MyInterviews,
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
@@ -143,7 +157,10 @@ router.beforeEach(async (to, from, next) => {
   if (to.name === 'InterviewView') {
     const interviewQA = await getInterviewQA();
     if (!interviewQA || interviewQA.length === 0) {
-      window.alert('Interview questions are not ready. Please complete setup first.');
+      Message.warning({
+        message: 'Interview questions are not ready. Please complete setup first.',
+        duration: 4000
+      });
       return next({ name: 'ResumeSetup' });
     }
   }
