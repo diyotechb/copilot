@@ -103,8 +103,12 @@
              has at least one answer waiting on a transcript and the
              profile-level Answer Analysis toggle is on. Works the same
              whether the interview was completed or stopped early. -->
+        <!-- The Transcribe button must be reachable from history too — a
+             user can land here with pending slots after a network glitch
+             during the original interview, and the recovery path is the
+             whole point of the feature. -->
         <div
-            v-if="!isHistoryView && analysisFeatureEnabled && analysisMode !== 'none' && hasUnresolvedTranscripts && !transcribeRecovering"
+            v-if="analysisFeatureEnabled && analysisMode !== 'none' && hasUnresolvedTranscripts && !transcribeRecovering"
             class="info-banner action"
         >
           <i class="el-icon-info"></i>
@@ -829,7 +833,7 @@
 </template>
 
 <script>
-import { getTranscriptionStatus, getTranscripts, getInterviewQA, getQuestionTimestamps, getInterviewMeta, saveInterviewMeta, setAnalysisMode } from '@/store/interviewStore';
+import { getTranscriptionStatus, getTranscripts, saveTranscripts, getInterviewQA, getQuestionTimestamps, getInterviewMeta, saveInterviewMeta, setAnalysisMode } from '@/store/interviewStore';
 import { highlightTranscript } from '@/utils/transcriptUtils';
 import {
   wordCount,
@@ -850,7 +854,7 @@ import {
   sessionExtraWordsNotInReference
 } from '@/utils/basicAnalysis';
 import { getSetting } from '@/store/settingStore';
-import { getVideoRecording, getRecording } from '@/store/recordingStore.js';
+import { getVideoRecording, getRecordingForSession } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
 import { saveCompletedSession, updateHistoryEntry, getSessionById } from '@/store/interviewHistoryStore';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
@@ -915,6 +919,11 @@ export default {
       // recovery banner can show its own loading state.
       transcribeRecovering: false,
       historyEntryId: '',
+      // Session id for the audio currently being viewed. Set in
+      // loadFromLiveSession (from interview meta) and loadFromHistory
+      // (from the history entry id, which is the same value). Used to
+      // scope the recording-store reads for recovery and playback.
+      activeSessionId: '',
       isHistoryView: false,
       // Central playback state
       playback: { kind: null, idx: null },
@@ -1314,6 +1323,7 @@ export default {
       this.candidateName = (meta && meta.candidateName) || '';
       this.preferredKeywords = (meta && Array.isArray(meta.preferredKeywords)) ? meta.preferredKeywords : [];
       this.interviewDate = (meta && (meta.endedAt || meta.startedAt)) || '';
+      this.activeSessionId = (meta && meta.sessionId) || '';
 
       this.pollForVideoBlob();
       this.checkTranscriptionStatus();
@@ -1327,6 +1337,11 @@ export default {
         return;
       }
       this.historyEntryId = entry.id;
+      // History entry id IS the session id — they're minted from the same
+      // value at interview start (see getOrCreateInterviewSessionId).
+      // Older entries written before that change still match because
+      // saveCompletedSession's id field has always been the session key.
+      this.activeSessionId = entry.id || '';
       this.localInterviewQA = entry.qaList || [];
       this.transcripts = entry.transcripts || [];
       this.questionTimestamps = entry.questionTimestamps || [];
@@ -1378,6 +1393,9 @@ export default {
       if (this.localInterviewQA && this.localInterviewQA.length) {
         try {
           this.historyEntryId = await saveCompletedSession({
+            // Reuse the session id minted at interview start so the
+            // history entry's id matches the recording keys on disk.
+            id: this.activeSessionId || undefined,
             difficulty: this.difficulty,
             category: this.category,
             analysisMode: this.analysisMode,
@@ -1389,6 +1407,7 @@ export default {
             completed: !!this.completed,
             llmAnalysis: null
           });
+          if (!this.activeSessionId) this.activeSessionId = this.historyEntryId;
         } catch (e) {
           console.error('Failed to save session to history:', e);
         }
@@ -1556,6 +1575,13 @@ export default {
           this.notify('No questions to transcribe.', 'warning');
           return false;
         }
+        // In history view the live transcripts store may hold stale data
+        // from a different session — pre-seed it with this entry's
+        // snapshot so transcribeAllAnswers sees the right pending slots
+        // and writes alongside (not overtop of) what's already here.
+        if (this.isHistoryView) {
+          await saveTranscripts([...this.transcripts]);
+        }
         const pending = await hasPendingTranscriptions(total);
         if (!pending) {
           this.transcripts = (await getTranscripts()) || [];
@@ -1563,6 +1589,7 @@ export default {
         }
         await transcribeAllAnswers({
           totalQuestions: total,
+          sessionId: this.activeSessionId,
           onProgress: (p) => { this.batchProgress = { ...p }; }
         });
         this.transcripts = (await getTranscripts()) || [];
@@ -1751,7 +1778,7 @@ export default {
       if (this.isPlayingAnswerFor(idx)) { this.stopAllPlayback(); return; }
       this.stopAllPlayback();
       try {
-        const blob = await getRecording(`Recording_${idx}`);
+        const blob = await getRecordingForSession(this.activeSessionId, idx);
         if (!blob) {
           // No saved recording for this question — silently no-op.
           return;

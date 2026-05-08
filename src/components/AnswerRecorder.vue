@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import { saveRecording } from '@/store/recordingStore';
+import { saveRecordingForSession } from '@/store/recordingStore';
 import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
 import { APP_CONFIG } from '@/constants/appConfig';
 
@@ -26,6 +26,7 @@ export default {
   props: {
     showAnswer: { type: Boolean, default: false },
     questionIndex: { type: Number, required: true },
+    sessionId: { type: String, default: '' }, // scopes the saved audio key
     sharedAudioCtx: { default: null },    // shared AudioContext from InterviewView
     mixDestination: { default: null },    // MediaStreamDestination to route mic into recording
     isPaused: { type: Boolean, default: false }, // interview-level pause state
@@ -186,7 +187,7 @@ export default {
       // the Summary screen). That way we avoid per-answer AssemblyAI spend
       // for interviews the user abandons mid-way, and the network work
       // happens in one place we can show clear progress for.
-      await saveRecording(`Recording_${this.questionIndex}`, audioBlob);
+      await saveRecordingForSession(this.sessionId, this.questionIndex, audioBlob);
 
       // Reserve the slot in the transcripts array so per-question UI knows
       // which answers have audio available, even before transcription runs.
