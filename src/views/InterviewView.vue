@@ -184,6 +184,7 @@
           v-if="interviewing && showAnswer && turn > 0"
           :showAnswer="showAnswer"
           :questionIndex="turn - 1"
+          :sessionId="sessionId"
           :isPaused="isPaused"
           @transcript="handleTranscriptReady"
           @silenceDetected="onSilenceDetected"
@@ -214,7 +215,9 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
-import { getInterviewQA, saveQuestionTimestamps, setInterviewCompleted } from '@/store/interviewStore';
+import { getInterviewQA, saveQuestionTimestamps, setInterviewCompleted, getOrCreateInterviewSessionId } from '@/store/interviewStore';
+import { listAllSessionIds } from '@/store/interviewHistoryStore';
+import { pruneRecordingsToActiveSessions, logStorageEstimate } from '@/store/recordingStore';
 import { speakWithTTS, speakWithTTSToContext } from '@/services/ttsService';
 import FeedbackSection from '../views/FeedbackSection.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -227,6 +230,7 @@ export default {
   data() {
     return {
       selectedVoice: '',
+      sessionId: '',             // scopes saved audio so old sessions never collide
       interviewQA: [],
       interviewTranscript: [],   // full history shown in UI
       turn: 0,
@@ -341,6 +345,19 @@ export default {
     this.selectedVoice = savedVoice;
     this.interviewQA = await getInterviewQA();
     if (this.$route && this.$route.name === 'InterviewView') {
+      // Lock in a session id BEFORE the first AnswerRecorder mounts so the
+      // saved audio is scoped from the very first question. Reusing the id
+      // on a mid-interview reload keeps already-saved blobs reachable.
+      this.sessionId = await getOrCreateInterviewSessionId();
+      // Drop audio whose session is no longer in history (and any legacy
+      // un-scoped Recording_<n> keys from before this scheme), but keep
+      // the just-minted current session id so its future writes survive.
+      try {
+        const active = await listAllSessionIds();
+        if (!active.includes(this.sessionId)) active.push(this.sessionId);
+        await pruneRecordingsToActiveSessions(active);
+        logStorageEstimate('interview start');
+      } catch (e) { /* best-effort */ }
       this.showInstructions = false;
       this.interviewing = true;
       this.turn = 0;

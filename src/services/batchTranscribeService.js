@@ -16,7 +16,7 @@
 //   Summary page polls that flag to decide whether to keep waiting.
 
 import { sendToAssemblyAI } from './assemblyAISpeechService';
-import { getRecording } from '@/store/recordingStore';
+import { getRecordingForSession } from '@/store/recordingStore';
 import {
   getTranscripts,
   saveTranscripts,
@@ -58,8 +58,11 @@ function indexesNeedingTranscription(transcripts, totalQuestions) {
   return need;
 }
 
-async function transcribeOne(idx) {
-  const blob = await getRecording(`Recording_${idx}`);
+async function transcribeOne(idx, sessionId) {
+  // getRecordingForSession looks at the session-scoped key first and falls
+  // back to the legacy un-scoped key, so the pre-scoping interview can
+  // still be recovered from the Summary "Transcribe answers" button.
+  const blob = await getRecordingForSession(sessionId, idx);
   if (!blob || !blob.size) {
     return { text: '', words: [], sentiment_analysis_results: [] };
   }
@@ -77,6 +80,7 @@ async function writeSlot(idx, value) {
 
 export async function transcribeAllAnswers({
   totalQuestions,
+  sessionId = '',
   concurrency = DEFAULT_CONCURRENCY,
   onProgress
 } = {}) {
@@ -113,7 +117,7 @@ export async function transcribeAllAnswers({
       if (localIdx >= total) return;
       const qIdx = queue[localIdx];
       try {
-        const transcript = await transcribeOne(qIdx);
+        const transcript = await transcribeOne(qIdx, sessionId);
         await writeSlot(qIdx, transcript);
       } catch (e) {
         console.error('[batchTranscribe] failed for Q' + qIdx + ':', e);

@@ -106,6 +106,22 @@ export async function setInterviewCompleted(completed = true) {
   await saveInterviewMeta(meta);
 }
 
+// Session id is generated once at interview start and reused for the
+// recording keys, the history entry id, and any later recovery work. Read
+// existing meta first so a mid-interview reload doesn't mint a new id and
+// orphan the audio already on disk.
+export async function getOrCreateInterviewSessionId() {
+  const meta = await getInterviewMeta();
+  if (meta && typeof meta.sessionId === 'string' && meta.sessionId) {
+    return meta.sessionId;
+  }
+  const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  meta.sessionId = sessionId;
+  if (!meta.startedAt) meta.startedAt = new Date().toISOString();
+  await saveInterviewMeta(meta);
+  return sessionId;
+}
+
 // Update the live session's analysis mode after the user toggles it on the
 // Summary screen. Safe to call when no live meta exists — just writes.
 export async function setAnalysisMode(mode) {
