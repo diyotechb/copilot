@@ -8,13 +8,13 @@ export const NAVIGATION_ITEMS = [
         // Home is for all logged in users
     },
     {
-        name: 'Practice Setup',
-        routeName: 'ResumeSetup',
-        icon: 'el-icon-notebook-2',
+        name: 'My Interviews',
+        routeName: 'MyInterviews',
+        icon: 'el-icon-chat-line-square',
         allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     },
     {
-        name: 'Transcriptions',
+        name: 'My Transcriptions',
         routeName: 'TranscriptionsView',
         icon: 'el-icon-microphone',
         allowedRoles: ROLE_GROUPS.TRANSCRIPTION_ACCESS

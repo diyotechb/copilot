@@ -23,7 +23,6 @@
 
 <script>
 import {
-  averageConfidencePct,
   paceWpm,
   fillerPercent,
   wordCount,
@@ -45,23 +44,13 @@ export default {
   computed: {
     bullets() {
       const t = this.transcript;
-      if (!t || !t.words || !t.words.length) return [];
+      if (wordCount(t) === 0) return [];
 
       const out = [];
-      const conf = averageConfidencePct(t);
       const fillerPct = fillerPercent(t);
       const wpm = paceWpm(t);
       const wc = wordCount(t);
       const refWc = referenceWordCount(this.referenceAnswer);
-
-      // Clarity (transcription confidence)
-      if (conf >= 90) {
-        out.push({ tone: 'good', title: 'Clarity', text: 'Clear pronunciation throughout — speech recognition was confident on every word.' });
-      } else if (conf >= 75) {
-        out.push({ tone: 'ok', title: 'Clarity', text: `Mostly clear (${conf}%). A few words tripped up recognition — slow down on technical terms.` });
-      } else {
-        out.push({ tone: 'bad', title: 'Clarity', text: `Recognition struggled (${conf}%). Try speaking slower and enunciating key words more deliberately.` });
-      }
 
       // Fillers
       if (fillerPct < 5) {

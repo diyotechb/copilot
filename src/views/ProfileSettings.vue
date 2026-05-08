@@ -40,6 +40,14 @@
               </div>
               <el-switch v-model="features.aiSampleGenerationEnabled" @change="saveFeatures"></el-switch>
             </div>
+
+            <div class="feature-toggle-row">
+              <div class="feature-toggle-info">
+                <span class="feature-name">Answer Analysis</span>
+                <span class="feature-desc">Records your spoken answers during the interview. On the Summary screen you can run on-demand transcription to unlock basic per-question stats (pace, fillers, repeated words), and optionally generate detailed feedback covering delivery, answer evaluation, and an improvement plan. Works for any difficulty. History of your last 5 sessions is kept locally on this device, including ones you stopped early.</span>
+              </div>
+              <el-switch v-model="features.analysisEnabled" @change="saveFeatures"></el-switch>
+            </div>
           </div>
         </div>
 
@@ -118,7 +126,8 @@ export default {
       selectedLandingPage: 'Home',
       features: {
         transcriptionV2Enabled: false,
-        aiSampleGenerationEnabled: false
+        aiSampleGenerationEnabled: false,
+        analysisEnabled: false
       },
       storageStats: null,
       isClearingInterviews: false,

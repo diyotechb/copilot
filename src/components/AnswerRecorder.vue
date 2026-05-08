@@ -5,7 +5,6 @@
 </template>
 
 <script>
-import { sendToAssemblyAI } from '../services/assemblyAISpeechService';
 import { saveRecording } from '@/store/recordingStore';
 import { getTranscripts, saveTranscripts, saveTranscriptionStatus } from '@/store/interviewStore';
 import { APP_CONFIG } from '@/constants/appConfig';
@@ -182,22 +181,26 @@ export default {
         await saveTranscriptionStatus(false);
         return;
       }
+      // Save the audio blob locally — the actual transcription happens in
+      // a single batched job at the end of the interview (or on demand from
+      // the Summary screen). That way we avoid per-answer AssemblyAI spend
+      // for interviews the user abandons mid-way, and the network work
+      // happens in one place we can show clear progress for.
       await saveRecording(`Recording_${this.questionIndex}`, audioBlob);
-      await saveTranscriptionStatus(true);
-      let transcript = '';
-      try {
-        transcript = await sendToAssemblyAI(audioBlob);
-      } catch (err) {
-        console.error('[AnswerRecorder] AssemblyAI transcription error:', err);
-        transcript = '[Transcription error]';
-      }
+
+      // Reserve the slot in the transcripts array so per-question UI knows
+      // which answers have audio available, even before transcription runs.
       let transcripts = await getTranscripts();
-      if (!transcripts) {
-        transcripts = [];
-      }
-      transcripts[this.questionIndex] = transcript;
+      if (!transcripts) transcripts = [];
+      // Marker entry that the batch job will overwrite with the real
+      // transcript. Sentinel `pending: true` lets the Summary page tell the
+      // difference between "no audio recorded" and "audio recorded, waiting
+      // for transcription".
+      transcripts[this.questionIndex] = { text: '', words: [], sentiment_analysis_results: [], pending: true };
       await saveTranscripts(transcripts);
-      await saveTranscriptionStatus(false);
+      // No AssemblyAI call, no transcription-status flag flip during the
+      // interview. The Summary page will set it when the batch job kicks
+      // off post-completion.
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;
