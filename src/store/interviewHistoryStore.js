@@ -17,7 +17,7 @@
 // }
 
 import { saveItem, getItem, deleteItem, getDb } from './dbStore';
-import { deleteSessionRecordings, pruneRecordingsToActiveSessions } from './recordingStore';
+import { deleteSessionRecordings, pruneRecordingsToActiveSessions, pruneVideosToCap, MAX_VIDEO_SESSIONS } from './recordingStore';
 
 const STORE = 'interviewQA';
 const PREFIX = 'history:';
@@ -114,14 +114,19 @@ async function pruneOld() {
       }
     }
   }
-  // Also drop any audio that belongs to a session no longer in history.
-  // Catches recordings whose history entry was deleted out from under
-  // them (or never written through saveCompletedSession). Legacy un-scoped
-  // `Recording_<n>` keys are preserved here on purpose — they belong to
-  // the one pre-scoping interview and the user may still want to recover
-  // it via the Transcribe-answers button.
+  // Drop audio (and any per-session video) belonging to a session no
+  // longer in history. Catches recordings whose history entry was deleted
+  // out from under them or never written through saveCompletedSession.
+  // Legacy un-scoped `Recording_<n>` keys are preserved here on purpose —
+  // they belong to the one pre-scoping interview and the user may still
+  // want to recover it via the Transcribe-answers button.
   try {
     const remaining = (await listEntryKeys()).map(idFromKey).filter(Boolean);
     await pruneRecordingsToActiveSessions(remaining);
+    // Independent video cap: keep videos for the MOST RECENT N sessions
+    // only, even though the metadata cap is higher. Videos are heavy
+    // (50-300 MB each on long Advanced interviews) and would otherwise
+    // blow past browser quotas inside ~5 long sessions.
+    await pruneVideosToCap(remaining, MAX_VIDEO_SESSIONS);
   } catch (e) { /* best-effort */ }
 }

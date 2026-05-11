@@ -125,6 +125,14 @@ Rules:
 ${rules.join('\n')}`;
 }
 
+// True when a transcript slot was marked as a silent/skipped answer in
+// AnswerRecorder. Those slots are excluded from the LLM call entirely
+// (saves tokens, and a "no answer" critique is more honest from a
+// deterministic UI string than from a hallucinated LLM placeholder).
+function isSkippedSlot(t) {
+  return !!(t && typeof t === 'object' && t.skipped);
+}
+
 export async function analyzeInterviewSession({
   qaList,
   transcripts,
@@ -148,8 +156,42 @@ export async function analyzeInterviewSession({
     types.delivery = true;
   }
 
+  // Build a parallel list of just the answered questions and remember
+  // their original indices so we can splice the LLM response back into
+  // a full-length perQuestion array aligned with qaList.
+  const answeredQaList = [];
+  const answeredTranscripts = [];
+  const indexMap = []; // answeredQaList[i] corresponds to qaList[indexMap[i]]
+  for (let i = 0; i < qaList.length; i++) {
+    if (isSkippedSlot(transcripts[i])) continue;
+    answeredQaList.push(qaList[i]);
+    answeredTranscripts.push(transcripts[i]);
+    indexMap.push(i);
+  }
+
+  // All-skipped edge case: nothing to ask the LLM about. Synthesize a
+  // perQuestion array of skipped markers so the UI still renders cleanly.
+  if (answeredQaList.length === 0) {
+    return {
+      perQuestion: qaList.map(() => ({ skipped: true })),
+      session: {
+        strongestArea: '',
+        growthArea: '',
+        patterns: [],
+        verdict: 'No answers were recorded for this interview.'
+      },
+      analysisTypes: types
+    };
+  }
+
   const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-  const prompt = buildPrompt({ qaList, transcripts, difficulty, category, analysisTypes: types });
+  const prompt = buildPrompt({
+    qaList: answeredQaList,
+    transcripts: answeredTranscripts,
+    difficulty,
+    category,
+    analysisTypes: types
+  });
 
   const response = await client.chat.completions.create({
     model: APP_CONFIG.SERVICES.OPENAI.ANALYSIS_MODEL || 'gpt-4o-mini',
@@ -169,9 +211,10 @@ export async function analyzeInterviewSession({
     throw new Error('Could not parse analysis response as JSON');
   }
 
-  // Defensive shape normalization
+  // Defensive shape normalization — pad the answered-only response up to
+  // the answered length, then we'll splice it back across all questions.
   if (!Array.isArray(parsed.perQuestion)) parsed.perQuestion = [];
-  while (parsed.perQuestion.length < qaList.length) {
+  while (parsed.perQuestion.length < answeredQaList.length) {
     parsed.perQuestion.push({
       score: null,
       strengths: [],
@@ -222,6 +265,19 @@ export async function analyzeInterviewSession({
       verdict: ''
     };
   }
+
+  // Splice the answered-only perQuestion array back into a full-length
+  // array aligned with qaList. Skipped slots become {skipped: true} so
+  // the Summary page can render "No spoken answer" without LLM hallucination.
+  const fullPerQuestion = new Array(qaList.length);
+  for (let i = 0; i < qaList.length; i++) {
+    fullPerQuestion[i] = { skipped: true };
+  }
+  for (let j = 0; j < indexMap.length; j++) {
+    fullPerQuestion[indexMap[j]] = parsed.perQuestion[j];
+  }
+  parsed.perQuestion = fullPerQuestion;
+
   parsed.analysisTypes = types;
   return parsed;
 }

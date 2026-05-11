@@ -24,13 +24,14 @@
 
 
 <script>
-import { saveVideoRecording } from '@/store/recordingStore';
+import { saveVideoForSession } from '@/store/recordingStore';
 
 export default {
   name: 'VideoRecorder',
   props: {
     visible: { type: Boolean, default: true },
     interviewing: { type: Boolean, default: true },
+    sessionId: { type: String, default: '' }, // scopes the saved video key
     audioMixStream: { type: MediaStream, default: null }  // mixed TTS+mic stream from InterviewView
   },
   computed: {
@@ -145,7 +146,7 @@ export default {
         this.mediaRecorder.onstop = async () => {
           try {
             const blob = new Blob(this.recordedChunks, { type: options.mimeType });
-            await saveVideoRecording(blob);
+            await saveVideoForSession(this.sessionId, blob);
           } catch (e) {
             console.error('Failed to save video recording:', e);
           } finally {

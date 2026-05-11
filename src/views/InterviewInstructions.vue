@@ -220,16 +220,18 @@ export default {
       return this.progress?.target || APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT;
     },
     canStart() {
-      // Allow starting once the first batch (with openers/format) is done
-      // AND we have enough questions in the pool.
-      const threshold = APP_CONFIG.SERVICES.OPENAI.START_THRESHOLD || 15;
-      if (!this.isGenerating) return this.interviewQA.length > 0;
-      return !!this.progress?.firstBatchDone && this.readyCount >= threshold;
+      // Start is always allowed once submit has fired. Generation
+      // continues in the background; InterviewView opens with an
+      // onboarding overlay that holds the user briefly if Q1 isn't
+      // on disk yet by the time they click Begin. Net effect: the
+      // perceived "Preparing your questions…" wait disappears — the
+      // user moves straight to the orientation card.
+      return true;
     },
     startButtonLabel() {
-      if (!this.isGenerating) return "I'm Ready — Start Interview";
-      if (this.canStart) return 'Start Interview Now';
-      return 'Preparing Your Questions…';
+      // Onboarding overlay in InterviewView handles the wait if Q1
+      // isn't ready yet — no need to gate the label on canStart.
+      return this.isGenerating ? 'Start Interview Now' : "I'm Ready — Start Interview";
     }
   },
   mounted() {

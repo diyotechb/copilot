@@ -132,9 +132,15 @@ export const APP_CONFIG = {
       MAX_Q_COUNT: 45,
       BATCH_SIZE: 10,
       PARALLEL_BATCHES: 3,
-      // Threshold of ready questions before the user can start the interview
-      // (also requires the first batch — which contains the openers/format — to be done)
-      START_THRESHOLD: 15
+      // Threshold of ready questions before the user can start the interview.
+      // The first batch (which contains the openers, format pivot, and intro)
+      // is also required to be done — so this only governs the size of the
+      // safety buffer beyond the openers. Set low: the rest of the questions
+      // generate in the background while the user is doing the opener + intro
+      // questions (which take ~30-60s each), and InterviewView re-reads the
+      // qaList on every advance, so later batches land before the user
+      // catches up. 5 = openers + ~2 main questions buffered.
+      START_THRESHOLD: 5
     },
 
     ASSEMBLY_AI: {

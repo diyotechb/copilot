@@ -16,8 +16,11 @@
     <!-- Main Content -->
     <div v-else>
       <div class="setup-view-header">
-        <!-- Breadcrumb row: "← My Interviews" link, history view only. -->
-        <div v-if="isHistoryView" class="header-breadcrumb">
+        <!-- Breadcrumb row: "← My Interviews". Always shown, regardless
+             of whether this is a live just-finished summary or a saved
+             session opened from history. Gives the user a consistent
+             escape hatch to the dashboard from both entry points. -->
+        <div class="header-breadcrumb">
           <button
               type="button"
               class="back-link-btn"
@@ -60,24 +63,25 @@
             </p>
           </div>
           <div class="header-actions">
-            <template v-if="completed && transcripts.length">
-              <el-button
-                  v-if="recordedVideoUrl && !isHistoryView"
-                  size="small"
-                  icon="el-icon-video-camera"
-                  @click="handleDownloadVideo"
-              >Recording</el-button>
-              <el-button size="small" icon="el-icon-document" @click="downloadScript">Q&amp;A Script</el-button>
-              <el-button size="small" type="primary" plain icon="el-icon-download" @click="downloadReport">Full Report</el-button>
-            </template>
-            <el-button
-                v-if="!isHistoryView"
-                size="small"
-                type="primary"
-                icon="el-icon-refresh-left"
-                @click="$router.push({ name: 'ResumeSetup' })">
-              New Session
-            </el-button>
+            <!-- Download dropdown: lets the user pick exactly what they
+                 want — everything, just the video, just the transcripts,
+                 or just the analysis. Files are named after the
+                 candidate so they're easy to file away. -->
+            <el-dropdown
+                v-if="(localInterviewQA && localInterviewQA.length) || transcripts.length"
+                trigger="click"
+                @command="handleDownloadCommand"
+            >
+              <el-button size="small" type="primary" plain icon="el-icon-download">
+                Download<i class="el-icon-arrow-down el-icon--right"></i>
+              </el-button>
+              <el-dropdown-menu slot="dropdown">
+                <el-dropdown-item command="all" icon="el-icon-folder-opened">Download all</el-dropdown-item>
+                <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl" divided>Video only</el-dropdown-item>
+                <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts only</el-dropdown-item>
+                <el-dropdown-item command="analysis" icon="el-icon-data-analysis">Analysis only</el-dropdown-item>
+              </el-dropdown-menu>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -139,6 +143,25 @@
           </div>
         </div>
 
+        <!-- Partial-analysis recovery: detailed analysis ran but some
+             answered questions came back without scores (LLM truncation
+             or network blip). Clicking the button calls the LLM only
+             for those missing questions and merges the new entries back
+             into the saved analysis, preserving everything already there. -->
+        <div
+            v-if="analysisFeatureEnabled && hasMissingAnalysis && !llmLoading && !transcribeRecovering"
+            class="info-banner action"
+        >
+          <i class="el-icon-warning-outline"></i>
+          <span>
+            Detailed analysis is missing for {{ missingAnalysisIndices.length }} answered question<span v-if="missingAnalysisIndices.length !== 1">s</span>.
+            We'll only analyze the missing one<span v-if="missingAnalysisIndices.length !== 1">s</span> and keep the rest.
+          </span>
+          <el-button size="small" type="primary" @click="completeMissingAnalysis" :disabled="llmLoading || transcribeRecovering">
+            Analyze {{ missingAnalysisIndices.length }} missing question<span v-if="missingAnalysisIndices.length !== 1">s</span>
+          </el-button>
+        </div>
+
         <!-- Processing state — large, prominent, with keep-page-open message.
              Stays additively next to the saved-state banner so the user
              keeps their context while waiting for regenerate. -->
@@ -197,8 +220,16 @@
           </div>
         </div>
 
-        <!-- Overall Performance (basic + full) -->
-        <div v-if="hasAnyTranscript" class="setup-card overall-card">
+        <!-- Overall Performance (basic + full).
+             Hidden while ANY analysis-affecting work is in flight:
+               - transcribeRecovering → transcripts change → all aggregates change
+               - llmLoading → the rating chip is derived from llmAnalysis,
+                 so showing the previous run's score while the new one is
+                 being generated is misleading. The processing banner at
+                 the top tells the user what's happening; we don't need
+                 stale numbers competing with it.
+             Re-appears the moment whichever job finishes. -->
+        <div v-if="hasAnyTranscript && !transcribeRecovering && !llmLoading" class="setup-card overall-card">
           <div class="card-header highlight">
             <i class="el-icon-data-analysis"></i>
             <div class="card-title-cluster">
@@ -220,7 +251,7 @@
           <div class="card-body">
             <p v-if="verdict.description" class="verdict-description">{{ verdict.description }}</p>
             <div class="overall-stats-grid">
-              <div class="overall-stat">
+              <div class="overall-stat" :class="'tone-' + answeredTone">
                 <span class="overall-stat-val">{{ aggregate.answeredCount }} / {{ transcripts.length }}</span>
                 <span class="overall-stat-lab">Questions answered</span>
               </div>
@@ -228,13 +259,13 @@
                 <span class="overall-stat-val">{{ formatDuration(aggregate.totalDurationSec) }}</span>
                 <span class="overall-stat-lab">Total speaking time</span>
               </div>
-              <div class="overall-stat">
+              <div class="overall-stat" :class="'tone-' + paceTileTone">
                 <span class="overall-stat-val">{{ aggregate.averagePaceWpm }} WPM</span>
                 <span class="overall-stat-lab">Avg pace</span>
               </div>
               <div
                   class="overall-stat"
-                  :class="{ 'overall-stat-clickable': hasSpeakingPatterns, 'is-highlighted': highlightedBlock === 'fillers' }"
+                  :class="['tone-' + fillerTileTone, { 'overall-stat-clickable': hasSpeakingPatterns, 'is-highlighted': highlightedBlock === 'fillers' }]"
                   @click="onClickFillers"
               >
                 <span class="overall-stat-val">{{ aggregate.totalFillers }}<span class="overall-stat-sub"> ({{ aggregate.fillerPercent }}%)</span></span>
@@ -247,7 +278,7 @@
               <div
                   v-if="extraWordsTotalUses > 0"
                   class="overall-stat"
-                  :class="{ 'overall-stat-clickable': sessionExtraWords.length, 'is-highlighted': highlightedBlock === 'extras' }"
+                  :class="['tone-' + offReferenceTileTone, { 'overall-stat-clickable': sessionExtraWords.length, 'is-highlighted': highlightedBlock === 'extras' }]"
                   @click="onClickExtras"
               >
                 <span class="overall-stat-val">{{ extraWordsDistinct }}<span class="overall-stat-sub"> ({{ extraWordsTotalUses }} uses)</span></span>
@@ -293,8 +324,12 @@
           </div>
         </div>
 
-        <!-- Your Speaking Patterns (session-level word patterns) -->
-        <div v-if="hasAnyTranscript && hasSpeakingPatterns" class="setup-card" ref="speakingPatternsCard">
+        <!-- Your Speaking Patterns (session-level word patterns).
+             Hidden during both transcribe and LLM regen so the section
+             tray feels consistent: while any processing card is at the
+             top, no stat sections compete with it. Snaps back when
+             both jobs are idle. -->
+        <div v-if="hasAnyTranscript && hasSpeakingPatterns && !transcribeRecovering && !llmLoading" class="setup-card" ref="speakingPatternsCard">
           <div class="card-header">
             <i class="el-icon-data-line"></i>
             <h3>Your Speaking Patterns</h3>
@@ -340,8 +375,11 @@
           </div>
         </div>
 
-        <!-- Video Recording Card -->
-        <div v-if="enableVideo && !isHistoryView" class="setup-card video-card" ref="videoCard">
+        <!-- Video Recording Card. Visible in both live and history views.
+             In history, the video may have been pruned past the 3-session
+             video cap — in that case we surface that explicitly so the
+             user knows it's not missing, just retired. -->
+        <div v-if="enableVideo || isHistoryView" class="setup-card video-card" ref="videoCard">
           <div class="card-header highlight">
             <i class="el-icon-video-camera"></i>
             <h3>Session Recording</h3>
@@ -349,6 +387,10 @@
           <div class="card-body centered-body">
             <div v-if="recordedVideoUrl" class="video-preview-wrapper">
               <video :src="recordedVideoUrl" controls class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @ended="onVideoEnded"></video>
+            </div>
+            <div v-else-if="isHistoryView" class="video-missing-alert">
+              <i class="el-icon-warning-outline"></i>
+              <p>Video for this session was removed to free up space. Only the most recent 3 interviews keep their video; transcripts and audio are still available below.</p>
             </div>
             <div v-else-if="videoTimeout" class="video-missing-alert">
               <i class="el-icon-warning-outline"></i>
@@ -422,35 +464,44 @@
                 <span v-if="hasTranscriptContent(transcriptObj)" class="q-meta-pill">{{ wordCount(transcriptObj) }} words</span>
                 <span v-if="hasTranscriptContent(transcriptObj)" class="q-meta-pill">{{ formatDuration(answerDurationSec(transcriptObj)) }}</span>
                 <span v-if="hasTranscriptContent(transcriptObj)" class="q-meta-pill">{{ fillerCount(transcriptObj) }} fillers</span>
-                <span v-if="!hasTranscriptContent(transcriptObj) && analysisMode !== 'none'" class="q-meta-pill q-meta-warn">No answer</span>
-                <span v-if="showDetailedAnalysis && perQuestionLLM(idx) && perQuestionLLM(idx).score !== null" class="score-pill" title="Delivery score (out of 10)">
+                <span v-if="!hasTranscriptContent(transcriptObj) && analysisMode !== 'none'" class="q-meta-pill" :class="transcriptState(transcriptObj) === 'pending' ? 'q-meta-info' : 'q-meta-warn'">{{ transcriptStateLabel(transcriptObj) }}</span>
+                <!-- Score only makes sense next to a real transcript.
+                     If the LLM ran on a slot where the candidate didn't
+                     actually speak, it returns score=1 with "no answer
+                     recorded" weakness — but rendering that 1/10 next
+                     to a "No spoken answer" pill reads as a real grade
+                     of the question. Gate on transcript content so the
+                     pill never appears on no-answer cards. -->
+                <span v-if="showDetailedAnalysis && hasTranscriptContent(transcriptObj) && perQuestionLLM(idx) && typeof perQuestionLLM(idx).score === 'number'" class="score-pill" title="Delivery score (out of 10)">
                   {{ perQuestionLLM(idx).score }} / 10
                 </span>
               </div>
             </div>
             <div class="header-audio-controls" @click.stop>
+              <!-- Both playback buttons only render when there's actually
+                   audio for THIS question. Skipped / "no spoken answer"
+                   slots have no audio to play and no scoring data — the
+                   buttons would be permanently disabled and just add noise. -->
               <el-button
-                  v-if="!isHistoryView"
+                  v-if="recordedVideoUrl && hasAudioRecorded(idx)"
                   size="mini"
                   :type="isPlayingVideoFor(idx) ? 'danger' : 'primary'"
                   :icon="isPlayingVideoFor(idx) ? 'el-icon-video-pause' : 'el-icon-video-play'"
                   @click="toggleVideoSegment(idx)"
-                  :disabled="!recordedVideoUrl || questionTimestamps[idx] === undefined"
+                  :disabled="questionTimestamps[idx] === undefined"
               >
                 {{ isPlayingVideoFor(idx) ? 'Stop' : 'Play in Video' }}
               </el-button>
               <el-button
-                  v-if="!isHistoryView"
+                  v-if="hasAudioRecorded(idx)"
                   size="mini"
                   class="play-answer-btn"
                   :class="{ 'is-playing': isPlayingAnswerFor(idx) }"
                   :type="isPlayingAnswerFor(idx) ? 'danger' : 'default'"
                   :icon="isPlayingAnswerFor(idx) ? 'el-icon-video-pause' : 'el-icon-video-play'"
                   @click="toggleYourAnswer(idx)"
-                  :disabled="!hasAudioRecorded(idx)"
-                  :title="hasAudioRecorded(idx) ? 'Listen to your spoken answer' : 'No audio recorded for this question'"
+                  title="Listen to your spoken answer"
               >
-                <span v-if="isPlayingAnswerFor(idx)" class="playing-dot" aria-hidden="true"></span>
                 {{ isPlayingAnswerFor(idx) ? 'Stop' : 'Play Your Answer' }}
               </el-button>
             </div>
@@ -465,7 +516,7 @@
             <div v-if="analysisMode !== 'none'" class="summary-data-item">
               <label>Your Transcript</label>
               <div v-if="hasTranscriptContent(transcriptObj)" class="transcript-surface" v-html="safeHighlight(transcriptObj)"></div>
-              <p v-else class="data-text muted">No spoken answer was recorded for this question.</p>
+              <p v-else class="data-text muted">{{ transcriptStateMessage(transcriptObj) }}</p>
             </div>
 
             <!-- Stats + bullets -->
@@ -854,7 +905,7 @@ import {
   sessionExtraWordsNotInReference
 } from '@/utils/basicAnalysis';
 import { getSetting } from '@/store/settingStore';
-import { getVideoRecording, getRecordingForSession } from '@/store/recordingStore.js';
+import { getVideoForSession, getRecordingForSession } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
 import { saveCompletedSession, updateHistoryEntry, getSessionById } from '@/store/interviewHistoryStore';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
@@ -1117,6 +1168,8 @@ export default {
     },
     // True when at least one answer is still pending or had a transcription
     // error. The recovery banner uses this to offer Transcribe-now.
+    // Skipped slots are NOT unresolved — they're a deliberate "no audio"
+    // marker, not something to retry.
     hasUnresolvedTranscripts() {
       if (!Array.isArray(this.transcripts) || !this.transcripts.length) return false;
       return this.transcripts.some(t => {
@@ -1124,6 +1177,82 @@ export default {
         if (t && typeof t === 'object' && t.pending) return true;
         return false;
       });
+    },
+    // Indices of slots that were ANSWERED (not skipped) but where the
+    // LLM analysis is either missing or marked unavailable. Detected
+    // post-hoc by reading the defensive fallback shape produced by
+    // analyzeInterviewSession when the model returned fewer entries
+    // than expected. Drives the "Complete missing analysis" banner.
+    missingAnalysisIndices() {
+      if (!this.llmAnalysis || !Array.isArray(this.llmAnalysis.perQuestion)) return [];
+      const out = [];
+      for (let i = 0; i < this.localInterviewQA.length; i++) {
+        const t = this.transcripts[i];
+        // Skipped slots are intentionally not analyzed — don't flag them.
+        if (t && typeof t === 'object' && t.skipped) continue;
+        // Need to be answered (real text or transcript object) to count
+        // as eligible for analysis. Unanswered slots can't be analyzed.
+        const isAnswered = wordCount(t) > 0;
+        if (!isAnswered) continue;
+        const slot = this.llmAnalysis.perQuestion[i];
+        const slotMissing = !slot
+          || slot.skipped
+          || slot.score === null
+          || (Array.isArray(slot.weaknesses)
+              && slot.weaknesses.length === 1
+              && slot.weaknesses[0] === 'Analysis unavailable for this question.');
+        if (slotMissing) out.push(i);
+      }
+      return out;
+    },
+    hasMissingAnalysis() {
+      return this.missingAnalysisIndices.length > 0;
+    },
+    // ─── Tile tones ─────────────────────────────────────────────────
+    // Each tile in the Overall Performance grid gets a tone (good / ok /
+    // bad / neutral) so the user can scan the numbers without reading
+    // the values. Thresholds mirror what overallVerdict() already uses
+    // so the tile colors and the verdict text stay in sync.
+
+    // % of questions actually answered. With heavy skipped/no-answer
+    // counts the rest of the aggregates are less meaningful, so we
+    // colour this prominently.
+    answeredTone() {
+      const total = this.transcripts.length;
+      if (!total) return 'neutral';
+      const pct = (this.aggregate.answeredCount / total) * 100;
+      if (pct >= 80) return 'good';
+      if (pct >= 50) return 'ok';
+      return 'bad';
+    },
+    // Pace: 110-180 WPM is the natural conversational band used by
+    // overallVerdict. Drift far outside and the answer reads as rushed
+    // or laboured.
+    paceTileTone() {
+      const wpm = this.aggregate.averagePaceWpm;
+      if (!wpm) return 'neutral';
+      if (wpm >= 110 && wpm <= 180) return 'good';
+      if ((wpm >= 90 && wpm < 110) || (wpm > 180 && wpm <= 200)) return 'ok';
+      return 'bad';
+    },
+    // Filler percentage. <5% reads as polished, <15% is acceptable,
+    // anything above is a real delivery issue.
+    fillerTileTone() {
+      const pct = this.aggregate.fillerPercent;
+      if (!this.aggregate.totalWords) return 'neutral';
+      if (pct < 5) return 'good';
+      if (pct < 15) return 'ok';
+      return 'bad';
+    },
+    // Off-reference words count is informational — moderate counts often
+    // mean fresh insight, very high counts mean off-topic. No "good"
+    // because more isn't better.
+    offReferenceTileTone() {
+      const total = this.extraWordsTotalUses;
+      if (!total) return 'neutral';
+      if (total <= 10) return 'neutral';
+      if (total <= 25) return 'ok';
+      return 'bad';
     },
     detailedCtaMessage() {
       return 'Get detailed feedback on how you answered — grammar, tone, fillers, structure, plus correctness vs. the reference. Generated once, then saved.';
@@ -1242,7 +1371,59 @@ export default {
       const t = this.transcripts[idx];
       if (t === undefined || t === null) return false;
       if (typeof t === 'string') return t.length > 0; // includes '[Transcription error]'
-      return true; // object form (pending marker or real transcript)
+      // Skipped slots are explicit markers that nothing was captured.
+      if (t.skipped) return false;
+      // Pending slots have a confirmed audio blob waiting to be sent off
+      // — keep playback enabled so the user can review what they said
+      // before transcription runs.
+      if (t.pending) return true;
+      // Otherwise it's a finished transcript. Only treat as "has audio"
+      // when there's real spoken content; AssemblyAI's "no spoken audio"
+      // path writes an object with empty text/words and the blob behind
+      // it is just silence or noise — playback gives the user nothing.
+      const hasWords = Array.isArray(t.words) && t.words.length > 0;
+      return !!(t.text && t.text.trim()) || hasWords;
+    },
+    // Reduces the rich transcript shape to one of a handful of states so
+    // the UI can render an accurate label + hint per question card. The
+    // template uses this for both the meta pill and the empty-body line.
+    transcriptState(t) {
+      if (t === undefined || t === null) return 'missing';
+      if (typeof t === 'string') {
+        return t === '[Transcription error]' ? 'error' : 'missing';
+      }
+      if (t.skipped) return 'skipped';
+      if (t.pending) return 'pending';
+      if (t.text || (Array.isArray(t.words) && t.words.length)) return 'transcribed';
+      // Transcription ran but AssemblyAI returned no speech — common when
+      // the recorder captured background noise / breathing but no words.
+      return 'empty';
+    },
+    transcriptStateLabel(t) {
+      switch (this.transcriptState(t)) {
+        case 'pending': return 'Awaiting transcription';
+        case 'error': return 'Transcription failed';
+        case 'skipped': return 'No spoken answer';
+        case 'empty': return 'No spoken answer';
+        default: return 'No answer';
+      }
+    },
+    // Body line shown in place of the transcript when there's no real
+    // text yet. For pending and error states it explicitly directs the
+    // user to the Transcribe button at the top of the page — the most
+    // common confusion was "audio plays but card says no answer".
+    transcriptStateMessage(t) {
+      switch (this.transcriptState(t)) {
+        case 'pending':
+          return 'Audio was recorded for this question. Click "Transcribe answers" at the top of the page to convert it to text.';
+        case 'error':
+          return 'Transcription failed for this question. Click "Transcribe answers" at the top to retry.';
+        case 'empty':
+          return 'No spoken answer was detected in the recording.';
+        case 'skipped':
+        default:
+          return 'No spoken answer was recorded for this question.';
+      }
     },
     isExpanded(idx) {
       return !!this.expandedSet[idx];
@@ -1325,7 +1506,10 @@ export default {
       this.interviewDate = (meta && (meta.endedAt || meta.startedAt)) || '';
       this.activeSessionId = (meta && meta.sessionId) || '';
 
-      this.pollForVideoBlob();
+      // Live flow: VideoRecorder writes the blob async in onstop, so we
+      // poll briefly. Without a sessionId we skip polling (there's no
+      // scoped key to look for).
+      this.loadVideoForActiveSession({ poll: !!this.activeSessionId });
       this.checkTranscriptionStatus();
     },
 
@@ -1354,23 +1538,69 @@ export default {
       this.interviewDate = entry.savedAt || '';
       this.llmAnalysis = entry.llmAnalysis || null;
       this.activeAnalysisTypes = (this.llmAnalysis && this.llmAnalysis.analysisTypes) || null;
-      this.enableVideo = false; // we don't snapshot the video into history
       this.selectedVoice = (await getSetting('selectedVoice')) || '';
+
+      // Retroactive: legacy/broken interviews left undefined slots within
+      // qaList range when AnswerRecorder bailed on a 0-size blob. Backfill
+      // them as {skipped: true} so the cards render "No spoken answer"
+      // instead of empty gaps, and persist the patch on the history entry.
+      const patched = this.backfillSkippedSlots(this.transcripts, this.localInterviewQA.length);
+      if (patched.changed) {
+        this.transcripts = patched.transcripts;
+        try {
+          await updateHistoryEntry(this.historyEntryId, { transcripts: this.transcripts });
+        } catch (e) { /* best-effort */ }
+      }
+
+      // Load this session's video (may be absent if pruned past the
+      // 3-session video cap, in which case enableVideo stays false and
+      // the UI shows "Video purged" instead of the player).
+      await this.loadVideoForActiveSession({ poll: false });
       this.loadingTranscripts = false;
     },
 
-    async pollForVideoBlob(retries = 20, interval = 1000) {
-      if (this.isHistoryView) return;
-      for (let i = 0; i < retries; i++) {
-        const videoBlob = await getVideoRecording();
+    // Pure helper: fill `undefined` / `null` slots within the qaList range
+    // with a `{skipped: true}` marker. Returns a new array if anything
+    // changed plus a flag so callers know whether to persist.
+    backfillSkippedSlots(transcripts, totalQuestions) {
+      const src = Array.isArray(transcripts) ? transcripts : [];
+      const out = src.slice();
+      let changed = false;
+      for (let i = 0; i < totalQuestions; i++) {
+        if (out[i] === undefined || out[i] === null) {
+          out[i] = { text: '', words: [], sentiment_analysis_results: [], skipped: true };
+          changed = true;
+        }
+      }
+      return { transcripts: out, changed };
+    },
+
+    // Load the video for the currently-displayed session. Works for both
+    // the live summary (where the blob may still be writing — poll up to
+    // 20s) and the history view (where it's either there or it isn't —
+    // it might have been pruned past the video retention cap).
+    async loadVideoForActiveSession({ poll = false, retries = 20, interval = 1000 } = {}) {
+      if (!this.activeSessionId) {
+        this.recordedVideoUrl = '';
+        this.videoTimeout = !poll ? false : true;
+        return;
+      }
+      const attempts = poll ? retries : 1;
+      for (let i = 0; i < attempts; i++) {
+        const videoBlob = await getVideoForSession(this.activeSessionId);
         if (videoBlob) {
           this.recordedVideoUrl = URL.createObjectURL(videoBlob);
+          this.enableVideo = true;
           return;
         }
-        await new Promise(resolve => setTimeout(resolve, interval));
+        if (poll && i < attempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, interval));
+        }
       }
       this.recordedVideoUrl = '';
-      this.videoTimeout = true;
+      // Only flag a "timeout" in live mode — in history a missing video
+      // just means it was pruned, which we render differently.
+      this.videoTimeout = !!poll;
     },
     async checkTranscriptionStatus() {
       // No more auto-polling. Transcription is purely manual now —
@@ -1544,6 +1774,94 @@ export default {
     notify(message, type) {
       if (this.$message) {
         this.$message({ message, type, duration: type === 'error' ? 5000 : 2500 });
+      }
+    },
+
+    // Refill missing per-question analysis by calling the LLM ONLY for
+    // the questions that lack analysis, then MERGING those new entries
+    // back into the existing llmAnalysis.perQuestion. Two properties
+    // this gives us that a full re-run did not:
+    //   1) Already-good entries are preserved verbatim, so the count of
+    //      missing slots only ever decreases — a non-deterministic LLM
+    //      response cannot remove data the user already had.
+    //   2) Cost is roughly proportional to the gap, not the whole session
+    //      (sending 2 questions ≈ 1/15th of sending 30).
+    // The session-level summary (strongestArea, patterns, etc.) is left
+    // alone for the same reason: it was generated from the full session
+    // originally, and re-deriving it from a 1-question slice would be
+    // worse than keeping the original.
+    async completeMissingAnalysis() {
+      if (this.llmLoading || this.transcribeRecovering) return;
+      const missingIndices = [...this.missingAnalysisIndices];
+      if (!missingIndices.length) return;
+
+      const types = this.activeAnalysisTypes
+        || (this.llmAnalysis && this.llmAnalysis.analysisTypes)
+        || { delivery: true, content: true, improvements: true };
+
+      this.llmLoading = true;
+      this.llmError = '';
+      this.startLLMTimer();
+      this.notify(`Analyzing ${missingIndices.length} missing question${missingIndices.length === 1 ? '' : 's'}…`, 'info');
+
+      try {
+        const partialQaList = missingIndices.map(i => this.localInterviewQA[i]);
+        const partialTranscripts = missingIndices.map(i => this.transcripts[i]);
+
+        const partialResult = await analyzeInterviewSession({
+          qaList: partialQaList,
+          transcripts: partialTranscripts,
+          difficulty: this.difficulty,
+          category: this.category,
+          analysisTypes: types
+        });
+
+        const existing = this.llmAnalysis || {};
+        const mergedPerQuestion = Array.isArray(existing.perQuestion)
+          ? existing.perQuestion.slice()
+          : new Array(this.localInterviewQA.length).fill(null);
+
+        // Only overwrite the missing slots, and only if the new entry is
+        // an actual analysis (not another "unavailable" stub). This is
+        // the property that makes the count monotonically decrease.
+        let filled = 0;
+        (partialResult.perQuestion || []).forEach((slot, j) => {
+          const origIdx = missingIndices[j];
+          if (!slot || slot.skipped) return;
+          const stillUnavailable = Array.isArray(slot.weaknesses)
+            && slot.weaknesses.length === 1
+            && slot.weaknesses[0] === 'Analysis unavailable for this question.';
+          if (slot.score === null || stillUnavailable) return;
+          mergedPerQuestion[origIdx] = slot;
+          filled++;
+        });
+
+        this.llmAnalysis = {
+          ...existing,
+          perQuestion: mergedPerQuestion,
+          analysisTypes: existing.analysisTypes || types
+        };
+        this.activeAnalysisTypes = this.llmAnalysis.analysisTypes;
+
+        if (this.historyEntryId) {
+          updateHistoryEntry(this.historyEntryId, { llmAnalysis: this.llmAnalysis }).catch(() => {});
+        }
+
+        const remaining = missingIndices.length - filled;
+        if (filled === 0) {
+          this.notify('Could not analyze those questions this time. Try again in a moment.', 'warning');
+        } else if (remaining > 0) {
+          this.notify(`Filled ${filled} — ${remaining} still missing. Try again to retry the rest.`, 'warning');
+        } else {
+          this.notify('All missing analysis filled in.', 'success');
+        }
+      } catch (e) {
+        console.error('completeMissingAnalysis failed:', e);
+        this.llmError = e.message || 'Unknown error';
+        this.notify(`Could not complete missing analysis. ${this.llmError}`, 'error');
+      } finally {
+        this.llmLoading = false;
+        this.stopLLMTimer();
       }
     },
 
@@ -1804,101 +2122,170 @@ export default {
     onVideoEnded() { if (this.playback.kind === 'video') this.stopAllPlayback(); },
 
     // ─── Downloads ───
+    // Returns a filesystem-safe base name derived from the candidate
+    // name (with whitespace collapsed to hyphens). Falls back to a
+    // generic "interview" when no candidate name is set.
+    fileBaseName() {
+      const raw = (this.candidateName || 'interview').trim();
+      const cleaned = raw
+        .replace(/\s+/g, '-')
+        .replace(/[^\w-]+/g, '');
+      return cleaned || 'interview';
+    },
+    handleDownloadCommand(cmd) {
+      switch (cmd) {
+        case 'all': this.downloadAll(); break;
+        case 'video': this.handleDownloadVideo(); break;
+        case 'transcripts': this.downloadTranscripts(); break;
+        case 'analysis': this.downloadAnalysis(); break;
+      }
+    },
+    // Triggers every available download in one user gesture: video (if
+    // a session-scoped blob is on disk), transcripts, and analysis.
+    // Browsers allow the consecutive downloads because they share the
+    // original click.
+    downloadAll() {
+      if (this.recordedVideoUrl) this.handleDownloadVideo();
+      this.downloadTranscripts();
+      this.downloadAnalysis();
+    },
     handleDownloadVideo() {
       if (!this.recordedVideoUrl) return;
       const link = document.createElement('a');
       link.href = this.recordedVideoUrl;
-      link.download = 'interview-recording.webm';
+      link.download = `${this.fileBaseName()}-recording.webm`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     },
-    downloadScript() {
+    // Transcripts: the question + what the candidate actually said
+    // (verbatim). No scores, no stats — purely "what was the
+    // conversation". Skipped / pending / error states are marked
+    // explicitly so the file is self-documenting.
+    downloadTranscripts() {
       if (!this.localInterviewQA || !this.localInterviewQA.length) return;
-      let text = 'INTERVIEW SCRIPT\n';
-      text += '='.repeat(60) + '\n\n';
-      this.localInterviewQA.forEach((qa, idx) => {
-        text += `Question ${idx + 1}\n`;
-        text += '-'.repeat(40) + '\n';
-        text += `Q: ${qa.question || ''}\n\n`;
-        text += `A: ${qa.answer || ''}\n\n`;
-      });
-      this._downloadTextFile(text, 'interview-script.txt');
-    },
-    downloadReport() {
-      const lines = [];
       const sep = '='.repeat(60);
       const dash = '-'.repeat(40);
-      lines.push('INTERVIEW PERFORMANCE REPORT');
+      const lines = [];
+      lines.push('INTERVIEW TRANSCRIPTS');
       lines.push(sep);
+      lines.push(`Candidate: ${this.candidateName || '—'}`);
+      lines.push(`Date: ${this.interviewDateLabel || '—'}`);
       lines.push(`Difficulty: ${this.difficulty || '—'}`);
       lines.push(`Category: ${this.category || 'All'}`);
-      lines.push(`Analysis mode: ${this.analysisMode}`);
-      lines.push(`Completed: ${this.completed ? 'yes' : 'no'}`);
+      lines.push(`Answered: ${this.aggregate.answeredCount} / ${this.localInterviewQA.length}`);
       lines.push('');
-      if (this.aggregate.answeredCount > 0) {
-        lines.push('OVERALL');
-        lines.push(dash);
-        lines.push(`Questions answered: ${this.aggregate.answeredCount} / ${this.transcripts.length}`);
-        lines.push(`Total speaking time: ${formatDuration(this.aggregate.totalDurationSec)}`);
-        lines.push(`Avg pace: ${this.aggregate.averagePaceWpm} WPM`);
-        lines.push(`Filler words: ${this.aggregate.totalFillers} (${this.aggregate.fillerPercent}%)`);
-        lines.push(`Words spoken: ${this.aggregate.totalWords}`);
-        lines.push(`Verdict: ${this.verdict.label}`);
-        lines.push('');
-      }
-      if (this.analysisMode === 'full' && this.llmAnalysis && this.llmAnalysis.session) {
-        const s = this.llmAnalysis.session;
-        lines.push('SESSION INSIGHTS');
-        lines.push(dash);
-        lines.push(`Strongest area: ${s.strongestArea || '—'}`);
-        lines.push(`Growth area: ${s.growthArea || '—'}`);
-        if (Array.isArray(s.patterns) && s.patterns.length) {
-          lines.push('Patterns:');
-          for (const p of s.patterns) lines.push(`  - ${p}`);
-        }
-        lines.push(`Verdict: ${s.verdict || '—'}`);
-        lines.push('');
-      }
+
       this.localInterviewQA.forEach((qa, idx) => {
         lines.push(`QUESTION ${idx + 1}`);
         lines.push(dash);
         lines.push(`Q: ${qa.question || ''}`);
-        lines.push('');
         const t = this.transcripts[idx];
-        const candidate = (typeof t === 'string') ? t : (t && t.text) || '';
-        if (this.analysisMode !== 'none') {
-          lines.push(`Your answer: ${candidate || '[no spoken answer]'}`);
+        let answer;
+        if (t == null) {
+          answer = '[no spoken answer]';
+        } else if (typeof t === 'string') {
+          answer = t === '[Transcription error]' ? '[transcription failed]' : t;
+        } else if (t.skipped) {
+          answer = '[no spoken answer]';
+        } else if (t.pending) {
+          answer = '[pending — not yet transcribed]';
+        } else {
+          answer = (t.text || '').trim() || '[no spoken answer detected]';
+        }
+        lines.push(`Your answer: ${answer}`);
+        if (qa.answer) {
           lines.push('');
-          if (candidate) {
-            lines.push(`Words: ${wordCount(t)} | Pace: ${paceWpm(t)} WPM | Duration: ${formatDuration(answerDurationSec(t))} | Fillers: ${fillerCount(t)} (${fillerPercent(t)}%)`);
-          }
+          lines.push(`Reference answer: ${qa.answer}`);
         }
-        const llm = this.analysisMode === 'full' ? this.perQuestionLLM(idx) : null;
-        if (llm) {
-          lines.push(`Delivery score: ${llm.score}/10`);
-          const dn = llm.deliveryNotes || {};
-          if (dn.grammar) lines.push(`  Grammar: ${dn.grammar}`);
-          if (dn.tone) lines.push(`  Tone: ${dn.tone}`);
-          if (dn.fillers) lines.push(`  Fillers: ${dn.fillers}`);
-          if (dn.pace) lines.push(`  Pace: ${dn.pace}`);
-          if (dn.clarity) lines.push(`  Clarity: ${dn.clarity}`);
-          if (llm.strengths?.length) {
-            lines.push('Delivery strengths:');
-            for (const b of llm.strengths) lines.push(`  + ${b}`);
-          }
-          if (llm.weaknesses?.length) {
-            lines.push('Delivery weaknesses:');
-            for (const b of llm.weaknesses) lines.push(`  - ${b}`);
-          }
-          if (llm.tryNext) lines.push(`Try next: ${llm.tryNext}`);
-        }
-        lines.push('');
-        lines.push(`Reference answer: ${qa.answer || ''}`);
         lines.push('');
         lines.push('');
       });
-      this._downloadTextFile(lines.join('\n'), 'interview-report.txt');
+
+      this._downloadTextFile(lines.join('\n'), `${this.fileBaseName()}-transcripts.txt`);
+    },
+    // Analysis: aggregate stats, verdict, and per-question LLM scoring
+    // (when available). NO transcripts here — readers who want both
+    // should download all, or use the transcripts-only file.
+    downloadAnalysis() {
+      const sep = '='.repeat(60);
+      const dash = '-'.repeat(40);
+      const lines = [];
+      lines.push('INTERVIEW ANALYSIS');
+      lines.push(sep);
+      lines.push(`Candidate: ${this.candidateName || '—'}`);
+      lines.push(`Date: ${this.interviewDateLabel || '—'}`);
+      lines.push(`Difficulty: ${this.difficulty || '—'}`);
+      lines.push(`Category: ${this.category || 'All'}`);
+      lines.push(`Completed: ${this.completed ? 'yes' : 'no (stopped early)'}`);
+      lines.push('');
+
+      if (this.aggregate.answeredCount > 0) {
+        lines.push('OVERALL');
+        lines.push(dash);
+        lines.push(`Questions answered: ${this.aggregate.answeredCount} / ${this.localInterviewQA.length || this.transcripts.length}`);
+        lines.push(`Total speaking time: ${formatDuration(this.aggregate.totalDurationSec)}`);
+        lines.push(`Avg pace: ${this.aggregate.averagePaceWpm} WPM`);
+        lines.push(`Filler words: ${this.aggregate.totalFillers} (${this.aggregate.fillerPercent}%)`);
+        lines.push(`Words spoken: ${this.aggregate.totalWords}`);
+        lines.push(`Verdict: ${this.verdict.label}${this.verdict.description ? ' — ' + this.verdict.description : ''}`);
+        lines.push('');
+      } else {
+        lines.push('No spoken answers were recorded — no aggregate stats available.');
+        lines.push('');
+      }
+
+      if (this.llmAnalysis && this.llmAnalysis.session) {
+        const s = this.llmAnalysis.session;
+        lines.push('SESSION INSIGHTS');
+        lines.push(dash);
+        if (s.strongestArea) lines.push(`Strongest area: ${s.strongestArea}`);
+        if (s.growthArea) lines.push(`Growth area: ${s.growthArea}`);
+        if (Array.isArray(s.patterns) && s.patterns.length) {
+          lines.push('Patterns:');
+          for (const p of s.patterns) lines.push(`  - ${p}`);
+        }
+        if (s.verdict) lines.push(`Verdict: ${s.verdict}`);
+        lines.push('');
+      }
+
+      if (this.llmAnalysis && Array.isArray(this.llmAnalysis.perQuestion)) {
+        lines.push('PER-QUESTION SCORES');
+        lines.push(sep);
+        this.llmAnalysis.perQuestion.forEach((q, idx) => {
+          const qText = (this.localInterviewQA[idx] && this.localInterviewQA[idx].question) || '';
+          lines.push(`Q${idx + 1}: ${qText}`);
+          if (!q || q.skipped) {
+            lines.push('  (skipped — no spoken answer)');
+          } else {
+            if (q.score !== null && q.score !== undefined) lines.push(`  Score: ${q.score} / 10`);
+            const dn = q.deliveryNotes || {};
+            if (dn.grammar) lines.push(`  Grammar: ${dn.grammar}`);
+            if (dn.tone) lines.push(`  Tone: ${dn.tone}`);
+            if (dn.fillers) lines.push(`  Fillers: ${dn.fillers}`);
+            if (dn.pace) lines.push(`  Pace: ${dn.pace}`);
+            if (dn.clarity) lines.push(`  Clarity: ${dn.clarity}`);
+            if (Array.isArray(q.strengths) && q.strengths.length) {
+              lines.push('  Strengths:');
+              for (const b of q.strengths) lines.push(`    + ${b}`);
+            }
+            if (Array.isArray(q.weaknesses) && q.weaknesses.length) {
+              lines.push('  Weaknesses:');
+              for (const b of q.weaknesses) lines.push(`    - ${b}`);
+            }
+            if (q.tryNext) lines.push(`  Try next: ${q.tryNext}`);
+            if (Array.isArray(q.improvements) && q.improvements.length) {
+              lines.push('  Improvements:');
+              for (const b of q.improvements) lines.push(`    > ${b}`);
+            }
+          }
+          lines.push('');
+        });
+      } else {
+        lines.push('Detailed analysis has not been generated for this session yet.');
+      }
+
+      this._downloadTextFile(lines.join('\n'), `${this.fileBaseName()}-analysis.txt`);
     },
     _downloadTextFile(content, filename) {
       const blob = new Blob([content], { type: 'text/plain' });
@@ -2567,6 +2954,31 @@ export default {
 .overall-stat-val.tone-bad  { color: #b91c1c; }
 .overall-stat-val.tone-neutral { color: #475569; }
 
+/* Tile-level tone — tints the whole tile so the user can scan the
+   grid without reading every number. The value text inherits the
+   tone colour for extra emphasis. */
+.overall-stat.tone-good {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+.overall-stat.tone-good .overall-stat-val { color: #15803d; }
+
+.overall-stat.tone-ok {
+  background: #fefce8;
+  border-color: #fde68a;
+}
+.overall-stat.tone-ok .overall-stat-val { color: #a16207; }
+
+.overall-stat.tone-bad {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.overall-stat.tone-bad .overall-stat-val { color: #b91c1c; }
+
+.overall-stat.tone-neutral {
+  /* Falls back to the default tile look — no override. */
+}
+
 .overall-stat-score {
   background: #f5f3ff;
   border-color: #ddd6fe;
@@ -3206,6 +3618,10 @@ export default {
 .q-meta-pill.q-meta-warn {
   background: #fef9c3;
   color: #a16207;
+}
+.q-meta-pill.q-meta-info {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .setup-status-view {
