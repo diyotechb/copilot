@@ -3,10 +3,30 @@
     <div class="my-interviews-header">
       <h2>My Interviews</h2>
       <div class="dash-actions">
-        <el-button type="primary" class="primary-hero-btn" @click="startNew">
+        <el-button
+            type="primary"
+            class="primary-hero-btn"
+            :disabled="atCap"
+            @click="startNew">
           Start New Interview <i class="el-icon-right"></i>
         </el-button>
       </div>
+    </div>
+
+    <!-- Retention warning: at cap (5 sessions saved). Starting another
+         would delete the oldest, so we surface that explicitly and link
+         straight to the oldest session so the user can download what
+         they want first. -->
+    <div v-if="atCap && oldestSession" class="retention-banner">
+      <i class="el-icon-warning-outline"></i>
+      <div class="retention-text">
+        You have <strong>{{ MAX_VISIBLE }} saved interviews</strong>, which is the maximum kept on this device.
+        Starting another interview will permanently delete the oldest one
+        — <strong>{{ oldestLabel }}</strong> — including its audio, video, transcripts, and analysis.
+      </div>
+      <el-button size="small" type="warning" @click="open(oldestSession.id)">
+        Open &amp; download first
+      </el-button>
     </div>
 
     <div v-if="loading" class="status-row">
@@ -31,6 +51,7 @@
 
       <div class="storage-info">
         <i class="el-icon-info"></i> Only the {{ MAX_VISIBLE }} most recent completed interviews are saved locally on this device.
+        Video is kept for the {{ MAX_VIDEO_SESSIONS }} most recent only — older sessions retain audio, transcripts, and analysis.
       </div>
 
       <div class="interview-cards">
@@ -49,7 +70,19 @@
             </div>
             <div class="card-meta">
               <span class="card-date">{{ formatDate(s.savedAt) }}</span>
-              <i class="el-icon-delete delete-btn" @click.stop="remove(s.id)" title="Delete"></i>
+              <span
+                  v-if="hasVideo(s.id)"
+                  class="video-availability has-video"
+                  title="Video recording available">
+                <i class="el-icon-video-camera"></i>
+              </span>
+              <button
+                  type="button"
+                  class="delete-btn"
+                  @click.stop="remove(s.id)"
+                  title="Delete this interview">
+                <i class="el-icon-delete"></i>
+              </button>
             </div>
           </div>
           <div class="card-body">
@@ -59,8 +92,13 @@
               <span v-if="s.category && s.category !== 'All'">{{ s.category }}</span>
               <span class="meta-sep">·</span>
               <span class="card-state" :class="'state-' + sessionState(s).tone">{{ sessionState(s).label }}</span>
-              <span v-if="verdictLabel(s)" class="meta-sep">·</span>
-              <span v-if="verdictLabel(s)" class="card-verdict" :class="'verdict-' + verdictTone(s)">{{ verdictLabel(s) }}</span>
+              <!-- Verdict is a delivery-only judgment (pace + filler %).
+                   When we already have a detailed LLM score on the card,
+                   that score subsumes the verdict and adding "STRONG"
+                   next to a low score reads as contradictory. Show the
+                   verdict only when there's no LLM score yet. -->
+              <span v-if="verdictLabel(s) && averageScore(s) === null" class="meta-sep">·</span>
+              <span v-if="verdictLabel(s) && averageScore(s) === null" class="card-verdict" :class="'verdict-' + verdictTone(s)">{{ verdictLabel(s) }}</span>
               <span class="meta-sep">·</span>
               <span class="card-count">{{ answeredCount(s) }} / {{ (s.qaList || []).length }} answered</span>
               <template v-if="totalDuration(s)">
@@ -86,7 +124,8 @@
 </template>
 
 <script>
-import { listRecentSessions, deleteSession } from '@/store/interviewHistoryStore';
+import { listRecentSessions, deleteSession, MAX_ENTRIES } from '@/store/interviewHistoryStore';
+import { listSessionsWithVideo, MAX_VIDEO_SESSIONS } from '@/store/recordingStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { wordCount, aggregateStats, overallVerdict, formatDuration } from '@/utils/summaryStats';
 
@@ -95,13 +134,31 @@ export default {
   components: { ConfirmDialog },
   data() {
     return {
-      MAX_VISIBLE: 5,
+      MAX_VISIBLE: MAX_ENTRIES,
+      MAX_VIDEO_SESSIONS,
       sessions: [],
+      videoSessionIds: [], // session ids that currently have a video blob on disk
       loading: true,
       pendingDeleteId: '',
       confirmVisible: false,
       confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Delete', icon: 'el-icon-delete' }
     };
+  },
+  computed: {
+    atCap() {
+      return this.sessions.length >= this.MAX_VISIBLE;
+    },
+    oldestSession() {
+      if (!this.sessions.length) return null;
+      // listRecentSessions returns newest-first; the oldest is at the end.
+      return this.sessions[this.sessions.length - 1];
+    },
+    oldestLabel() {
+      const s = this.oldestSession;
+      if (!s) return '';
+      const name = s.candidateName ? `${s.candidateName} — ` : '';
+      return `${name}${this.formatDate(s.savedAt)}`;
+    }
   },
   async mounted() {
     await this.refresh();
@@ -110,13 +167,32 @@ export default {
     async refresh() {
       this.loading = true;
       try {
-        this.sessions = await listRecentSessions(this.MAX_VISIBLE);
+        const [recent, withVideo] = await Promise.all([
+          listRecentSessions(this.MAX_VISIBLE),
+          listSessionsWithVideo()
+        ]);
+        // Hide entries with nothing to show. An abandoned interview
+        // that was never answered (user opened InterviewView and
+        // closed the tab during the opener) leaves a history entry
+        // with no transcripts. Showing it would just be clutter.
+        // Completed sessions always render — even if empty — because
+        // the user explicitly finished them.
+        this.sessions = recent.filter(s => {
+          if (s.completed) return true;
+          if (!Array.isArray(s.transcripts) || !s.transcripts.length) return false;
+          return s.transcripts.some(t => t != null);
+        });
+        this.videoSessionIds = withVideo;
       } catch (e) {
         console.error('Failed to load interview history:', e);
         this.sessions = [];
+        this.videoSessionIds = [];
       } finally {
         this.loading = false;
       }
+    },
+    hasVideo(id) {
+      return this.videoSessionIds.includes(id);
     },
     formatDate(iso) {
       if (!iso) return '';
@@ -275,6 +351,37 @@ export default {
   font-size: 0.95rem;
 }
 
+.retention-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin: 0 0 24px 0;
+  color: #78350f;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.retention-banner .el-icon-warning-outline {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.retention-text {
+  flex: 1;
+}
+
+.video-availability {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.95rem;
+  color: #2563eb;
+  line-height: 1;
+}
+
 .empty-dashboard {
   display: flex;
   flex-direction: column;
@@ -402,9 +509,16 @@ export default {
 }
 
 .delete-btn {
-  color: #e4e7ed;
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
   cursor: pointer;
-  padding: 5px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 1.05rem;
 }
 
 .delete-btn:hover {

@@ -114,12 +114,19 @@ export default {
       this.$emit('silenceProgress', 0);
     },
     resumeRecording() {
-      // If recording never started (paused before AnswerRecorder was mounted), start now
-      if (!this.mediaRecorder && !this.recording) {
+      // If the recorder is either not yet created (paused before
+      // AnswerRecorder mounted) OR was fully torn down (e.g. a stale
+      // silence-detection fire happened during pause and called
+      // stopRecording, nullifying the mediaStream), the safest
+      // recovery is to start a brand-new recording session.
+      const noRecorder = !this.mediaRecorder;
+      const recorderDead = this.mediaRecorder && this.mediaRecorder.state === 'inactive';
+      const streamMissing = !this.mediaStream || !(this.mediaStream instanceof MediaStream);
+      if (noRecorder || recorderDead || streamMissing) {
         this.startRecording();
         return;
       }
-      if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+      if (this.mediaRecorder.state === 'paused') {
         this.mediaRecorder.resume();
       }
       // Ensure the shared AudioContext is running (it may have been suspended for TTS pause)
@@ -168,7 +175,36 @@ export default {
         }
       }, 100);
     },
+    // Stop the recorder WITHOUT saving the audio chunks. Used by the
+    // parent's pause→resume "restart current question" flow: when the
+    // user pauses and resumes, the in-progress answer is abandoned and
+    // the question is asked again from scratch.
+    discardRecording() {
+      this._discardOnStop = true;
+      this.clearSilenceDetection();
+      if (this.mediaStream) {
+        try { this.mediaStream.getTracks().forEach(t => t.stop()); } catch (e) { /* noop */ }
+        this.mediaStream = null;
+      }
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        try { this.mediaRecorder.stop(); } catch (e) { /* noop */ }
+      }
+      this.audioChunks = [];
+      this.recording = false;
+      this.silenceStart = null;
+      this.$emit('silenceProgress', 0);
+    },
+
     async handleStop() {
+      // Discard path: parent asked us to throw away the in-progress
+      // recording (e.g. user paused-then-resumed and wants to redo this
+      // question). Don't save audio, don't write a transcript marker,
+      // don't emit answerSaved.
+      if (this._discardOnStop) {
+        this._discardOnStop = false;
+        this.audioChunks = [];
+        return;
+      }
       let mimeType = '';
       if (MediaRecorder.isTypeSupported('audio/webm')) {
         mimeType = 'audio/webm';
@@ -179,7 +215,23 @@ export default {
       }
       const audioBlob = new Blob(this.audioChunks, mimeType ? { type: mimeType } : undefined);
       if (!audioBlob || audioBlob.size === 0) {
+        // Silent answer — no audio captured. Write a `skipped: true` marker
+        // so the Summary card renders "No spoken answer" instead of leaving
+        // a blank gap (which historically caused questions to silently
+        // disappear from the recap). The transcribe job leaves these alone.
+        let transcripts = await getTranscripts();
+        if (!transcripts) transcripts = [];
+        transcripts[this.questionIndex] = {
+          text: '', words: [], sentiment_analysis_results: [],
+          skipped: true
+        };
+        await saveTranscripts(transcripts);
         await saveTranscriptionStatus(false);
+        // Notify parent so it can snapshot the in-progress interview
+        // to history — important for the abandoned-tab case: even a
+        // skipped answer means progress was made, and the history
+        // entry should reflect it.
+        this.$emit('answerSaved');
         return;
       }
       // Save the audio blob locally — the actual transcription happens in
@@ -202,6 +254,11 @@ export default {
       // No AssemblyAI call, no transcription-status flag flip during the
       // interview. The Summary page will set it when the batch job kicks
       // off post-completion.
+      // Notify the parent that one answer has been saved to the live
+      // store. The parent uses this to checkpoint a history entry, so
+      // if the user closes the tab mid-interview the saved progress
+      // still shows up in My Interviews.
+      this.$emit('answerSaved');
       if (this.mediaStream) {
         this.mediaStream.getTracks().forEach(track => track.stop());
         this.mediaStream = null;

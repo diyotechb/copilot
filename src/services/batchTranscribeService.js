@@ -29,6 +29,10 @@ function isPending(t) {
   return !!(t && typeof t === 'object' && t.pending);
 }
 
+function isSkipped(t) {
+  return !!(t && typeof t === 'object' && t.skipped);
+}
+
 function hasRealText(t) {
   if (!t) return false;
   if (typeof t === 'string') return t !== '' && t !== '[Transcription error]';
@@ -41,10 +45,13 @@ function hasRealText(t) {
 //   - the slot is empty/undefined,
 //   - the slot is the {pending:true} sentinel placed by AnswerRecorder, or
 //   - the slot is a transcription error (so a retry can recover it).
+// {skipped: true} slots are intentionally left alone — they represent
+// answers the user did not speak, so there's no audio to transcribe.
 function indexesNeedingTranscription(transcripts, totalQuestions) {
   const need = [];
   for (let i = 0; i < totalQuestions; i++) {
     const t = transcripts[i];
+    if (isSkipped(t)) continue;
     if (t === undefined || t === null) { need.push(i); continue; }
     if (typeof t === 'string' && t === '[Transcription error]') { need.push(i); continue; }
     if (isPending(t)) { need.push(i); continue; }

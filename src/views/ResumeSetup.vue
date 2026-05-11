@@ -12,6 +12,34 @@
       </div>
 
       <div class="setup-form-container">
+        <!-- Retention warning: at cap. Starting this interview will
+             permanently delete the oldest saved one. Surface it before
+             the user fills out resume/JD so they can back out cheaply. -->
+        <div v-if="atCap && oldestSession" class="setup-warning-banner">
+          <i class="el-icon-warning-outline"></i>
+          <div class="warning-text">
+            You have <strong>{{ MAX_VISIBLE }} saved interviews</strong>, the maximum kept on this device.
+            Starting a new interview will permanently delete the oldest —
+            <strong>{{ oldestLabel }}</strong> — including its audio, video, transcripts, and analysis.
+          </div>
+          <el-button size="small" type="warning" @click="goToOldestSession">
+            Open &amp; download first
+          </el-button>
+        </div>
+
+        <!-- Browser storage running low. Best-effort check via
+             navigator.storage.estimate(). Surfaces at >80% used so the
+             user has time to delete old interviews from My Interviews
+             before a recording fails mid-session due to quota. -->
+        <div v-if="storageWarning" class="setup-warning-banner storage-warning">
+          <i class="el-icon-warning-outline"></i>
+          <div class="warning-text">
+            Browser storage is <strong>{{ storageWarning.percent }}% full</strong>
+            ({{ storageWarning.usedMB }} MB of {{ storageWarning.quotaMB }} MB).
+            Consider deleting old interviews from My Interviews to avoid recording failures.
+          </div>
+        </div>
+
         <!-- Documents Section -->
         <div class="setup-card">
           <div class="card-header">
@@ -280,10 +308,15 @@
           <el-button
               type="primary"
               class="setup-submit-btn"
-              :disabled="isSubmitDisabled"
+              :disabled="isSubmitDisabled || atCap"
               @click="submitSetup">
             Start Generating My Interview
           </el-button>
+
+          <div v-if="atCap" class="mic-warning-hint" style="justify-content: center;">
+            <i class="el-icon-warning-outline"></i>
+            Delete or open the oldest interview above before starting a new one.
+          </div>
 
           <div v-if="micPermission === 'denied' || (enableVideo && cameraPermission === 'denied')" class="mic-warning-hint" style="justify-content: center; flex-direction: column;">
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -442,14 +475,23 @@ function extractCandidateName(resumeText) {
   return '';
 }
 import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA, saveInterviewMeta } from '@/store/interviewStore';
+import { listRecentSessions, MAX_ENTRIES } from '@/store/interviewHistoryStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { fetchVoices, playVoiceSample } from '@/services/ttsService';
+import { fetchVoices, playVoiceSample, prefetchSpeech } from '@/services/ttsService';
 
 export default {
   name: 'ResumeSetup',
   components: { FileUpload, InterviewInstructions, ConfirmDialog },
   data() {
     return {
+      // Retention awareness — populated in mounted() once. We don't refetch
+      // because the user can't add a session from this page; the count is
+      // either at cap when they land here or it isn't.
+      MAX_VISIBLE: MAX_ENTRIES,
+      savedSessions: [],
+      // null | { used, quota, percent, usedMB, quotaMB }. Surfaces only
+      // when used/quota crosses 80%.
+      storageWarning: null,
       resumeText: '',
       voices: [],
       selectedVoice: '',
@@ -536,14 +578,42 @@ export default {
       // Per-interview "AI scoring" toggle is obsolete: detailed analysis
       // is now on-demand from the Summary screen, regardless of difficulty.
       return false;
+    },
+    atCap() {
+      return this.savedSessions.length >= this.MAX_VISIBLE;
+    },
+    oldestSession() {
+      if (!this.savedSessions.length) return null;
+      return this.savedSessions[this.savedSessions.length - 1];
+    },
+    oldestLabel() {
+      const s = this.oldestSession;
+      if (!s) return '';
+      const name = s.candidateName ? `${s.candidateName} — ` : '';
+      const iso = s.savedAt || '';
+      let dateStr = '';
+      if (iso) {
+        try {
+          dateStr = new Date(iso).toLocaleString([], {
+            month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+          });
+        } catch (e) { /* keep empty */ }
+      }
+      return `${name}${dateStr}`;
     }
   },
   async mounted() {
     await this.fetchVoices();
-    // Selective cleanup for a fresh interview session
+    // Selective cleanup for a fresh interview session. We clear the live
+    // (un-scoped) interview state — qaList, transcripts, interviewMeta —
+    // but DO NOT clear the recordings store: per-session audio and video
+    // belong to saved history entries and are pruned by retention logic
+    // in interviewHistoryStore.pruneOld, not here.
     const { default: storage } = await import('@/services/storageService');
     await storage.clearInterviewSession();
-    await storage.clearRecordingData();
+
+    // Refresh retention state for the banner + Start gating.
+    await this.loadRetentionState();
 
     // Beta feature gate: only enable Generate-with-AI toggles if the user
     // opted in via Profile Settings → Beta Features.
@@ -582,6 +652,39 @@ export default {
     this.checkPermissions();
   },
   methods: {
+    // Read history + browser storage estimate to drive the retention
+    // banner, storage-warning banner, and Start-button gating. Called
+    // once on mount; not refetched because the user can't change either
+    // value from this screen.
+    async loadRetentionState() {
+      try {
+        this.savedSessions = await listRecentSessions(this.MAX_VISIBLE);
+      } catch (e) {
+        this.savedSessions = [];
+      }
+      try {
+        if (navigator && navigator.storage && navigator.storage.estimate) {
+          const est = await navigator.storage.estimate();
+          const used = est.usage || 0;
+          const quota = est.quota || 0;
+          if (quota > 0) {
+            const percent = Math.round((used / quota) * 100);
+            if (percent >= 80) {
+              this.storageWarning = {
+                used, quota, percent,
+                usedMB: Math.round(used / (1024 * 1024)),
+                quotaMB: Math.round(quota / (1024 * 1024))
+              };
+            }
+          }
+        }
+      } catch (e) { /* best-effort */ }
+    },
+    goToOldestSession() {
+      if (this.oldestSession) {
+        this.$router.push({ name: 'SummaryView', query: { sessionId: this.oldestSession.id } });
+      }
+    },
     toggleShowQuestions() {
       this.showQuestions = !this.showQuestions;
       saveSetting('showQuestions', this.showQuestions);
@@ -811,6 +914,13 @@ export default {
           },
           onUpdate: (partial) => {
             this.interviewQA = partial;
+            // Persist each batch as it arrives. If the user clicks
+            // "Start Interview Now" mid-generation, InterviewView reads
+            // this growing list — and re-reads on each nextQuestion so
+            // later batches land before the user catches up.
+            saveInterviewQA(partial).catch((e) => {
+              console.warn('Background save of partial qaList failed:', e);
+            });
           }
         });
       } catch (e) {
@@ -840,22 +950,24 @@ export default {
         await saveInterviewQA(this.interviewQA);
       }
 
+      // Start fetching Q1's TTS audio NOW, before navigation. The cache
+      // is module-scoped, so by the time InterviewView mounts and asks
+      // for the same text+voice it's either already there or coalesces
+      // onto the in-flight request. This converts the perceptible "Q1
+      // takes 2-5 seconds to start speaking" wait into a near-instant
+      // start, because the network round-trip overlaps with the
+      // navigation + mounted lifecycle work.
+      if (this.selectedVoice && this.interviewQA && this.interviewQA[0] && this.interviewQA[0].question) {
+        prefetchSpeech(this.interviewQA[0].question, this.selectedVoice);
+      }
+
       const mediaConstraints = this.enableVideo ? { video: true, audio: true } : { audio: true };
       navigator.mediaDevices.getUserMedia(mediaConstraints)
           .then(() => {
-            if (!this.interviewQA || this.interviewQA.length === 0) {
-              this.confirmConfig = {
-                title: 'Data Not Ready',
-                message: 'Interview questions are not ready. Please try again.',
-                type: 'warning',
-                confirmText: 'Go Back',
-                showCancel: false,
-                icon: 'el-icon-warning-outline',
-                action: 'ack'
-              };
-              this.confirmVisible = true;
-              return;
-            }
+            // Navigate immediately. Generation may still be in flight —
+            // InterviewView's onboarding overlay parks the user on a
+            // welcome screen until Q1 lands on disk, so they're never
+            // staring at a blank interview waiting for nothing.
             this.$router.push({ name: 'InterviewView' });
           })
           .catch(() => {
@@ -943,6 +1055,34 @@ export default {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   border: 1px solid #f0f2f5;
+}
+
+.setup-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 14px 18px;
+  color: #78350f;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.setup-warning-banner .el-icon-warning-outline {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.setup-warning-banner .warning-text {
+  flex: 1;
+}
+
+.setup-warning-banner.storage-warning {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #7f1d1d;
 }
 
 .group-label {
