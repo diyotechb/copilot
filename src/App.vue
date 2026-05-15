@@ -63,10 +63,8 @@ export default {
 
       // Hide sidebar on Auth pages and during the actual Interview session for maximum focus
       const hideOn = ['Login', 'Signup', 'ResetPassword', 'InterviewView'];
-      const isPublic = ['Home'].includes(this.$route.name);
-      
       if (hideOn.includes(this.$route.name)) return false;
-      
+
       // Only show sidebar if logged in OR on specific non-auth pages
       return this.isLoggedIn;
     },

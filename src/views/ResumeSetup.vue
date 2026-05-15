@@ -342,13 +342,11 @@
     <div v-else class="setup-view-centered">
       <InterviewInstructions
           :enableVideo="enableVideo"
-          :isGenerating="isGenerating"
           :interviewQA="interviewQA"
-          :progress="generationProgress"
           :difficulty="interviewDifficulty"
           @update:enableVideo="enableVideo = $event"
           @startInterview="handleStartInterview"
-          @back="qaReady = false"
+          @cancel="handleCancelInterview"
       />
     </div>
 
@@ -638,6 +636,9 @@ export default {
     const savedVoice = await getSetting('selectedVoice');
     if (savedVoice && this.voices.some(v => v.id === savedVoice)) {
       this.selectedVoice = savedVoice;
+    } else if (this.voices.some(v => v.id === 'alloy')) {
+      this.selectedVoice = 'alloy';
+      saveSetting('selectedVoice', this.selectedVoice);
     }
     const savedDifficulty = await getSetting('interviewDifficulty');
     if (savedDifficulty && APP_CONFIG.DIFFICULTY[savedDifficulty]) {
@@ -650,6 +651,15 @@ export default {
       this.interviewCategory = savedCategory;
     }
     this.checkPermissions();
+  },
+  beforeRouteLeave(to, from, next) {
+    // Step 1's form is cheap to refill; only guard once the user is on
+    // Step 2 (qaReady) and hasn't explicitly chosen to leave.
+    if (this.qaReady && !this._intentionalLeave) {
+      const ok = window.confirm('Leave this page? Your prepared interview will be discarded and you\'ll need to redo setup.');
+      if (!ok) return next(false);
+    }
+    next();
   },
   methods: {
     // Read history + browser storage estimate to drive the retention
@@ -968,6 +978,7 @@ export default {
             // InterviewView's onboarding overlay parks the user on a
             // welcome screen until Q1 lands on disk, so they're never
             // staring at a blank interview waiting for nothing.
+            this._intentionalLeave = true;
             this.$router.push({ name: 'InterviewView' });
           })
           .catch(() => {
@@ -982,6 +993,10 @@ export default {
             };
             this.confirmVisible = true;
           });
+    },
+    handleCancelInterview() {
+      this._intentionalLeave = true;
+      this.$router.push({ name: 'MyInterviews' });
     },
     handleConfirmAction() {
       this.confirmVisible = false;

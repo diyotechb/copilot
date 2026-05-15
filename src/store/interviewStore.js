@@ -1,4 +1,4 @@
-import { clearStore, saveItem, getItem, deleteItem } from './dbStore';
+import { clearStore, saveItem, getItem } from './dbStore';
 
 const QA_STORE = 'interviewQA';
 const TRANSCRIPT_STORE = 'transcripts';
@@ -27,10 +27,6 @@ export async function getInterviewQA() {
   return [];
 }
 
-export async function deleteInterviewQA(key) {
-  await deleteItem(QA_STORE, key);
-}
-
 // Transcript functions
 export async function clearTranscriptsStore() {
   await clearStore(TRANSCRIPT_STORE);
@@ -53,10 +49,6 @@ export async function getTranscripts() {
     }
   }
   return [];
-}
-
-export async function deleteTranscript() {
-  await deleteItem(TRANSCRIPT_STORE, "transcripts");
 }
 
 export async function saveTranscriptionStatus(value) {

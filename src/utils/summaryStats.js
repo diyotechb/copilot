@@ -105,13 +105,6 @@ export function fillerPercent(transcriptObj) {
   return Math.round((fillerCount(transcriptObj) / count) * 100);
 }
 
-export function averageConfidencePct(transcriptObj) {
-  const words = asWords(transcriptObj);
-  if (!words.length) return 0;
-  const sum = words.reduce((acc, w) => acc + (w.confidence || 0), 0);
-  return Math.round((sum / words.length) * 100);
-}
-
 export function formatDuration(totalSeconds) {
   const s = Math.max(0, Math.round(totalSeconds));
   const mm = Math.floor(s / 60);
@@ -153,9 +146,8 @@ export function aggregateStats(transcripts) {
   };
 }
 
-// Simple, deterministic verdict from the aggregates. No confidence input
-// — the user removed colors / confidence highlighting, so we score on
-// pace and fillers only.
+// Simple, deterministic verdict from the aggregates. Scored on pace and
+// filler percentage only.
 export function overallVerdict(agg) {
   if (!agg || agg.answeredCount === 0) {
     return {

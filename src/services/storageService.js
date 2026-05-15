@@ -36,13 +36,13 @@ class StorageService {
     async clearInterviewSession() {
         // Selectively delete per-session keys from `interviewQA`, but
         // PRESERVE the `history:*` keys used by interviewHistoryStore
-        // (saved completed sessions) and the `interviewMeta` key (cleared
-        // separately as part of starting a new session). Wiping the whole
-        // store would erase the user's last 5 completed interviews.
+        // (saved completed sessions) and `inbox:*` keys (admin-imported
+        // submissions awaiting review). Wiping the whole store would
+        // erase saved interviews or the admin's review queue.
         const { getAllKeysFromStore, deleteItem, clearStore } = await import('@/store/dbStore');
         const keys = await getAllKeysFromStore('interviewQA');
         for (const k of keys) {
-            if (typeof k === 'string' && k.startsWith('history:')) continue;
+            if (typeof k === 'string' && (k.startsWith('history:') || k.startsWith('inbox:'))) continue;
             await deleteItem('interviewQA', k);
         }
         await clearStore('transcripts');
