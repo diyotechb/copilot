@@ -76,7 +76,6 @@ export default {
   },
   data() {
     return {
-      // navItems is now a computed property for dynamic filtering
       diyoUrl: APP_CONFIG.SERVICES.DIYO_MAIN_WEBSITE
     };
   },

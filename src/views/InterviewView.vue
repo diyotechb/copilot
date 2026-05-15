@@ -8,11 +8,31 @@
 
       <div class="interview-scroll-container" ref="transcriptScroller">
 
-        <!-- Header -->
+        <!-- Header. Onboarding and live recording share the same shell,
+             but the candidate's mental model shifts the moment Begin is
+             pressed — title flips to match. -->
         <div class="interview-header">
           <div class="header-left">
-            <h2>Live Interview Session</h2>
-            <p class="header-subtitle">Speak clearly and take your time.</p>
+            <h2 v-if="showOnboarding" class="onboarding-title">
+              <span>Final Setup for</span>
+              <input
+                  type="text"
+                  v-model="candidateName"
+                  @blur="persistCandidateName"
+                  @keydown.enter.prevent="$event.target.blur()"
+                  placeholder="Your Name"
+                  class="onboarding-title-name"
+                  maxlength="60"
+                  aria-label="Candidate name" />
+              <span>Before Recording</span>
+              <span class="onboarding-title-difficulty">{{ difficultyLabel }}</span>
+            </h2>
+            <h2 v-else>Live Interview Session</h2>
+            <p class="header-subtitle">
+              {{ showOnboarding
+                ? 'Fine-tune your view and try the controls. Recording starts when you hit “I\'m Ready — Start Interview”.'
+                : 'Speak clearly and take your time.' }}
+            </p>
           </div>
           <div class="header-right">
             <span class="step-indicator">STEP 3/3</span>
@@ -29,12 +49,14 @@
         >
           <!-- Onboarding: stays in the regular left-aligned chat layout
                (no centered card). A brief note at the top, sample
-               messages in the real chat style, and an "I'm ready,
-               let's go" button at the bottom-right. Recording stays
-               off until that button is clicked. -->
+               messages in the real chat style, and an "I'm Ready —
+               Start Interview" button at the bottom-right. Recording
+               stays off until that button is clicked. -->
           <template v-if="showOnboarding">
-            <!-- 1. Tab-close heads-up at the very top so the user sees
-                 it before anything else. -->
+            <!-- Tab-close heads-up so the user sees it before anything
+                 else starts. The prep tip (window/text size, controls)
+                 used to live above this — now the welcome TTS speaks
+                 the same guidance, so the static tip is redundant. -->
             <div class="info-warn onboarding-warn-top">
               <i class="el-icon-warning-outline"></i>
               <span>If you close the tab mid-interview, completed answers are saved to <strong>My Interviews</strong> but the session can't be continued.</span>
@@ -46,8 +68,23 @@
                  and the answer slots show placeholder hints so the
                  sample reads as a UI shell rather than real content
                  — TTS audio is the actual demo. -->
+            <div v-if="welcomeStarted" class="transcript-line interviewer">
+              <div class="avatar-column">
+                <div class="user-avatar-small interviewer-avatar">I</div>
+              </div>
+              <div class="content-column">
+                <div class="meta-header">
+                  <span class="speaker-label">INTERVIEWER</span>
+                  <span class="time-stamp">welcome</span>
+                </div>
+                <div class="text-container">
+                  <span class="text">{{ welcomeDisplayed }}</span>
+                </div>
+              </div>
+            </div>
+
             <template v-for="(qa, idx) in sampleQA">
-              <template v-if="idx <= sampleTurn">
+              <template v-if="hasStartedSample && idx <= sampleTurn">
                 <div :key="'sq-top-' + idx" class="transcript-line interviewer" v-show="showQuestionSection">
                   <div class="avatar-column">
                     <div class="user-avatar-small interviewer-avatar">I</div>
@@ -98,13 +135,10 @@
               </template>
             </template>
 
-            <!-- Dashed separator between the sample area and the info
-                 panel below, mirroring the one above the CTA row. -->
+            <transition name="onboarding-info-fade">
+            <div v-if="sampleIntroComplete" class="onboarding-info-block">
             <div class="onboarding-divider"></div>
 
-            <!-- 3. Info panel: click hints + controls + indicators.
-                 Tab-close warning moved out of this panel up to the
-                 top of the page. -->
             <div class="onboarding-info">
               <div class="info-lead">
                 <i class="el-icon-info"></i>
@@ -212,11 +246,9 @@
               </div>
 
             </div>
+            </div>
+            </transition>
 
-            <!-- 4. Bottom CTA row — Try Now on the left starts the
-                 sample play (same handler as the in-panel sample
-                 controls). I'm ready on the right ends onboarding and
-                 begins the real interview. -->
             <div class="onboarding-cta">
               <button
                   type="button"
@@ -231,13 +263,22 @@
                 </span>
               </button>
 
-              <el-button
-                  type="primary"
-                  class="onboarding-cta-btn"
-                  @click="beginInterview"
-                  :loading="onboardingWaitingForFirst">
-                {{ onboardingWaitingForFirst ? 'Almost ready…' : "I'm ready, let's go" }}
-              </el-button>
+              <div class="onboarding-cta-right">
+                <button
+                    type="button"
+                    class="onboarding-cancel"
+                    @click="cancelOnboarding"
+                    title="Leave without recording. Nothing is saved.">
+                  No, Cancel Interview
+                </button>
+                <el-button
+                    type="primary"
+                    class="onboarding-cta-btn"
+                    @click="beginInterview"
+                    :loading="onboardingWaitingForFirst">
+                  {{ onboardingWaitingForFirst ? 'Almost ready…' : "I'm Ready — Start Interview" }}
+                </el-button>
+              </div>
             </div>
           </template>
 
@@ -284,11 +325,11 @@
       </div>
 
       <!-- Floating right-side rail.
-           Dim by default, brightens on hover. Always has all the
-           controls needed to drive the session even when the bottom
-           control bar is hidden — pause, stop, hide/show, font scale,
-           plus a live question-progress indicator. -->
-      <div class="reading-tools-rail" :class="{ 'is-onboarding': showOnboarding }">
+           Dim by default (opacity 0.35), brightens on hover. Same
+           behaviour during onboarding and the live interview — quiet
+           until the user reaches for it, so it doesn't compete with
+           the welcome message and controls panel for attention. -->
+      <div class="reading-tools-rail">
         <!-- Question progress. Pure label, click does nothing. -->
         <div class="rail-progress" :title="`Question ${turn} of ${interviewQA.length}`">
           {{ turn }}/{{ interviewQA.length }}
@@ -387,13 +428,26 @@
             </div>
           </div>
 
-          <div class="controls">
+          <!-- Stop is the recording-time exit. Hidden during onboarding
+               because stopInterview() no-ops there — the onboarding
+               card's Cancel button is the proper pre-recording exit. -->
+          <div v-if="!showOnboarding" class="controls">
             <el-button
                 circle
                 class="record-btn minimal-control-btn"
-                title="Stop the interview and go to the summary"
+                title="Stop the interview and go to the summary (your answers so far are kept)"
                 @click="stopInterview">
               <i class="el-icon-close"></i>
+            </el-button>
+          </div>
+
+          <div v-if="!showOnboarding" class="controls">
+            <el-button
+                circle
+                class="record-btn minimal-control-btn cancel-control-btn"
+                title="Cancel the interview and discard everything — nothing is saved"
+                @click="cancelInterview">
+              <i class="el-icon-delete"></i>
             </el-button>
           </div>
 
@@ -505,7 +559,7 @@
         <i class="el-icon-warning-outline empty-icon"></i>
         <h3>No Questions Ready</h3>
         <p>Return to setup to generate your interview questions.</p>
-        <el-button type="primary" style="margin-top: 20px;" @click="$router.push({name: 'ResumeSetup'})">Back to Setup</el-button>
+        <el-button type="primary" style="margin-top: 20px;" @click="handleBackToSetup">Back to Setup</el-button>
       </div>
     </div>
 
@@ -557,9 +611,10 @@ import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
-import { getInterviewQA, getTranscripts, saveQuestionTimestamps, setInterviewCompleted, getOrCreateInterviewSessionId, getInterviewMeta } from '@/store/interviewStore';
-import { listAllSessionIds, saveCompletedSession } from '@/store/interviewHistoryStore';
-import { pruneRecordingsToActiveSessions, logStorageEstimate } from '@/store/recordingStore';
+import { getInterviewQA, getTranscripts, saveQuestionTimestamps, setInterviewCompleted, getOrCreateInterviewSessionId, getInterviewMeta, saveInterviewMeta } from '@/store/interviewStore';
+import { listAllSessionIds, saveCompletedSession, deleteSession } from '@/store/interviewHistoryStore';
+import { pruneRecordingsToActiveSessions, deleteSessionRecordings, logStorageEstimate } from '@/store/recordingStore';
+import storage from '@/services/storageService';
 import { speakWithTTS, speakWithTTSToContext, prefetchSpeech } from '@/services/ttsService';
 import FeedbackSection from '../views/FeedbackSection.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -593,6 +648,7 @@ export default {
       activeInterviewerAudio: null,
       interviewStopping: false,
       difficultyLevel: null,
+      candidateName: '',
       showInstructions: true,
       showQuestionSection: true,
       lastAudioBlob: null,
@@ -654,6 +710,10 @@ export default {
       sampleStreamingActive: false,
       sampleDisplayedA: ['', ''],
       sampleDisplayedQ: ['', ''],
+      sampleIntroComplete: false,
+      welcomeText: "Hello and welcome to the interview! Please adjust the window size and the text size before the interview starts. You can try the controls below to see how everything works.",
+      welcomeDisplayed: '',
+      welcomeStarted: false,
       // Sample Q/A pairs the onboarding's Pause / Repeat / Next
       // tiles drive. Two pairs is enough to demo "advance" without
       // letting the user run away with the demo. The TTS for these
@@ -698,6 +758,9 @@ export default {
     },
     levelConfig() {
       return APP_CONFIG.DIFFICULTY[this.difficultyLevel] || APP_CONFIG.DIFFICULTY[APP_CONFIG.DIFFICULTY_DEFAULT];
+    },
+    difficultyLabel() {
+      return (this.levelConfig && this.levelConfig.LABEL) || this.difficultyLevel || '—';
     },
     showAIAnswer() {
       return !!this.levelConfig?.SHOW_AI_ANSWER;
@@ -768,6 +831,10 @@ export default {
     const storedQA = await getInterviewQA();
     this.interviewQA = Array.isArray(storedQA) ? storedQA : [];
     this.difficultyLevel = await getSetting('interviewDifficulty');
+    try {
+      const meta = await getInterviewMeta();
+      this.candidateName = (meta && meta.candidateName) || '';
+    } catch (e) { /* best-effort */ }
   },
 
   async mounted() {
@@ -834,13 +901,35 @@ export default {
       // inside the overlay. While the user reads the overlay's
       // orientation tips, background generation finishes off the
       // remaining batches.
+      //
+      this.$nextTick(() => {
+        if (this.showOnboarding && !this.welcomeStarted) {
+          this._autoPlayWelcome();
+        }
+      });
     }
-    // Release camera/mic if the user refreshes or closes the page
-    this._beforeUnloadHandler = () => this.releaseMediaDevices();
+    // Warn on refresh / close while a session is active. In-app
+    // Cancel / Stop paths set _intentionalLeave to bypass.
+    this._beforeUnloadHandler = (e) => {
+      this.releaseMediaDevices();
+      if (this.interviewing) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
     window.addEventListener('beforeunload', this._beforeUnloadHandler);
   },
 
   beforeRouteLeave(to, from, next) {
+    const hasActiveSession = this.interviewing;
+    if (hasActiveSession && !this._intentionalLeave) {
+      const msg = this.showOnboarding
+        ? 'Leave the interview setup? You\'ll need to start over from Step 1.'
+        : 'Leave the interview? Your in-flight answer for this question will be lost (already-completed answers are saved).';
+      const ok = window.confirm(msg);
+      if (!ok) return next(false);
+    }
     this.releaseMediaDevices();
     next();
   },
@@ -1259,7 +1348,59 @@ export default {
       await videoStopPromise;
       this.interviewing = false;
       this.showAnswer = false;
+      this._intentionalLeave = true;
       this.$router.push({ name: 'SummaryView' });
+    },
+
+    // Discard-and-exit. Unlike stopInterview which keeps captured
+    // answers and routes to Summary, this drops every blob, transcript,
+    // QA, and history entry for the current session, then routes out.
+    async cancelInterview() {
+      if (this.showOnboarding) return;
+      this.transitioning = true;
+      this.clearStream();
+
+      if (this.$refs.answerRecorder) {
+        try { this.$refs.answerRecorder.discardRecording(); } catch (e) { /* noop */ }
+      }
+      const videoStopPromise = this.$refs.videoRecorder
+        ? Promise.resolve().then(() => this.$refs.videoRecorder.stopRecording()).catch(() => {})
+        : Promise.resolve();
+
+      if (this.sharedAudioCtx) {
+        try {
+          if (this.sharedAudioCtx.state !== 'closed') this.sharedAudioCtx.close();
+        } catch (e) { /* noop */ }
+        this.sharedAudioCtx = null;
+        this.mixDestination = null;
+      }
+      if (this.activeInterviewerAudio) {
+        try {
+          if (typeof this.activeInterviewerAudio.pause === 'function') {
+            this.activeInterviewerAudio.pause();
+            this.activeInterviewerAudio.src = '';
+          } else if (window.speechSynthesis) window.speechSynthesis.cancel();
+        } catch (e) { /* noop */ }
+        this.activeInterviewerAudio = null;
+      }
+      this.stopTimer();
+
+      // Wait for video stop before deleting the blob so we don't race
+      // with the recorder's final IndexedDB write.
+      await videoStopPromise;
+
+      try {
+        if (this.sessionId) await deleteSession(this.sessionId);
+      } catch (e) { /* best-effort */ }
+      try {
+        if (this.sessionId) await deleteSessionRecordings(this.sessionId);
+      } catch (e) { /* best-effort */ }
+      try { await storage.clearInterviewSession(); } catch (e) { /* best-effort */ }
+
+      this.interviewing = false;
+      this.showAnswer = false;
+      this._intentionalLeave = true;
+      this.$router.push({ name: 'MyInterviews' });
     },
 
 
@@ -1326,8 +1467,49 @@ export default {
       }
     },
 
-    // Entry point for the onboarding sample demo. Flips
-    // `hasStartedSample` to true so the Pause/Repeat/Next tiles
+    async _autoPlayWelcome() {
+      if (this.welcomeStarted) return;
+      this.welcomeStarted = true;
+      this.welcomeDisplayed = '';
+      try {
+        await this.$nextTick();
+        await this._streamWelcome();
+      } finally {
+        this.sampleIntroComplete = true;
+      }
+    },
+
+    // Aborts mid-stream if showOnboarding flips false so a click on
+    // Start Interview doesn't leave a setTimeout chain ticking.
+    _streamWelcome() {
+      return new Promise((resolve) => {
+        const text = this.welcomeText;
+        if (!text) { resolve(); return; }
+        const WPM = APP_CONFIG.INTERVIEW.WPM || 200;
+        const BASE_DELAY = (60 / WPM) * 1000;
+        const words = text.split(' ').filter(Boolean);
+        let i = 0;
+        const typeNext = () => {
+          if (!this.showOnboarding) {
+            this._welcomeStreamTimer = null;
+            resolve();
+            return;
+          }
+          if (i >= words.length) {
+            this._welcomeStreamTimer = null;
+            resolve();
+            return;
+          }
+          this.welcomeDisplayed = words.slice(0, i + 1).join(' ');
+          i++;
+          this._welcomeStreamTimer = setTimeout(typeNext, BASE_DELAY);
+        };
+        typeNext();
+      });
+    },
+
+    // Entry point for the onboarding sample demo (Try Now button).
+    // Flips `hasStartedSample` to true so the Pause/Repeat/Next tiles
     // appear, then plays the current sample's question via TTS AND
     // streams the answer word-by-word like the live interview's
     // typewriter. The sample answer text was already visible above
@@ -1344,13 +1526,38 @@ export default {
       this.sampleStreamingActive = true;
       try {
         await this.$nextTick();
-        await this._playSampleQuestionTTS(0);
+        this._playSampleQuestionTTS(0);
+        await this._waitUntilQuestionNearEnd();
         if (!this.sampleStreamingActive || !this.showOnboarding) return;
         await this._streamSampleAnswer(0);
       } finally {
         this.sampleStreamingActive = false;
         this._clearSampleStreamTimer();
       }
+    },
+
+    // Resolves when the sample question audio has `leadOutMs` left
+    // (~1s ≈ 2-3 spoken words). Polls audio.duration while it
+    // becomes available; bails after a safety window so a blocked
+    // or failed fetch doesn't stall the demo.
+    _waitUntilQuestionNearEnd(leadOutMs = 1000) {
+      return new Promise((resolve) => {
+        const SAFETY_MS = 3000;
+        const startedAt = Date.now();
+        const tick = () => {
+          const audio = this.sampleAudio;
+          if (audio && audio.duration && isFinite(audio.duration)) {
+            const totalMs = audio.duration * 1000;
+            const elapsedMs = (audio.currentTime || 0) * 1000;
+            const triggerInMs = Math.max(0, totalMs - leadOutMs - elapsedMs);
+            setTimeout(resolve, triggerInMs);
+            return;
+          }
+          if (Date.now() - startedAt > SAFETY_MS) { resolve(); return; }
+          setTimeout(tick, 50);
+        };
+        tick();
+      });
     },
 
     // Read the current sample's question out loud via the real TTS
@@ -1414,12 +1621,13 @@ export default {
       this._stopSampleTTS();
       this._clearSampleStreamTimer();
       this.isPaused = false;
-      this.$set(this.sampleDisplayedA, this.sampleTurn, '');
-      this.sampleStreamingActive = true;
       const idx = this.sampleTurn;
+      this.$set(this.sampleDisplayedA, idx, '');
+      this.sampleStreamingActive = true;
       try {
         await this.$nextTick();
-        await this._playSampleQuestionTTS(idx);
+        this._playSampleQuestionTTS(idx);
+        await this._waitUntilQuestionNearEnd();
         if (!this.sampleStreamingActive || !this.showOnboarding) return;
         await this._streamSampleAnswer(idx);
       } finally {
@@ -1449,7 +1657,8 @@ export default {
       this.sampleStreamingActive = true;
       try {
         await this.$nextTick();
-        await this._playSampleQuestionTTS(idx);
+        this._playSampleQuestionTTS(idx);
+        await this._waitUntilQuestionNearEnd();
         if (!this.sampleStreamingActive || !this.showOnboarding) return;
         await this._streamSampleAnswer(idx);
       } finally {
@@ -1546,6 +1755,31 @@ export default {
       }
     },
 
+    // Pre-recording exit. Live qaList stays in IDB for the next mount
+    // but the session never gets checkpointed to history (that only
+    // happens on the first answerSaved), so there's nothing to clean up
+    // explicitly here. beforeRouteLeave releases mic/camera.
+    cancelOnboarding() {
+      this._intentionalLeave = true;
+      this.$router.push({ name: 'MyInterviews' });
+    },
+
+    async persistCandidateName() {
+      const trimmed = (this.candidateName || '').trim();
+      this.candidateName = trimmed;
+      try {
+        const meta = await getInterviewMeta();
+        if (meta && typeof meta === 'object') {
+          meta.candidateName = trimmed;
+          await saveInterviewMeta(meta);
+        }
+      } catch (e) { /* best-effort */ }
+    },
+    handleBackToSetup() {
+      this._intentionalLeave = true;
+      this.$router.push({ name: 'ResumeSetup' });
+    },
+
     // Called when the user clicks "Begin now" in the onboarding card.
     // Waits briefly for Q1 to arrive if background generation hasn't
     // produced it yet (polls every 250ms, max 30s). Optionally puts
@@ -1593,15 +1827,14 @@ export default {
         }
       }
 
-      // Kill any sample TTS / typewriter the user may have left
-      // running — the real Q1 is about to play and we don't want
-      // them overlapping.
+      await this.persistCandidateName();
+
       this._stopSampleTTS();
       this._clearSampleStreamTimer();
-      // If the user left the demo paused (sample TTS paused, which
-      // set isPaused=true to flip the control-bar icon), reset that
-      // before the real interview kicks off — otherwise the live
-      // session would begin already-paused.
+      if (this._welcomeStreamTimer) {
+        clearTimeout(this._welcomeStreamTimer);
+        this._welcomeStreamTimer = null;
+      }
       this.isPaused = false;
 
       this.showOnboarding = false;
@@ -1824,6 +2057,7 @@ export default {
       const action = this.confirmConfig && this.confirmConfig.action;
       this.confirmVisible = false;
       if (action === 'back-to-setup') {
+        this._intentionalLeave = true;
         this.$router.push({ name: 'ResumeSetup' });
       }
     }
@@ -1887,6 +2121,52 @@ export default {
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.5px;
+}
+
+.onboarding-title {
+  line-height: 1.3;
+}
+.onboarding-title-name {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  color: #1d4ed8;
+  padding: 0 6px;
+  margin: 0 2px;
+  /* field-sizing: Chromium 123+ / Safari 18+; Firefox falls back to
+     the default ~150px width — usable, just not as tight. */
+  field-sizing: content;
+  min-width: 6ch;
+  border-bottom: 2px dashed transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  font-family: inherit;
+}
+.onboarding-title-name:hover {
+  border-bottom-color: #cbd5e1;
+}
+.onboarding-title-name:focus {
+  outline: none;
+  border-bottom-color: #2563eb;
+  background: rgba(37, 99, 235, 0.05);
+}
+.onboarding-title-name::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+  font-style: italic;
+}
+.onboarding-title-difficulty {
+  display: inline-block;
+  padding: 3px 11px;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 999px;
+  font-size: 0.65em;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+  margin-left: 4px;
 }
 
 .transcript_area {
@@ -2087,6 +2367,20 @@ export default {
   padding: 14px 16px;
   margin-bottom: 1.5rem;
 }
+
+.onboarding-info-fade-enter-active {
+  transition: opacity 0.7s cubic-bezier(0.0, 0.0, 0.2, 1),
+              transform 0.7s cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+.onboarding-info-fade-enter {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.onboarding-info-fade-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .info-lead {
   display: flex;
   align-items: center;
@@ -2191,7 +2485,7 @@ export default {
 .info-warn > i { font-size: 1rem; margin-top: 1px; flex-shrink: 0; color: #b45309; }
 .info-warn strong { color: #78350f; }
 
-/* CTA row — Try Now on the left, the big "I'm ready, let's go"
+/* CTA row — Try Now on the left, the big "I'm Ready — Start Interview"
    on the right. Try Now starts the sample play (same as Pause /
    Repeat / Next in the info panel after the user begins). */
 .onboarding-cta {
@@ -2235,6 +2529,31 @@ export default {
   animation: info-tile-pulse 1.5s ease-in-out infinite;
 }
 
+/* Cancel + primary grouped on the right side of the CTA row. Keeps
+   the destructive action next to the decision the user is about to
+   make, instead of hiding it in the header. */
+.onboarding-cta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Plain text-button Cancel — deliberately quiet so it doesn't compete
+   with the primary CTA. Visible only while showOnboarding is true. */
+.onboarding-cancel {
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.onboarding-cancel:hover { color: #ef4444; background: #fef2f2; }
+.onboarding-cancel:active { transform: scale(0.98); }
+
 /* Tab-close warning anchored at the top of the onboarding flow. */
 .onboarding-warn-top {
   margin-bottom: 1.25rem;
@@ -2262,7 +2581,11 @@ export default {
   border-top: 1px dashed #e2e8f0;
 }
 
-/* Primary "I'm ready, let's go" — bigger than before, larger
+.onboarding-info-block {
+  display: block;
+}
+
+/* Primary "I'm Ready — Start Interview" — bigger than before, larger
    shadow, sits on the right of the CTA row. */
 .onboarding-cta-btn {
   border-radius: 999px !important;
@@ -2278,27 +2601,22 @@ export default {
   box-shadow: 0 16px 32px rgba(37, 99, 235, 0.42) !important;
 }
 
-/* During onboarding the rail stays at full opacity (so the user
-   can see what's there) but no pulses — the highlights live on the
-   info-section tiles below. */
-.reading-tools-rail.is-onboarding {
-  opacity: 1;
-  background: #ffffff;
-  border-color: #cbd5e1;
-}
-.reading-tools-rail.is-onboarding .rail-btn:not(:disabled) {
-  color: #1e293b;
-}
-
 /* Sequential tour highlight on info-section tiles. A soft blue
    pulse on whichever tile is the user's "next step" in the
    onboarding tour. Clicking it advances the highlight to the next
    tile (handled via the hasTried* flags in template bindings). */
-.info-tile-highlight {
-  border-color: #3b82f6 !important;
-  background: #eff6ff !important;
-  animation: info-tile-pulse 1.5s ease-in-out infinite;
+/* Highlight = pulse the glyph only, not the whole tile. The tile
+   itself stays in its default frame so the row reads as a calm grid
+   with one icon drawing the eye, instead of a button-shaped beacon. */
+.info-tile-highlight .info-glyph {
+  animation: info-glyph-pulse 1.5s ease-in-out infinite;
+  border-radius: 50%;
 }
+@keyframes info-glyph-pulse {
+  0%, 100% { box-shadow: 0 0 0 0   rgba(59, 130, 246, 0.55); }
+  60%      { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);    }
+}
+/* Legacy keyframe name still referenced by .onboarding-try-now-highlight. */
 @keyframes info-tile-pulse {
   0%, 100% { box-shadow: 0 0 0 0   rgba(59, 130, 246, 0.4); }
   60%      { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);   }
@@ -2634,6 +2952,17 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 0 !important;
+}
+
+.cancel-control-btn {
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+.cancel-control-btn:hover,
+.cancel-control-btn:focus {
+  color: #ffffff !important;
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
 }
 .record-btn i {
   margin: 0 !important;

@@ -79,7 +79,6 @@ class TranscriptionSpeechServiceV2 {
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
-            // Connect to the V2 endpoint
             const wsUrl = `${wsOrigin}/realtime-v2?sample_rate=${this.sampleRate}`;
 
             this.ws = new WebSocket(wsUrl);

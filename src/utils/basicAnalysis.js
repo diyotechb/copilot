@@ -122,38 +122,6 @@ export function topFillerWordsUsed(transcriptObj, n = 5) {
     .map(([filler, count]) => ({ filler, count }));
 }
 
-// Coverage check: which content words from the reference answer appeared
-// in the candidate's transcript, and which were missed.
-// Returns short, capped lists so the UI stays tidy.
-export function coverageVsReference(transcriptObj, referenceText, max = 8) {
-  const candidateSet = new Set(
-    tokens(transcriptText(transcriptObj)).filter(isContentToken)
-  );
-  const refTokens = tokens(referenceText || '').filter(isContentToken);
-
-  // Frequency-rank reference content words to focus on the most prominent
-  const refCounts = new Map();
-  for (const t of refTokens) {
-    refCounts.set(t, (refCounts.get(t) || 0) + 1);
-  }
-  const ranked = [...refCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([w]) => w);
-
-  const hits = [];
-  const misses = [];
-  for (const w of ranked) {
-    if (candidateSet.has(w)) hits.push(w);
-    else misses.push(w);
-    if (hits.length + misses.length >= max * 2) break;
-  }
-  return {
-    hits: hits.slice(0, max),
-    misses: misses.slice(0, max),
-    coverageRatio: refCounts.size ? hits.length / Math.min(refCounts.size, max) : 0
-  };
-}
-
 // Words the candidate said that don't appear in the reference at all.
 // Helps surface off-topic or unrelated language.
 export function extraWordsNotInReference(transcriptObj, referenceText, max = 8) {
@@ -190,14 +158,6 @@ function joinReferences(qaList) {
     .map(qa => (qa && qa.answer) ? qa.answer : '')
     .filter(Boolean)
     .join(' ');
-}
-
-export function sessionTopRepeatedWords(transcripts, n = 8, minCount = 3) {
-  return topRepeatedWords({ text: joinTranscripts(transcripts) }, n, minCount);
-}
-
-export function sessionTopRepeatedPhrases(transcripts, n = 6, minCount = 2) {
-  return topRepeatedPhrases({ text: joinTranscripts(transcripts) }, n, minCount);
 }
 
 export function sessionTopFillerWords(transcripts, n = 8) {

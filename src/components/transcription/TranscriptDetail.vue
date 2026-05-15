@@ -637,8 +637,6 @@ export default {
   margin-top: 1px; /* Optical centering */
 }
 
-/* Done-btn specific was removed and unified into .record-btn base classes */
-
 .control-text {
   display: none;
 }

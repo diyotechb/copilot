@@ -21,7 +21,12 @@ import { deleteSessionRecordings, pruneRecordingsToActiveSessions, pruneVideosTo
 
 const STORE = 'interviewQA';
 const PREFIX = 'history:';
-export const MAX_ENTRIES = 5;
+// Admin "inbox": sessions imported from another user's exported JSON. Lives
+// in the same IndexedDB store but under a separate prefix so it never goes
+// through the LRU prune below — an admin reviewing 100 submissions can't
+// afford to silently lose 95 of them to a 20-entry cap.
+const INBOX_PREFIX = 'inbox:';
+export const MAX_ENTRIES = 20;
 
 function newSessionId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -47,6 +52,15 @@ async function listEntryKeys() {
     .filter(k => typeof k === 'string' && k.startsWith(PREFIX))
     .sort()
     .reverse(); // newest first (timestamps embedded in the id)
+}
+
+async function listInboxKeys() {
+  const db = await getDb();
+  const allKeys = await db.getAllKeys(STORE);
+  return allKeys
+    .filter(k => typeof k === 'string' && k.startsWith(INBOX_PREFIX))
+    .sort()
+    .reverse();
 }
 
 export async function saveCompletedSession(session) {
@@ -100,6 +114,52 @@ export async function deleteSession(id) {
   // both atomically so a stale entry never points at missing audio (or
   // worse, audio from a different session that happens to share an idx).
   try { await deleteSessionRecordings(id); } catch (e) { /* best-effort */ }
+}
+
+// ─── Inbox: imported sessions from other users (admin review queue) ───
+// Imports never bring audio/video, only the analysis-relevant fields.
+// They live in a separate keyspace from `history:` and are NEVER pruned —
+// the admin chooses when to delete each one.
+
+export async function saveImportedSession(payload) {
+  if (!payload || !payload.id) {
+    throw new Error('Imported session is missing an id.');
+  }
+  const entry = {
+    id: payload.id,
+    savedAt: payload.savedAt || new Date().toISOString(),
+    importedAt: new Date().toISOString(),
+    candidateName: payload.candidateName || '',
+    preferredKeywords: Array.isArray(payload.preferredKeywords) ? payload.preferredKeywords : [],
+    difficulty: payload.difficulty || '',
+    category: payload.category || 'All',
+    analysisMode: payload.analysisMode || 'none',
+    qaList: Array.isArray(payload.qaList) ? payload.qaList : [],
+    transcripts: Array.isArray(payload.transcripts) ? payload.transcripts : [],
+    questionTimestamps: Array.isArray(payload.questionTimestamps) ? payload.questionTimestamps : [],
+    completed: typeof payload.completed === 'boolean' ? payload.completed : true,
+    llmAnalysis: payload.llmAnalysis || null
+  };
+  await saveItem(STORE, `${INBOX_PREFIX}${payload.id}`, entry);
+  return payload.id;
+}
+
+export async function listInboxSessions() {
+  const keys = await listInboxKeys();
+  const out = [];
+  for (const k of keys) {
+    const entry = await getItem(STORE, k);
+    if (entry) out.push(entry);
+  }
+  return out;
+}
+
+export async function getInboxSession(id) {
+  return getItem(STORE, `${INBOX_PREFIX}${id}`);
+}
+
+export async function deleteInboxSession(id) {
+  await deleteItem(STORE, `${INBOX_PREFIX}${id}`);
 }
 
 async function pruneOld() {

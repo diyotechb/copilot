@@ -109,7 +109,6 @@
 </template>
 
 <script>
-import storageService from '@/services/authService'; // Note: authService.getUserRoles relies on storageService internally
 import authService from '@/services/authService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
 import { hasAnyRole } from '@/constants/roles';

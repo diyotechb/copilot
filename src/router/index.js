@@ -8,7 +8,7 @@ import ResumeSetup from '@/views/ResumeSetup.vue'
 import SummaryView from '@/views/SummaryView.vue'
 import InterviewView from '@/views/InterviewView.vue'
 import MyInterviews from '@/views/MyInterviews.vue'
-import { getInterviewQA } from '@/store/interviewStore'
+import { getInterviewQA, getInterviewMeta } from '@/store/interviewStore'
 import TranscriptionsView from '@/views/TranscriptionsView.vue';
 import ProfileSettings from '@/views/ProfileSettings.vue';
 import HomeView from '@/views/HomeView.vue';
@@ -153,12 +153,19 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  // 4. Special Interview logic
+  // 4. Special Interview logic — allow entry while questions are
+  // still generating (InterviewView's onboarding overlay parks the
+  // user). Only block deep-link / no-setup entry.
   if (to.name === 'InterviewView') {
-    const interviewQA = await getInterviewQA();
-    if (!interviewQA || interviewQA.length === 0) {
+    const [interviewQA, meta] = await Promise.all([
+      getInterviewQA(),
+      getInterviewMeta()
+    ]);
+    const hasQA = Array.isArray(interviewQA) && interviewQA.length > 0;
+    const sessionStarted = meta && meta.startedAt;
+    if (!hasQA && !sessionStarted) {
       Message.warning({
-        message: 'Interview questions are not ready. Please complete setup first.',
+        message: 'Please complete setup first.',
         duration: 4000
       });
       return next({ name: 'ResumeSetup' });

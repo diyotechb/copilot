@@ -46,19 +46,13 @@
           <div class="spinner" v-if="isLoading" aria-hidden="true"></div>
           {{ isLoading ? 'Entering Workspace...' : 'Login to Workspace' }}
         </button>
-
-        <!-- Links hidden per user request; functional via direct URL only -->
-        <!-- <div class="form-footer">
-          <span class="footer-text">Don't have an account? <router-link to="/signup">Sign up</router-link></span>
-          <router-link to="/reset-password">Forgot password?</router-link>
-        </div> -->
       </form>
     </div>
   </div>
 </template>
 
 <script>
-import { validateEmail, validateMinLength } from '@/utils/validation';
+import { validateEmail } from '@/utils/validation';
 import authService from '@/services/authService';
 import storageService from '@/services/storageService';
 import { APP_CONFIG } from '@/constants/appConfig';

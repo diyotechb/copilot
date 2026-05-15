@@ -3,17 +3,9 @@
     <div class="instructions-view-header">
       <div class="header-main">
         <div class="header-top">
-          <el-button
-              icon="el-icon-back"
-              circle
-              size="small"
-              @click="handleBack"
-              class="back-btn"
-              title="Back to Setup"
-          ></el-button>
-          <h2>Before You Begin</h2>
+          <h2>Walkthrough &amp; Device Check</h2>
         </div>
-        <p class="header-subtitle">Review how the session works, then check your devices.</p>
+        <p class="header-subtitle">Run through how the interview will work and make sure your camera and microphone are ready.</p>
       </div>
       <div class="header-badge">
         <span class="step-indicator">STEP 2/3</span>
@@ -147,32 +139,33 @@
     </div>
 
     <div class="instructions-actions">
-      <p v-if="difficultyMeta" class="difficulty-tag">
-        <i class="el-icon-medal"></i>
-        <strong>{{ difficultyMeta.LABEL }}</strong>
-        <span class="difficulty-tag-sep">&middot;</span>
-        <i class="el-icon-time"></i> {{ difficultyMeta.DURATION_TEXT }}
-        <span class="difficulty-tag-sep">&middot;</span>
-        {{ difficultyMeta.COUNT_TEXT }}
-      </p>
-      <el-button
-          type="primary"
-          class="instructions-start-btn"
-          :loading="isGenerating && !canStart"
-          :disabled="!canStart"
-          @click="handleStartInterview">
-        {{ startButtonLabel }}
-      </el-button>
-      <p v-if="isGenerating" class="generating-hint">
-        <i class="el-icon-loading"></i>
-        <span v-if="canStart">
-          Generating more questions in the background ({{ readyCount }} ready). You can start now.
-        </span>
-        <span v-else>
-          Personalising questions from your resume… {{ readyCount }} / {{ targetCount }} ready.
-        </span>
-      </p>
-      <p v-else class="permissions-hint">
+      <div class="instructions-actions-row">
+        <p v-if="difficultyMeta" class="difficulty-tag">
+          <i class="el-icon-medal"></i>
+          <strong>{{ difficultyMeta.LABEL }}</strong>
+          <span class="difficulty-tag-sep">&middot;</span>
+          <i class="el-icon-time"></i> {{ difficultyMeta.DURATION_TEXT }}
+          <span class="difficulty-tag-sep">&middot;</span>
+          {{ difficultyMeta.COUNT_TEXT }}
+        </p>
+        <div class="instructions-actions-right">
+          <button
+              type="button"
+              class="instructions-cancel-btn"
+              @click="handleCancelInterview"
+              title="Leave without starting. Nothing is saved.">
+            Cancel Interview
+          </button>
+          <el-button
+              type="primary"
+              class="instructions-start-btn"
+              :disabled="!canStart"
+              @click="handleStartInterview">
+            Let's Continue
+          </el-button>
+        </div>
+      </div>
+      <p class="permissions-hint">
         <i class="el-icon-lock"></i> Your devices are only used during the session and never stored.
       </p>
     </div>
@@ -186,12 +179,7 @@ export default {
   name: 'InterviewInstructions',
   props: {
     enableVideo: { type: Boolean, default: false },
-    isGenerating: { type: Boolean, default: false },
     interviewQA: { type: Array, default: () => [] },
-    progress: {
-      type: Object,
-      default: () => ({ ready: 0, target: 0, firstBatchDone: false })
-    },
     difficulty: { type: String, default: '' }
   },
   data() {
@@ -213,32 +201,29 @@ export default {
     difficultyMeta() {
       return APP_CONFIG.DIFFICULTY[this.difficulty] || null;
     },
-    readyCount() {
-      return this.progress?.ready || 0;
-    },
-    targetCount() {
-      return this.progress?.target || APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT;
-    },
     canStart() {
-      // Start is always allowed once submit has fired. Generation
-      // continues in the background; InterviewView opens with an
-      // onboarding overlay that holds the user briefly if Q1 isn't
-      // on disk yet by the time they click Begin. Net effect: the
-      // perceived "Preparing your questions…" wait disappears — the
-      // user moves straight to the orientation card.
+      // Continue is always allowed once Step 1 fired generation. The
+      // onboarding overlay in InterviewView parks the user briefly if
+      // Q1 isn't on disk yet by the time they click "I'm Ready — Start
+      // Interview" there.
       return true;
-    },
-    startButtonLabel() {
-      // Onboarding overlay in InterviewView handles the wait if Q1
-      // isn't ready yet — no need to gate the label on canStart.
-      return this.isGenerating ? 'Start Interview Now' : "I'm Ready — Start Interview";
     }
   },
   mounted() {
     this.startMediaPreview();
+    this._beforeUnloadHandler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', this._beforeUnloadHandler);
   },
   beforeDestroy() {
     this.stopMediaPreview();
+    if (this._beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+      this._beforeUnloadHandler = null;
+    }
   },
   methods: {
     async startMediaPreview() {
@@ -287,9 +272,9 @@ export default {
       if (this.previewStream) this.previewStream.getTracks().forEach(t => t.stop());
       if (this.audioContext && this.audioContext.state !== 'closed') this.audioContext.close();
     },
-    handleBack() {
+    handleCancelInterview() {
       this.stopMediaPreview();
-      this.$emit('back');
+      this.$emit('cancel');
     },
     handleStartInterview() {
       this.stopMediaPreview();
@@ -317,15 +302,6 @@ export default {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-.back-btn {
-  border: 1px solid #e5e7eb !important;
-  color: #6b7280 !important;
-  flex-shrink: 0;
-}
-.back-btn:hover {
-  background: #f3f4f6 !important;
-  color: #1a1a1a !important;
 }
 .header-main h2 {
   font-size: 1.55rem;
@@ -638,14 +614,27 @@ export default {
 .instructions-actions {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   padding-bottom: 30px;
+}
+.instructions-actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.instructions-actions-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 .difficulty-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 6px 14px;
   background: #eff6ff;
   color: #1e40af;
@@ -660,6 +649,19 @@ export default {
   color: #93c5fd;
   font-weight: 400;
 }
+.instructions-cancel-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.instructions-cancel-btn:hover { color: #ef4444; background: #fef2f2; }
+.instructions-cancel-btn:active { transform: scale(0.98); }
 .instructions-start-btn {
   padding: 16px 56px !important;
   font-size: 1.1rem !important;
@@ -673,17 +675,9 @@ export default {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(37,99,235,0.35) !important;
 }
-.generating-hint {
-  margin-top: 14px;
-  color: #2563eb;
-  font-size: 0.88rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 .permissions-hint {
-  margin-top: 12px;
+  margin-top: 14px;
+  align-self: flex-end;
   color: #9ca3af;
   font-size: 0.82rem;
   display: flex;
@@ -719,8 +713,19 @@ export default {
   .rule-icon { width: 34px; height: 34px; font-size: 1rem; }
   .tips-row { gap: 6px; }
   .tip-chip { font-size: 0.75rem; padding: 5px 10px; }
-  .instructions-start-btn {
+  .instructions-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .instructions-actions-right {
     width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  .permissions-hint { align-self: center; }
+  .instructions-start-btn {
+    flex: 1;
     padding: 14px 20px !important;
     font-size: 1rem !important;
   }

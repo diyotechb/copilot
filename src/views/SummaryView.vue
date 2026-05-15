@@ -80,6 +80,7 @@
                 <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl" divided>Video only</el-dropdown-item>
                 <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts only</el-dropdown-item>
                 <el-dropdown-item command="analysis" icon="el-icon-data-analysis">Analysis only</el-dropdown-item>
+                <el-dropdown-item command="submit-json" icon="el-icon-message" divided>For coach review (JSON)</el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
           </div>
@@ -89,8 +90,12 @@
       <div class="setup-form-container">
         <!-- Banner: profile-level Answer Analysis is off. Audio is still
              saved with the session — user just can't run transcription or
-             detailed analysis until the toggle is on. -->
-        <div v-if="!isHistoryView && !analysisFeatureEnabled" class="info-banner">
+             detailed analysis until the toggle is on.
+             Staff-only: regular users can't toggle the beta flag, so the
+             hint would just be noise for them. Shown in both live and
+             history view so staff reviewing a saved interview can still
+             see the current toggle state. -->
+        <div v-if="!analysisFeatureEnabled && isStaff" class="info-banner">
           <i class="el-icon-info"></i>
           <span>Answer Analysis is off in Profile Settings → Beta Features. Turn it on there to transcribe your answers and run analysis on this interview. Your recorded audio is saved either way.</span>
         </div>
@@ -884,7 +889,7 @@
 </template>
 
 <script>
-import { getTranscriptionStatus, getTranscripts, saveTranscripts, getInterviewQA, getQuestionTimestamps, getInterviewMeta, saveInterviewMeta, setAnalysisMode } from '@/store/interviewStore';
+import { getTranscripts, saveTranscripts, getInterviewQA, getQuestionTimestamps, getInterviewMeta, saveInterviewMeta, setAnalysisMode } from '@/store/interviewStore';
 import { highlightTranscript } from '@/utils/transcriptUtils';
 import {
   wordCount,
@@ -907,9 +912,12 @@ import {
 import { getSetting } from '@/store/settingStore';
 import { getVideoForSession, getRecordingForSession } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
-import { saveCompletedSession, updateHistoryEntry, getSessionById } from '@/store/interviewHistoryStore';
+import { saveCompletedSession, updateHistoryEntry, getSessionById, getInboxSession } from '@/store/interviewHistoryStore';
+import { buildExportEnvelope, exportFilename, triggerJsonDownload } from '@/utils/sessionTransfer';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
 import storageService from '@/services/storageService';
+import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 import FeedbackSection from '@/views/FeedbackSection.vue';
 
 export default {
@@ -985,6 +993,9 @@ export default {
     };
   },
   computed: {
+    isStaff() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    },
     isLoading() {
       if (this.isHistoryView) return false; // history loads synchronously
       // Only block the page on the initial metadata + transcripts read.
@@ -1079,9 +1090,6 @@ export default {
         && !this.llmAnalysis
         && !this.llmLoading
         && !this.llmError;
-    },
-    canRerunLLM() {
-      return !!this.llmAnalysis && !this.llmLoading;
     },
     perQuestionScores() {
       if (!this.llmAnalysis || !Array.isArray(this.llmAnalysis.perQuestion)) return [];
@@ -1321,9 +1329,12 @@ export default {
     const features = storageService.getItem(storageService.KEYS.USER_FEATURES, true) || {};
     this.analysisFeatureEnabled = !!features.analysisEnabled;
 
-    // Determine source: live session vs history
+    // Determine source: live session vs history vs admin inbox.
+    // `source=inbox` is set by MyInterviews when opening an imported
+    // submission, so we read it from the right keyspace.
     if (this.sessionId) {
-      await this.loadFromHistory(this.sessionId);
+      const source = (this.$route && this.$route.query && this.$route.query.source) || '';
+      await this.loadFromHistory(this.sessionId, { source });
     } else {
       await this.loadFromLiveSession();
     }
@@ -1513,9 +1524,11 @@ export default {
       this.checkTranscriptionStatus();
     },
 
-    async loadFromHistory(id) {
+    async loadFromHistory(id, { source = '' } = {}) {
       this.isHistoryView = true;
-      const entry = await getSessionById(id);
+      const entry = source === 'inbox'
+        ? await getInboxSession(id)
+        : await getSessionById(id);
       if (!entry) {
         this.loadingTranscripts = false;
         return;
@@ -2138,6 +2151,32 @@ export default {
         case 'video': this.handleDownloadVideo(); break;
         case 'transcripts': this.downloadTranscripts(); break;
         case 'analysis': this.downloadAnalysis(); break;
+        case 'submit-json': this.exportForReview(); break;
+      }
+    },
+    // Portable JSON the user can email/share to a coach. Contains
+    // qaList + transcripts + minimal metadata — everything the LLM
+    // analyzer needs to re-run, nothing more (no audio, no video).
+    async exportForReview() {
+      const session = {
+        id: this.activeSessionId || this.historyEntryId || '',
+        savedAt: this.interviewDate || new Date().toISOString(),
+        candidateName: this.candidateName,
+        preferredKeywords: this.preferredKeywords,
+        difficulty: this.difficulty,
+        category: this.category,
+        analysisMode: this.analysisMode,
+        qaList: this.localInterviewQA,
+        transcripts: this.transcripts,
+        questionTimestamps: this.questionTimestamps,
+        completed: this.completed,
+        llmAnalysis: this.llmAnalysis
+      };
+      try {
+        const envelope = await buildExportEnvelope(session);
+        triggerJsonDownload(envelope, exportFilename(session));
+      } catch (e) {
+        console.error('Failed to build review export:', e);
       }
     },
     // Triggers every available download in one user gesture: video (if
