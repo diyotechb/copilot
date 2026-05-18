@@ -1,4 +1,5 @@
 import { APP_CONFIG } from '@/constants/appConfig';
+import storageService from '@/services/storageService';
 
 class TranscriptionSpeechService {
     constructor() {
@@ -79,7 +80,13 @@ class TranscriptionSpeechService {
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
-            const wsUrl = `${wsOrigin}/realtime-transcribe?sample_rate=${this.sampleRate}`;
+            const token = storageService.getItem(storageService.KEYS.ACCESS_TOKEN);
+            if (!token) {
+                this.handleError('Not signed in. Please log in to start a recording.');
+                this.stop();
+                return;
+            }
+            const wsUrl = `${wsOrigin}/api/realtime-transcribe?sample_rate=${this.sampleRate}&token=${encodeURIComponent(token)}`;
 
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';
