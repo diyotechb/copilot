@@ -27,14 +27,6 @@
           <div class="feature-toggle-list">
             <div class="feature-toggle-row">
               <div class="feature-toggle-info">
-                <span class="feature-name">New Transcription Engine</span>
-                <span class="feature-desc">Enables the improved engine with better accuracy and real-time formatting. Adds a "Try New" button on the transcriptions page.</span>
-              </div>
-              <el-switch v-model="features.transcriptionV2Enabled" @change="saveFeatures"></el-switch>
-            </div>
-
-            <div class="feature-toggle-row">
-              <div class="feature-toggle-info">
                 <span class="feature-name">AI Sample Resume &amp; Job Description</span>
                 <span class="feature-desc">Adds a "Generate with AI" toggle on the Resume Setup page so you can create sample resumes and job descriptions for practice. Uses your OpenAI key.</span>
               </div>
@@ -124,7 +116,6 @@ export default {
     return {
       selectedLandingPage: 'Home',
       features: {
-        transcriptionV2Enabled: false,
         aiSampleGenerationEnabled: false,
         analysisEnabled: false
       },
