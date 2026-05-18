@@ -25,26 +25,37 @@ A modern, high-performance web application designed for real-time interview prac
 - npm or yarn
 
 ### 2. Environment Setup
-Create a `.env` file in the root directory and add your API keys:
+
+The frontend no longer holds AI provider keys. Question generation, analysis,
+TTS, and recorded-audio transcription are proxied through `copilot-backend`,
+which is the only thing that talks to OpenAI and AssemblyAI.
+
+Create a `.env` file in the root directory with the backend URL:
 
 ```bash
-# OpenAI (Question generation & Feedback)
-VUE_APP_OPENAPI_TOKEN_KEY=your_openai_key
+# WebSocket URL for the realtime transcription backend. The frontend derives
+# the HTTP base URL from this (ws:// → http://, wss:// → https://) for the
+# new /api/** REST calls.
+VUE_APP_SERVER_URL=ws://localhost:8080
 
-# AssemblyAI (Real-time transcription)
-VUE_APP_ASSEMBLY_AI_TOKEN=your_assemblyai_token
+# Optional: override the HTTP base URL when it differs from the WS host
+# (e.g. behind a separate CloudFront distribution).
+# VUE_APP_COPILOT_BACKEND_URL=http://localhost:8080
 
-# Microsoft Azure (Realistic Voice Synthesis)
-VUE_APP_AZURE_SPEECH_KEY=your_azure_key
-VUE_APP_AZURE_SPEECH_REGION=your_azure_region
+# Diyo Service backend (auth, profiles).
+VUE_APP_DIYO_SERVICE_BACKEND_ENDPOINT=https://your-diyo-service.example.com
 ```
+
+You also need `copilot-backend` running. See [copilot-backend/README.md](../copilot-backend/README.md)
+for backend setup — it needs `OPENAI_API_KEY` and `ASSEMBLY_AI_API_KEY` set
+either as env vars or in a local-only `application-local.properties`.
 
 ### 3. Installation
 ```bash
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (runs on http://localhost:3001)
 npm run serve
 ```
 

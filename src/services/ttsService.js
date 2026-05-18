@@ -1,7 +1,6 @@
 import { APP_CONFIG } from '@/constants/appConfig';
+import { backendUrl, authHeaders, assertOk } from './backendApi';
 
-// OpenAI TTS exposes a fixed set of voices (no list endpoint), so we declare
-// them locally. The shape matches what the Resume Setup voice dropdown expects.
 const OPENAI_VOICES = [
   { id: 'alloy',   name: 'Alloy',   gender: 'Neutral' },
   { id: 'echo',    name: 'Echo',    gender: 'Male' },
@@ -17,19 +16,12 @@ function resolveVoice(voice) {
   return OPENAI_VOICES.some(v => v.id === voice) ? voice : DEFAULT_VOICE;
 }
 
-function getApiKey() {
-  return process.env.VUE_APP_OPENAPI_TOKEN_KEY;
+function isBackendConfigured() {
+  return !!APP_CONFIG.SERVICES.COPILOT_BACKEND_URL;
 }
 
-// ── Speech cache ────────────────────────────────────────────────────
-// Memoizes generated speech blobs by (model, voice, text) so a question
-// repeated within a session — or pre-fetched while the previous one is
-// playing — never hits the network twice. In-memory only by design;
-// swapping out the upstream for the backend later does not need to
-// touch this cache. The cache is bounded simply by the natural size of
-// an interview (~30 entries) so no LRU eviction is needed.
-const _speechCache = new Map();   // key → ArrayBuffer
-const _inFlight = new Map();      // key → Promise<ArrayBuffer>
+const _speechCache = new Map();
+const _inFlight = new Map();
 
 function cacheKey(text, voice) {
   const { MODEL } = APP_CONFIG.SERVICES.OPENAI_TTS;
@@ -37,34 +29,24 @@ function cacheKey(text, voice) {
 }
 
 async function requestSpeech(text, voice) {
-  const apiKey = getApiKey();
-  const { TTS_URL, MODEL, FORMAT } = APP_CONFIG.SERVICES.OPENAI_TTS;
+  const { FORMAT } = APP_CONFIG.SERVICES.OPENAI_TTS;
 
-  const response = await fetch(TTS_URL, {
+  const response = await fetch(backendUrl('/api/tts/speech'), {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
-      model: MODEL,
-      input: text,
+      text,
       voice: resolveVoice(voice),
-      response_format: FORMAT
+      format: FORMAT
     })
   });
 
-  if (!response.ok) throw new Error(`OpenAI TTS failed (${response.status})`);
+  await assertOk(response, 'Backend TTS');
   return response.arrayBuffer();
 }
 
-// Returns the speech buffer for (text, voice). Uses the in-memory cache;
-// coalesces concurrent requests for the same key into a single network
-// call (so prefetch + immediate play don't double-fetch). Returns a
-// COPY of the buffer because Audio playback can transfer/consume it.
 async function getSpeechBuffer(text, voice) {
-  if (!text || !getApiKey()) {
-    // Caller will hit the browser-synthesis fallback paths below.
+  if (!text || !isBackendConfigured()) {
     return requestSpeech(text, voice);
   }
   const key = cacheKey(text, voice);
@@ -88,31 +70,17 @@ async function getSpeechBuffer(text, voice) {
   return buf.slice(0);
 }
 
-// Fire-and-forget cache warmup. Safe to call any number of times — same
-// text/voice will only ever produce one network request. Used by
-// InterviewView to fetch the next question's audio while the current
-// one is being answered, so the transition between questions is
-// effectively instant.
 export async function prefetchSpeech(text, voice) {
-  if (!text || !getApiKey()) return;
+  if (!text || !isBackendConfigured()) return;
   const key = cacheKey(text, voice);
   if (_speechCache.has(key) || _inFlight.has(key)) return;
   try {
     await getSpeechBuffer(text, voice);
-  } catch (e) {
-    // Best-effort. If prefetch fails the live play will fail too and
-    // surface its own error.
-  }
+  } catch (e) { /* best-effort */ }
 }
 
-// Object URLs are revoked through this helper instead of immediately on
-// `audio.onended`. The browser sometimes performs follow-up fetches
-// against a blob URL right after playback finishes (especially when the
-// audio element was hooked into an AudioContext via
-// createMediaElementSource). Revoking inside the same tick produced a
-// trail of `net::ERR_FILE_NOT_FOUND` console errors. A short delay
-// past the cleanup window keeps the console clean without leaking
-// noticeable memory — each clip is ~30 KB and we hold them for ~3s.
+// Delayed so the browser's post-playback fetches against the blob URL
+// (especially via createMediaElementSource) don't log ERR_FILE_NOT_FOUND.
 const REVOKE_DELAY_MS = 3000;
 function scheduleRevoke(url) {
   setTimeout(() => {
@@ -139,14 +107,12 @@ export async function fetchVoices() {
 }
 
 export async function playVoiceSample(voiceId) {
-  const apiKey = getApiKey();
-  if (!apiKey) return;
+  if (!isBackendConfigured()) return;
 
   const audioData = await getSpeechBuffer('This is a sample of the selected voice.', voiceId);
   const url = URL.createObjectURL(new Blob([audioData], { type: 'audio/mp3' }));
   const audio = new Audio(url);
 
-  // Resolve when playback ends so the caller can show a "playing" state.
   return new Promise((resolve, reject) => {
     audio.onended = () => { scheduleRevoke(url); resolve(); };
     audio.onerror = () => { scheduleRevoke(url); reject(new Error('Audio playback failed')); };
@@ -155,10 +121,8 @@ export async function playVoiceSample(voiceId) {
 }
 
 export async function speakWithTTS(text, voice, onEnd) {
-  const apiKey = getApiKey();
-
-  if (!apiKey) {
-    console.warn('OpenAI API key (VUE_APP_OPENAPI_TOKEN_KEY) is missing — using browser Speech Synthesis fallback.');
+  if (!isBackendConfigured()) {
+    console.warn('Copilot backend URL is missing — using browser Speech Synthesis fallback.');
     return speakWithBrowserFallback(text, onEnd);
   }
 
@@ -181,8 +145,7 @@ export async function speakWithTTS(text, voice, onEnd) {
 }
 
 export async function speakWithTTSToContext(text, voice, audioCtx, destination, onEnd) {
-  const apiKey = getApiKey();
-  if (!apiKey) return speakWithTTS(text, voice, onEnd);
+  if (!isBackendConfigured()) return speakWithTTS(text, voice, onEnd);
 
   try {
     const audioData = await getSpeechBuffer(text, voice);
@@ -194,9 +157,7 @@ export async function speakWithTTSToContext(text, voice, audioCtx, destination, 
       const sourceNode = audioCtx.createMediaElementSource(audio);
       sourceNode.connect(audioCtx.destination);
       if (destination) sourceNode.connect(destination);
-    } catch (e) {
-      // Audio routing may already be wired up; ignore.
-    }
+    } catch (e) { /* routing may already be wired up */ }
 
     audio.onended = () => {
       scheduleRevoke(url);
