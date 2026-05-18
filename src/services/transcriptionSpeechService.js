@@ -1,6 +1,6 @@
 import { APP_CONFIG } from '@/constants/appConfig';
 
-class TranscriptionSpeechServiceV2 {
+class TranscriptionSpeechService {
     constructor() {
         this.isListening = false;
         this.callbacks = {
@@ -79,7 +79,7 @@ class TranscriptionSpeechServiceV2 {
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
-            const wsUrl = `${wsOrigin}/realtime-v2?sample_rate=${this.sampleRate}`;
+            const wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
 
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';
@@ -228,4 +228,4 @@ class TranscriptionSpeechServiceV2 {
     }
 }
 
-export default new TranscriptionSpeechServiceV2();
+export default new TranscriptionSpeechService();

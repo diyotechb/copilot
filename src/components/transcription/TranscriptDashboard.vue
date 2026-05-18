@@ -3,8 +3,8 @@
     <div class="dashboard-header">
       <h2>My Transcriptions</h2>
       <div class="dash-actions">
-        <el-button type="default" class="try-v2-btn" @click="$emit('start-new-v2')" title="New engine: cleaner sentences, no disappearing text">
-          Try New <i class="el-icon-magic-stick"></i>
+        <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
+          Start Recording <i class="el-icon-right"></i>
         </el-button>
       </div>
     </div>
@@ -14,8 +14,8 @@
         <h3>No transcripts yet</h3>
         <p>Capture your thoughts or meetings with real-time transcription.</p>
         <div style="display:flex; gap:10px; margin-top: 24px;">
-          <el-button type="default" class="try-v2-btn" @click="$emit('start-new-v2')" title="New engine: cleaner sentences, no disappearing text">
-            Start First Recording <i class="el-icon-magic-stick"></i>
+          <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
+            Start First Recording <i class="el-icon-right"></i>
           </el-button>
         </div>
       </div>
@@ -153,15 +153,6 @@ export default {
   font-size: 20px;
   margin: 10px 0;
   color: #606266;
-}
-
-.try-v2-btn {
-  border-color: #409eff;
-  color: #409eff;
-}
-
-.try-v2-btn:hover {
-  background: #ecf5ff;
 }
 
 .transcript-list {

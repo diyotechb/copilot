@@ -3,7 +3,7 @@
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
       :history="history"
-      @start-new-v2="startNewSessionV2"
+      @start-new="startNewSession"
       @open-detail="openDetail"
       @delete-item="deleteHistoryItem"
       @delete-all="deleteAllHistory"
@@ -41,7 +41,7 @@
 
 <script>
 import transcriptService from '@/services/transcriptService';
-import speechServiceV2 from '@/services/transcriptionSpeechServiceV2';
+import speechService from '@/services/transcriptionSpeechService';
 import TranscriptDashboard from '@/components/transcription/TranscriptDashboard.vue';
 import TranscriptDetail from '@/components/transcription/TranscriptDetail.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -88,7 +88,7 @@ export default {
 
   mounted() {
     this.history = transcriptService.loadHistory();
-    this.initV2Callbacks();
+    this.initSpeechCallbacks();
     this.initMicPermissionCheck();
     this._unloadHandler = () => this.cleanupMedia();
     window.addEventListener('beforeunload', this._unloadHandler);
@@ -110,7 +110,7 @@ export default {
     // Session management
     // ─────────────────────────────────────────────────────────────────────
 
-    async startNewSessionV2() {
+    async startNewSession() {
       if (this.micPermissionState === 'denied') {
         this._showConfirm({
           title: 'Microphone Restricted',
@@ -127,7 +127,7 @@ export default {
 
         this.$root.$emit('toggle-sidebar', true);
         this.viewMode = 'detail';
-        speechServiceV2.stop();
+        speechService.stop();
         this.resetActiveSession();
 
         this.isInterimInActiveParagraph = true;
@@ -139,7 +139,7 @@ export default {
         this.isReadOnly = false;
 
         this.$nextTick(() => {
-          speechServiceV2.start();
+          speechService.start();
           this.isListening = true;
         });
       } catch (err) {
@@ -196,7 +196,7 @@ export default {
 
     finishRecording() {
       this.stopDurationTimer();
-      speechServiceV2.stop();
+      speechService.stop();
       this.cleanupMedia();
       this.saveCurrentTranscript();
       this.$root.$emit('toggle-sidebar', false);
@@ -206,7 +206,7 @@ export default {
 
     togglePause() {
       if (this.isListening) {
-        speechServiceV2.stop();
+        speechService.stop();
         this.isListening = false;
         this.stopDurationTimer();
       } else {
@@ -215,14 +215,14 @@ export default {
           const last = this.transcriptLines[this.transcriptLines.length - 1];
           this.audioTimeOffset = (last.audioEnd || this.lastTurnAudioEnd || 0) + 500;
         }
-        speechServiceV2.start();
+        speechService.start();
         this.isListening = true;
         this.startDurationTimer();
       }
     },
 
     cleanupMedia() {
-      speechServiceV2.stop();
+      speechService.stop();
       this.stopDurationTimer();
       this.isListening = false;
     },
@@ -276,7 +276,7 @@ export default {
     handleConfirmAction() {
       const { action, data } = this.confirmConfig;
       if (action === 'stopAndSave') {
-        speechServiceV2.stop();
+        speechService.stop();
         this.cleanupMedia();
         this.saveCurrentTranscript();
         this.$root.$emit('toggle-sidebar', false);
@@ -296,20 +296,20 @@ export default {
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // V2 Engine — direct AssemblyAI V3 pass-through
+    // Speech callbacks — direct AssemblyAI V3 pass-through
     // ─────────────────────────────────────────────────────────────────────
 
-    initV2Callbacks() {
-      speechServiceV2.setCallback('onStart', () => {
+    initSpeechCallbacks() {
+      speechService.setCallback('onStart', () => {
         this.isListening = true;
         if (!this.sessionStart) { this.sessionStart = Date.now(); this.startDurationTimer(); }
       });
 
-      speechServiceV2.setCallback('onEnd', () => {
-        if (!speechServiceV2.isListening) this.isListening = false;
+      speechService.setCallback('onEnd', () => {
+        if (!speechService.isListening) this.isListening = false;
       });
 
-      speechServiceV2.setCallback('onError', (event) => {
+      speechService.setCallback('onError', (event) => {
         if (event.error === 'not-allowed') {
           this.isListening = false;
           this._showMicDeniedDialog();
@@ -318,35 +318,35 @@ export default {
         }
       });
 
-      speechServiceV2.setCallback('onResult', (event) => {
+      speechService.setCallback('onResult', (event) => {
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const res = event.results[i];
           const offset = this.audioTimeOffset;
           const text = res[0].transcript;
           const audioStart = (res.audioStart || 0) + offset;
           const audioEnd   = (res.audioEnd   || 0) + offset;
-          if (res.isFinal) this.v2OnFinal(text || this.currentInterim, audioStart, audioEnd);
-          else if (text)   this.v2OnPartial(text, audioStart);
+          if (res.isFinal) this.onFinal(text || this.currentInterim, audioStart, audioEnd);
+          else if (text)   this.onPartial(text, audioStart);
         }
       });
 
     },
 
-    v2OnPartial(text, audioStart) {
+    onPartial(text, audioStart) {
       // AssemblyAI V3 sends cumulative turn text — just replace interim, no accumulation.
       if (!text) return;
       this.currentInterim = text;
-      this.isInterimInActiveParagraph = !this._v2NeedsNewParagraph(audioStart);
+      this.isInterimInActiveParagraph = !this._needsNewParagraph(audioStart);
       this.lastActivityTime = Date.now();
     },
 
-    v2OnFinal(text, audioStart, audioEnd) {
+    onFinal(text, audioStart, audioEnd) {
       // end_of_turn=true: turn complete, text is fully punctuated. Lock it.
       if (!text) return;
       const now = Date.now();
       if (!this.sessionStart) this.sessionStart = now;
 
-      if (this._v2NeedsNewParagraph(audioStart) || !this.transcriptLines.length) {
+      if (this._needsNewParagraph(audioStart) || !this.transcriptLines.length) {
         this.transcriptLines.push({
           time: this.getCurrentTime(), text, ts: now,
           audioStart: audioStart || 0, audioEnd: audioEnd || 0
@@ -365,9 +365,9 @@ export default {
       this.saveCurrentTranscript();
     },
 
-    _v2NeedsNewParagraph(audioStart) {
+    _needsNewParagraph(audioStart) {
       if (!this.transcriptLines.length) return true;
-      const threshold = APP_CONFIG.TRANSCRIPTION.V2_PARAGRAPH_THRESHOLD_MS;
+      const threshold = APP_CONFIG.TRANSCRIPTION.PARAGRAPH_THRESHOLD_MS;
       if (audioStart > 0 && this.lastTurnAudioEnd > 0) {
         return (audioStart - this.lastTurnAudioEnd) >= threshold;
       }

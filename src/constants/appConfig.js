@@ -1,7 +1,7 @@
 export const APP_CONFIG = {
   /**
    * TRANSCRIPTION SETTINGS
-   * Used in: TranscriptionsView.vue, transcriptService.js, transcriptionSpeechServiceV2.js
+   * Used in: TranscriptionsView.vue, transcriptService.js, transcriptionSpeechService.js
    */
   TRANSCRIPTION: {
     // Maximum number of transcription sessions to keep in local storage
@@ -11,7 +11,7 @@ export const APP_CONFIG = {
     PREVIEW_LENGTH: 75,
 
     // Silence duration (ms) that triggers a new paragraph break
-    V2_PARAGRAPH_THRESHOLD_MS: 3000,
+    PARAGRAPH_THRESHOLD_MS: 3000,
 
     // AUDIO PROCESSING
     SAMPLE_RATE: 16000,
