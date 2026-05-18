@@ -3,10 +3,7 @@
     <div class="dashboard-header">
       <h2>My Transcriptions</h2>
       <div class="dash-actions">
-        <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
-          Start Recording <i :class="micPermission === 'denied' ? 'el-icon-lock' : 'el-icon-right'"></i>
-        </el-button>
-        <el-button v-if="showV2Button" type="default" class="try-v2-btn" @click="$emit('start-new-v2')" title="New engine: cleaner sentences, no disappearing text">
+        <el-button type="default" class="try-v2-btn" @click="$emit('start-new-v2')" title="New engine: cleaner sentences, no disappearing text">
           Try New <i class="el-icon-magic-stick"></i>
         </el-button>
       </div>
@@ -17,11 +14,8 @@
         <h3>No transcripts yet</h3>
         <p>Capture your thoughts or meetings with real-time transcription.</p>
         <div style="display:flex; gap:10px; margin-top: 24px;">
-          <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
-            Start First Recording <i :class="micPermission === 'denied' ? 'el-icon-lock' : 'el-icon-right'"></i>
-          </el-button>
-          <el-button v-if="showV2Button" type="default" class="try-v2-btn" @click="$emit('start-new-v2')" title="New engine: cleaner sentences, no disappearing text">
-            Try New <i class="el-icon-magic-stick"></i>
+          <el-button type="default" class="try-v2-btn" @click="$emit('start-new-v2')" title="New engine: cleaner sentences, no disappearing text">
+            Start First Recording <i class="el-icon-magic-stick"></i>
           </el-button>
         </div>
       </div>
@@ -58,14 +52,6 @@ export default {
     history: {
       type: Array,
       required: true
-    },
-    micPermission: {
-      type: String,
-      default: 'prompt'
-    },
-    showV2Button: {
-      type: Boolean,
-      default: false
     }
   },
   computed: {

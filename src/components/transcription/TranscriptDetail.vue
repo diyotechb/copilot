@@ -20,9 +20,6 @@
             <div class="meta-row">
               <span class="meta-item"><i class="el-icon-date"></i> {{ dateStr || 'Just now' }}</span>
               <span class="meta-item ml-2" v-if="sessionId">ID: {{ sessionId }}</span>
-              <span v-if="engine && !isReadOnly" class="engine-badge" :class="engine === 'v2' ? 'badge-new' : 'badge-classic'">
-                {{ engine === 'v2' ? 'New Engine' : 'Classic' }}
-              </span>
             </div>
           </div>
 
@@ -138,7 +135,6 @@ export default {
     currentInterim: String,
     isInterimInline: Boolean,
     currentTime: String,
-    engine: { type: String, default: null },
     silenceProgress: { type: Number, default: 0 },
     countdownSecsLeft: { type: [Number, String], default: 0 }
   },
@@ -254,26 +250,6 @@ export default {
 }
 .meta-item { display: flex; align-items: center; gap: 5px; }
 .ml-2 { margin-left: 10px; }
-
-.engine-badge {
-  margin-left: 10px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 0.7em;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-.badge-new {
-  background: #ede9fe;
-  color: #7c3aed;
-  border: 1px solid #ddd6fe;
-}
-.badge-classic {
-  background: #f0f9ff;
-  color: #0284c7;
-  border: 1px solid #bae6fd;
-}
 
 .header-right {
   display: flex;
