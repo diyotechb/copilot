@@ -79,7 +79,7 @@ class TranscriptionSpeechService {
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
-            const wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
+            const wsUrl = `${wsOrigin}/realtime-transcribe?sample_rate=${this.sampleRate}`;
 
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';

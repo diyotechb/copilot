@@ -3,6 +3,7 @@
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
       :history="history"
+      :mic-permission="micPermissionState"
       @start-new="startNewSession"
       @open-detail="openDetail"
       @delete-item="deleteHistoryItem"

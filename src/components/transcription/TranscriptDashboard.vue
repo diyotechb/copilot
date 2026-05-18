@@ -4,7 +4,7 @@
       <h2>My Transcriptions</h2>
       <div class="dash-actions">
         <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
-          Start Recording <i class="el-icon-right"></i>
+          Start Recording <i :class="micPermission === 'denied' ? 'el-icon-lock' : 'el-icon-right'"></i>
         </el-button>
       </div>
     </div>
@@ -15,7 +15,7 @@
         <p>Capture your thoughts or meetings with real-time transcription.</p>
         <div style="display:flex; gap:10px; margin-top: 24px;">
           <el-button type="primary" class="primary-hero-btn" @click="$emit('start-new')">
-            Start First Recording <i class="el-icon-right"></i>
+            Start First Recording <i :class="micPermission === 'denied' ? 'el-icon-lock' : 'el-icon-right'"></i>
           </el-button>
         </div>
       </div>
@@ -52,6 +52,10 @@ export default {
     history: {
       type: Array,
       required: true
+    },
+    micPermission: {
+      type: String,
+      default: 'prompt'
     }
   },
   computed: {
