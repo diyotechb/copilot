@@ -166,6 +166,14 @@ export const APP_CONFIG = {
       return (process.env.VUE_APP_SERVER_URL || '').replace(/\/+$/, '');
     },
 
+    // Override via VUE_APP_COPILOT_BACKEND_URL when HTTP host differs from WS host.
+    get COPILOT_BACKEND_URL() {
+      const override = (process.env.VUE_APP_COPILOT_BACKEND_URL || '').replace(/\/+$/, '');
+      if (override) return override;
+      const ws = (process.env.VUE_APP_SERVER_URL || '').replace(/\/+$/, '');
+      return ws.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
+    },
+
     // Main Branding / Links
     DIYO_MAIN_WEBSITE: 'https://www.diyotech.net'
   }

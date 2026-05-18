@@ -184,6 +184,7 @@
                   type="text"
                   class="setup-select"
                   placeholder="e.g., AWS, Kubernetes, microservices, GraphQL"
+                  :maxlength="preferredKeywordsMaxLength"
                   @change="onPreferredKeywordsChange"
                 />
                 <p class="difficulty-meta">
@@ -476,6 +477,7 @@ import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA, saveInte
 import { listRecentSessions, MAX_ENTRIES } from '@/store/interviewHistoryStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { fetchVoices, playVoiceSample, prefetchSpeech } from '@/services/ttsService';
+import { INPUT_LIMITS } from '@/constants/inputLimits';
 
 export default {
   name: 'ResumeSetup',
@@ -551,6 +553,10 @@ export default {
     isSubmitDisabled() {
       const permsOk = this.micPermission === 'granted' && (!this.enableVideo || this.cameraPermission === 'granted');
       return !this.resumeText || !this.selectedVoice || this.isGenerating || this.voicesLoading || !permsOk;
+    },
+    preferredKeywordsMaxLength() {
+      // Conservative cap = N keywords × per-keyword char limit, with slack for separators.
+      return INPUT_LIMITS.PREFERRED_KEYWORDS_COUNT * (INPUT_LIMITS.PREFERRED_KEYWORD_CHARS + 2);
     },
     difficultyConfig() {
       return APP_CONFIG.DIFFICULTY;
@@ -812,6 +818,10 @@ export default {
       }
     },
     async handleGenerateResume({ keywords }) {
+      if ((keywords || '').length > INPUT_LIMITS.SAMPLE_KEYWORDS) {
+        this.showInputLimitError(`Keywords exceed ${INPUT_LIMITS.SAMPLE_KEYWORDS} characters.`);
+        return;
+      }
       this.generatingResume = true;
       try {
         this.resumeText = await generateSampleResume(keywords);
@@ -822,6 +832,10 @@ export default {
       }
     },
     async handleGenerateJobDescription({ keywords }) {
+      if ((keywords || '').length > INPUT_LIMITS.SAMPLE_KEYWORDS) {
+        this.showInputLimitError(`Keywords exceed ${INPUT_LIMITS.SAMPLE_KEYWORDS} characters.`);
+        return;
+      }
       this.generatingJD = true;
       try {
         this.jobDescriptionText = await generateSampleJobDescription(keywords);
@@ -872,7 +886,43 @@ export default {
         this.isPlayingSample = false;
       }
     },
+    showInputLimitError(message) {
+      this.confirmConfig = {
+        title: 'Input too large',
+        message,
+        type: 'warning',
+        confirmText: 'OK',
+        showCancel: false,
+        icon: 'el-icon-warning-outline',
+        action: 'ack'
+      };
+      this.confirmVisible = true;
+    },
+    validateInputSizes() {
+      const resumeLen = (this.resumeText || '').length;
+      if (resumeLen > INPUT_LIMITS.RESUME) {
+        this.showInputLimitError(`Resume is ${resumeLen.toLocaleString()} characters; the limit is ${INPUT_LIMITS.RESUME.toLocaleString()}. Trim it and try again.`);
+        return false;
+      }
+      const jdLen = (this.jobDescriptionText || '').length;
+      if (jdLen > INPUT_LIMITS.JOB_DESCRIPTION) {
+        this.showInputLimitError(`Job description is ${jdLen.toLocaleString()} characters; the limit is ${INPUT_LIMITS.JOB_DESCRIPTION.toLocaleString()}. Trim it and try again.`);
+        return false;
+      }
+      const kw = (this.preferredKeywords || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (kw.length > INPUT_LIMITS.PREFERRED_KEYWORDS_COUNT) {
+        this.showInputLimitError(`Too many preferred keywords (${kw.length}). Limit is ${INPUT_LIMITS.PREFERRED_KEYWORDS_COUNT}.`);
+        return false;
+      }
+      const longKw = kw.find(k => k.length > INPUT_LIMITS.PREFERRED_KEYWORD_CHARS);
+      if (longKw) {
+        this.showInputLimitError(`Keyword "${longKw.slice(0, 30)}…" exceeds ${INPUT_LIMITS.PREFERRED_KEYWORD_CHARS} characters.`);
+        return false;
+      }
+      return true;
+    },
     async submitSetup() {
+      if (!this.validateInputSizes()) return;
       this.isGenerating = true;
       this.qaReady = true;
       this.generationProgress = {
