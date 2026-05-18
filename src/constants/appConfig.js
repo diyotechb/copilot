@@ -10,22 +10,12 @@ export const APP_CONFIG = {
     // Max words for the sidebar preview
     PREVIEW_LENGTH: 75,
 
-    // Silence duration (ms) that triggers a new paragraph break (V1 engine)
-    MERGE_THRESHOLD_MS: 5000,
-
-    // Silence duration (ms) that triggers a new paragraph break (V2 engine — shorter feels more natural)
-    V2_PARAGRAPH_THRESHOLD_MS: 3000,
+    // Silence duration (ms) that triggers a new paragraph break
+    PARAGRAPH_THRESHOLD_MS: 3000,
 
     // AUDIO PROCESSING
     SAMPLE_RATE: 16000,
-    BUFFER_SIZE: 1024,
-
-    // FUZZY MATCHING
-    OVERLAP_FUZZY_INTERIM_MS: 500,
-    OVERLAP_FUZZY_FINAL_MS: 1000,
-    MERGE_BUFFER_MS: 100,
-    SEARCH_DEPTH_LINES: 10,
-    OVERLAP_BUFFER_MS: 500
+    BUFFER_SIZE: 1024
   },
 
   /**

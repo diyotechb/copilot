@@ -22,11 +22,7 @@ class TranscriptionSpeechService {
 
         this.baseUrl = APP_CONFIG.SERVICES.WS_URL;
         if (!this.baseUrl) {
-            console.error('********************************************************************************');
             console.error('ERROR: Real-time Backend URL (VUE_APP_SERVER_URL) is MISSING!');
-            console.error('Transcription and real-time features will FAIL.');
-            console.error('Please provide the URL in your .env file or environment.');
-            console.error('********************************************************************************');
         }
     }
 
@@ -72,7 +68,6 @@ class TranscriptionSpeechService {
             this.processor.onaudioprocess = (event) => {
                 if (!this.isListening) return;
                 const input = event.inputBuffer.getChannelData(0);
-
                 const pcm16 = new Int16Array(input.length);
                 for (let i = 0; i < input.length; i++) {
                     pcm16[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
@@ -84,7 +79,7 @@ class TranscriptionSpeechService {
             if (wsOrigin.startsWith('http://')) wsOrigin = wsOrigin.replace(/^http:/, 'ws:');
             else if (wsOrigin.startsWith('https://')) wsOrigin = wsOrigin.replace(/^https:/, 'wss:');
 
-            const wsUrl = `${wsOrigin}/realtime?sample_rate=${this.sampleRate}`;
+            const wsUrl = `${wsOrigin}/realtime-transcribe?sample_rate=${this.sampleRate}`;
 
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';
@@ -102,7 +97,7 @@ class TranscriptionSpeechService {
                         this.handleError(msg.message);
                     }
                 } catch (e) {
-                    // Ignore malformed messages silently
+                    // Ignore malformed messages
                 }
             };
 
@@ -111,6 +106,9 @@ class TranscriptionSpeechService {
             };
 
             this.ws.onclose = () => {
+                if (this.isListening) {
+                    this.handleError('Connection lost. Recording stopped.');
+                }
                 this.stop();
             };
 
@@ -129,7 +127,6 @@ class TranscriptionSpeechService {
             }
 
             const chunk = this.audioQueue.shift();
-            // Minimum chunk size to avoid flood
             if (chunk.length < (this.sampleRate / 1000) * 50) continue;
 
             try {
@@ -142,22 +139,26 @@ class TranscriptionSpeechService {
     }
 
     handleServerMessage(data) {
-        if (!data) return;
+        // Raw AssemblyAI V3 Turn format:
+        // { type: "Turn", end_of_turn: bool, transcript: str, utterance: str,
+        //   words: [{text, start, end, word_is_final}], turn_is_formatted: bool }
+        if (!data || data.type !== 'Turn') return;
 
+        const isFinal = data.end_of_turn === true;
+        const words = data.words || [];
+
+        // Audio timestamps live on the words array
+        const audioStart = words.length > 0 ? (words[0].start || 0) : 0;
+        const audioEnd = words.length > 0 ? (words[words.length - 1].end || 0) : 0;
+
+        // Text extraction:
+        // - Final: use transcript (fully punctuated complete turn text)
+        // - Partial: use utterance (formatted in-progress) → fallback to joining words
         let text = '';
-        let isFinal = false;
-        let audioStart = 0;
-        let audioEnd = 0;
-        let words = [];
-
-        if (typeof data === 'string') {
-            text = data;
+        if (isFinal) {
+            text = data.transcript || data.utterance || words.map(w => w.text).join(' ');
         } else {
-            text = data.text || data.transcript || data.utterance || '';
-            isFinal = !!data.end_of_turn || !!data.eot || !!data.isFinal;
-            audioStart = data.audio_start || 0;
-            audioEnd = data.audio_end || 0;
-            words = data.words || [];
+            text = data.utterance || words.map(w => w.text).join(' ') || data.transcript || '';
         }
 
         if (!text && !isFinal) return;
@@ -200,7 +201,7 @@ class TranscriptionSpeechService {
             this.source = null;
         }
         if (this.audioContext) {
-            try { 
+            try {
                 if (this.audioContext.state !== 'closed') {
                     this.audioContext.close();
                 }
@@ -208,7 +209,7 @@ class TranscriptionSpeechService {
             this.audioContext = null;
         }
         if (this.audioStream) {
-            try { 
+            try {
                 this.audioStream.getTracks().forEach(t => t.stop());
             } catch (e) { }
             this.audioStream = null;

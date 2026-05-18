@@ -4,9 +4,7 @@
       v-if="viewMode === 'dashboard'"
       :history="history"
       :mic-permission="micPermissionState"
-      :show-v2-button="featureV2Enabled"
       @start-new="startNewSession"
-      @start-new-v2="startNewSessionV2"
       @open-detail="openDetail"
       @delete-item="deleteHistoryItem"
       @delete-all="deleteAllHistory"
@@ -23,7 +21,6 @@
       :current-interim="currentInterim"
       :is-interim-inline="isInterimInActiveParagraph"
       :current-time="getCurrentTime()"
-      :engine="engine"
       @back="openDashboard"
       @update-title="updateTitle"
       @toggle-pause="togglePause"
@@ -45,9 +42,7 @@
 
 <script>
 import transcriptService from '@/services/transcriptService';
-import storageService from '@/services/storageService';
-import speechServiceV1 from '@/services/transcriptionSpeechService';
-import speechServiceV2 from '@/services/transcriptionSpeechServiceV2';
+import speechService from '@/services/transcriptionSpeechService';
 import TranscriptDashboard from '@/components/transcription/TranscriptDashboard.vue';
 import TranscriptDetail from '@/components/transcription/TranscriptDetail.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -79,22 +74,7 @@ export default {
       lastActivityTime: null,
       history: [],
 
-      // ── Engine selector ──────────────────────────────────────────────
-      // 'v1' = classic complex engine  |  'v2' = direct AssemblyAI V3 engine
-      engine: 'v1',
-      featureV2Enabled: false,
-
-      // ── V1 engine config ─────────────────────────────────────────────
-      transcriptConfig: {
-        mergeThresholdMs:   APP_CONFIG.TRANSCRIPTION.MERGE_THRESHOLD_MS,
-        overlapFuzzyInterim: APP_CONFIG.TRANSCRIPTION.OVERLAP_FUZZY_INTERIM_MS,
-        overlapFuzzyFinal:   APP_CONFIG.TRANSCRIPTION.OVERLAP_FUZZY_FINAL_MS,
-        mergeBufferMs:       APP_CONFIG.TRANSCRIPTION.MERGE_BUFFER_MS,
-        searchDepthLines:    APP_CONFIG.TRANSCRIPTION.SEARCH_DEPTH_LINES,
-        overlapBufferMs:     APP_CONFIG.TRANSCRIPTION.OVERLAP_BUFFER_MS,
-      },
-
-      // ── V2 engine state ───────────────────────────────────────────────
+      // ── Turn timing ───────────────────────────────────────────────────
       lastTurnAudioEnd: 0,
 
       // ── Confirm dialog ───────────────────────────────────────────────
@@ -107,17 +87,9 @@ export default {
     };
   },
 
-  computed: {
-    activeService() {
-      return this.engine === 'v2' ? speechServiceV2 : speechServiceV1;
-    }
-  },
-
   mounted() {
     this.history = transcriptService.loadHistory();
-    const features = storageService.getItem(storageService.KEYS.USER_FEATURES, true);
-    this.featureV2Enabled = !!(features && features.transcriptionV2Enabled);
-    this.initV1Callbacks();
+    this.initSpeechCallbacks();
     this.initMicPermissionCheck();
     this._unloadHandler = () => this.cleanupMedia();
     window.addEventListener('beforeunload', this._unloadHandler);
@@ -136,13 +108,10 @@ export default {
   methods: {
 
     // ─────────────────────────────────────────────────────────────────────
-    // Session management (shared)
+    // Session management
     // ─────────────────────────────────────────────────────────────────────
 
-    startNewSession()   { this._launchSession('v1'); },
-    startNewSessionV2() { this._launchSession('v2'); },
-
-    async _launchSession(engineType) {
+    async startNewSession() {
       if (this.micPermissionState === 'denied') {
         this._showConfirm({
           title: 'Microphone Restricted',
@@ -159,14 +128,10 @@ export default {
 
         this.$root.$emit('toggle-sidebar', true);
         this.viewMode = 'detail';
-        this.activeService.stop();
+        speechService.stop();
         this.resetActiveSession();
 
-        this.engine = engineType;
-        if (engineType === 'v2') {
-          this.isInterimInActiveParagraph = true;
-          this.initV2Callbacks();
-        }
+        this.isInterimInActiveParagraph = true;
 
         this.sessionId = transcriptService.generateId();
         const now = new Date();
@@ -175,7 +140,7 @@ export default {
         this.isReadOnly = false;
 
         this.$nextTick(() => {
-          this.activeService.start();
+          speechService.start();
           this.isListening = true;
         });
       } catch (err) {
@@ -199,7 +164,6 @@ export default {
       this.sessionStart = null;
       this.recordingDurationMs = 0;
       this.audioTimeOffset = 0;
-      this.engine = 'v1';
       this.isInterimInActiveParagraph = false;
       this.stopDurationTimer();
     },
@@ -233,7 +197,7 @@ export default {
 
     finishRecording() {
       this.stopDurationTimer();
-      this.activeService.stop();
+      speechService.stop();
       this.cleanupMedia();
       this.saveCurrentTranscript();
       this.$root.$emit('toggle-sidebar', false);
@@ -243,34 +207,29 @@ export default {
 
     togglePause() {
       if (this.isListening) {
-        this.activeService.stop();
+        speechService.stop();
         this.isListening = false;
         this.stopDurationTimer();
       } else {
         if (this.isReadOnly) return;
         if (this.transcriptLines.length > 0) {
           const last = this.transcriptLines[this.transcriptLines.length - 1];
-          if (this.engine === 'v1' && last.allWords && last.allWords.length > 0) {
-            this.audioTimeOffset = last.allWords[last.allWords.length - 1].end + 500;
-          } else {
-            this.audioTimeOffset = (last.audioEnd || this.lastTurnAudioEnd || 0) + 500;
-          }
+          this.audioTimeOffset = (last.audioEnd || this.lastTurnAudioEnd || 0) + 500;
         }
-        this.activeService.start();
+        speechService.start();
         this.isListening = true;
         this.startDurationTimer();
       }
     },
 
     cleanupMedia() {
-      speechServiceV1.stop();
-      speechServiceV2.stop();
+      speechService.stop();
       this.stopDurationTimer();
       this.isListening = false;
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // History & persistence (shared)
+    // History & persistence
     // ─────────────────────────────────────────────────────────────────────
 
     updateTitle(newTitle) {
@@ -318,7 +277,7 @@ export default {
     handleConfirmAction() {
       const { action, data } = this.confirmConfig;
       if (action === 'stopAndSave') {
-        this.activeService.stop();
+        speechService.stop();
         this.cleanupMedia();
         this.saveCurrentTranscript();
         this.$root.$emit('toggle-sidebar', false);
@@ -338,181 +297,20 @@ export default {
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // V1 Engine — classic complex overlap/merge logic
+    // Speech callbacks — direct AssemblyAI V3 pass-through
     // ─────────────────────────────────────────────────────────────────────
 
-    initV1Callbacks() {
-      if (!speechServiceV1.isSupported()) {
-        console.warn("Speech API not supported");
-        return;
-      }
-
-      speechServiceV1.setCallback('onStart', () => {
+    initSpeechCallbacks() {
+      speechService.setCallback('onStart', () => {
         this.isListening = true;
         if (!this.sessionStart) { this.sessionStart = Date.now(); this.startDurationTimer(); }
       });
 
-      speechServiceV1.setCallback('onEnd', () => {
-        if (this.engine === 'v1' && !speechServiceV1.isListening) this.isListening = false;
+      speechService.setCallback('onEnd', () => {
+        if (!speechService.isListening) this.isListening = false;
       });
 
-      speechServiceV1.setCallback('onResult', (event) => {
-        let interim = '', final = '', audioStart = 0, audioEnd = 0, words = [];
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const res = event.results[i];
-          const offset = this.audioTimeOffset;
-          if (res.isFinal) {
-            final = res[0].transcript;
-            audioStart = (res.audioStart || 0) + offset;
-            audioEnd = (res.audioEnd || 0) + offset;
-            words = (res.words || []).map(w => ({ ...w, start: (w.start || 0) + offset, end: (w.end || 0) + offset }));
-            if (!final && this.currentInterim) final = this.currentInterim;
-            this.v1OnFinal(final, audioStart, audioEnd, words);
-          } else {
-            interim += res[0].transcript;
-            audioStart = (res.audioStart || 0) + offset;
-            audioEnd   = (res.audioEnd   || 0) + offset;
-          }
-        }
-        if (interim) this.v1OnPartial(interim, audioStart, audioEnd);
-        else this.currentInterim = '';
-      });
-
-      speechServiceV1.setCallback('onError', (event) => {
-        if (event.error === 'not-allowed') {
-          this.isListening = false;
-          this._showMicDeniedDialog();
-        }
-      });
-    },
-
-    v1OnPartial(text, audioStart) {
-      this.currentInterim = text || '';
-      if (!audioStart) return;
-      const now = Date.now();
-      const overlaps = this._v1FindOverlaps(audioStart, this.transcriptConfig.overlapFuzzyInterim);
-      if (overlaps.length > 0) {
-        this.isInterimInActiveParagraph = true;
-        this.transcriptLines[overlaps[0]].ts = now;
-        this.lastActivityTime = now;
-        return;
-      }
-      const last = this.transcriptLines[this.transcriptLines.length - 1];
-      if (last) {
-        const willSplit = this._v1ShouldSplit(audioStart, last, true);
-        this.isInterimInActiveParagraph = !willSplit;
-        if (this.isInterimInActiveParagraph) last.ts = now;
-      } else {
-        this.isInterimInActiveParagraph = false;
-      }
-      this.lastActivityTime = now;
-    },
-
-    v1OnFinal(text, audioStart, audioEnd, newWords) {
-      if (!text) return;
-      const ts = Date.now();
-      if (!this.sessionStart) this.sessionStart = ts;
-      if (!newWords || !newWords.length) newWords = [{ text, start: audioStart, end: audioEnd || (audioStart + 1000) }];
-
-      const overlaps = this._v1FindOverlaps(newWords[0].start, this.transcriptConfig.overlapFuzzyFinal);
-      if (overlaps.length > 0) {
-        const target = this.transcriptLines[overlaps[0]];
-        target.allWords = this._v1MergeWords(target.allWords || [], newWords);
-        target.text = target.allWords.map(w => w.text).join(' ');
-        target.ts = ts;
-        for (let i = overlaps.length - 1; i > 0; i--) this.transcriptLines.splice(overlaps[i], 1);
-        this.lastActivityTime = ts;
-        this.isInterimInActiveParagraph = false;
-        this.saveCurrentTranscript();
-        return;
-      }
-
-      const last = this.transcriptLines[this.transcriptLines.length - 1];
-      if (last) {
-        const splitDecided = !!this.currentInterim && !this.isInterimInActiveParagraph;
-        const splitByTiming = !this.currentInterim && this._v1ShouldSplit(newWords[0].start, last, false);
-        if (!splitDecided && !splitByTiming) {
-          last.allWords = [...(last.allWords || []), ...newWords];
-          last.text = last.allWords.map(w => w.text).join(' ');
-          last.ts = ts;
-          this.lastActivityTime = ts;
-          this.isInterimInActiveParagraph = false;
-          this.saveCurrentTranscript();
-          return;
-        }
-      }
-
-      if (last && text.length > 10) {
-        const lastText = last.text.trim();
-        if (text.startsWith(lastText) || (lastText.length > 20 && text.includes(lastText.substring(lastText.length - 20)))) {
-          last.allWords = this._v1MergeWords(last.allWords || [], newWords);
-          last.text = text;
-          last.ts = ts;
-          this.saveCurrentTranscript();
-          return;
-        }
-      }
-
-      this.lastActivityTime = ts;
-      this.transcriptLines.push({
-        time: this.getCurrentTime(), text, ts,
-        audioStart, audioEnd,
-        allWords: newWords || [{ text, start: audioStart, end: audioEnd }]
-      });
-      this.isInterimInActiveParagraph = false;
-      this.saveCurrentTranscript();
-    },
-
-    _v1FindOverlaps(audioStart, fuzzyMs) {
-      const indices = [];
-      const depth = this.transcriptConfig.searchDepthLines;
-      for (let i = this.transcriptLines.length - 1; i >= 0; i--) {
-        const words = this.transcriptLines[i].allWords || [];
-        if (words.some(w => Math.abs(w.start - audioStart) < fuzzyMs)) indices.unshift(i);
-        if (i < this.transcriptLines.length - depth) break;
-      }
-      return indices;
-    },
-
-    _v1ShouldSplit(newAudioStart, last, checkWallClock) {
-      if (!last || !last.allWords || !last.allWords.length) return true;
-      const lastWordEnd = last.allWords[last.allWords.length - 1].end;
-      const silence = newAudioStart - lastWordEnd;
-      const threshold = this.transcriptConfig.mergeThresholdMs;
-      if (newAudioStart > 0) {
-        if (silence >= threshold) return true;
-        if (silence < this.transcriptConfig.overlapBufferMs) return false;
-      }
-      if (checkWallClock && this.lastActivityTime) {
-        return (Date.now() - this.lastActivityTime) >= threshold;
-      }
-      return false;
-    },
-
-    _v1MergeWords(existing, newWords) {
-      if (!newWords.length) return existing;
-      const buf = this.transcriptConfig.mergeBufferMs;
-      const start = newWords[0].start - buf;
-      const end   = newWords[newWords.length - 1].end + buf;
-      return [...existing.filter(w => w.start < start || w.start > end), ...newWords]
-        .sort((a, b) => a.start - b.start);
-    },
-
-    // ─────────────────────────────────────────────────────────────────────
-    // V2 Engine — direct AssemblyAI V3 pass-through
-    // ─────────────────────────────────────────────────────────────────────
-
-    initV2Callbacks() {
-      speechServiceV2.setCallback('onStart', () => {
-        this.isListening = true;
-        if (!this.sessionStart) { this.sessionStart = Date.now(); this.startDurationTimer(); }
-      });
-
-      speechServiceV2.setCallback('onEnd', () => {
-        if (this.engine === 'v2' && !speechServiceV2.isListening) this.isListening = false;
-      });
-
-      speechServiceV2.setCallback('onError', (event) => {
+      speechService.setCallback('onError', (event) => {
         if (event.error === 'not-allowed') {
           this.isListening = false;
           this._showMicDeniedDialog();
@@ -521,35 +319,35 @@ export default {
         }
       });
 
-      speechServiceV2.setCallback('onResult', (event) => {
+      speechService.setCallback('onResult', (event) => {
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const res = event.results[i];
           const offset = this.audioTimeOffset;
           const text = res[0].transcript;
           const audioStart = (res.audioStart || 0) + offset;
           const audioEnd   = (res.audioEnd   || 0) + offset;
-          if (res.isFinal) this.v2OnFinal(text || this.currentInterim, audioStart, audioEnd);
-          else if (text)   this.v2OnPartial(text, audioStart);
+          if (res.isFinal) this.onFinal(text || this.currentInterim, audioStart, audioEnd);
+          else if (text)   this.onPartial(text, audioStart);
         }
       });
 
     },
 
-    v2OnPartial(text, audioStart) {
+    onPartial(text, audioStart) {
       // AssemblyAI V3 sends cumulative turn text — just replace interim, no accumulation.
       if (!text) return;
       this.currentInterim = text;
-      this.isInterimInActiveParagraph = !this._v2NeedsNewParagraph(audioStart);
+      this.isInterimInActiveParagraph = !this._needsNewParagraph(audioStart);
       this.lastActivityTime = Date.now();
     },
 
-    v2OnFinal(text, audioStart, audioEnd) {
+    onFinal(text, audioStart, audioEnd) {
       // end_of_turn=true: turn complete, text is fully punctuated. Lock it.
       if (!text) return;
       const now = Date.now();
       if (!this.sessionStart) this.sessionStart = now;
 
-      if (this._v2NeedsNewParagraph(audioStart) || !this.transcriptLines.length) {
+      if (this._needsNewParagraph(audioStart) || !this.transcriptLines.length) {
         this.transcriptLines.push({
           time: this.getCurrentTime(), text, ts: now,
           audioStart: audioStart || 0, audioEnd: audioEnd || 0
@@ -568,9 +366,9 @@ export default {
       this.saveCurrentTranscript();
     },
 
-    _v2NeedsNewParagraph(audioStart) {
+    _needsNewParagraph(audioStart) {
       if (!this.transcriptLines.length) return true;
-      const threshold = APP_CONFIG.TRANSCRIPTION.V2_PARAGRAPH_THRESHOLD_MS;
+      const threshold = APP_CONFIG.TRANSCRIPTION.PARAGRAPH_THRESHOLD_MS;
       if (audioStart > 0 && this.lastTurnAudioEnd > 0) {
         return (audioStart - this.lastTurnAudioEnd) >= threshold;
       }
@@ -581,7 +379,7 @@ export default {
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // Utilities (shared)
+    // Utilities
     // ─────────────────────────────────────────────────────────────────────
 
     getCurrentTime() {
