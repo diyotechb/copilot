@@ -35,7 +35,7 @@
             </p>
           </div>
           <div class="header-right">
-            <span class="step-indicator">STEP 3/3</span>
+            <span v-if="showOnboarding" class="step-indicator">STEP 3/3</span>
           </div>
         </div>
 
@@ -827,6 +827,19 @@ export default {
     },
   },
 
+  watch: {
+    // Smooth-scroll the transcript when a new paragraph appears. If the
+    // newest entry is an interviewer question and questions are hidden,
+    // skip — the answer paragraph that follows shortly will trigger
+    // its own scroll.
+    'interviewTranscript.length'(newLen, oldLen) {
+      if (newLen <= oldLen) return;
+      const last = this.interviewTranscript[newLen - 1];
+      if (last && last.type === 'interviewer' && !this.showQuestionSection) return;
+      this.$nextTick(() => this.scrollToLatestTranscriptLine());
+    },
+  },
+
   async created() {
     const storedQA = await getInterviewQA();
     this.interviewQA = Array.isArray(storedQA) ? storedQA : [];
@@ -945,6 +958,16 @@ export default {
   },
 
   methods: {
+    scrollToLatestTranscriptLine() {
+      const scroller = this.$refs.transcriptScroller;
+      if (!scroller) return;
+      const lines = scroller.querySelectorAll('.transcript-line');
+      const last = lines[lines.length - 1];
+      if (last && typeof last.scrollIntoView === 'function') {
+        last.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+
     // ── Release all media devices (camera + mic) ──────────────────────────
     releaseMediaDevices() {
       // 1. Explicitly stop AnswerRecorder (includes mic tracks)
@@ -2180,6 +2203,7 @@ export default {
   gap: 12px;
   margin: 1.25rem 0;
   align-items: flex-start;
+  scroll-margin-top: 24px;
 }
 
 .avatar-column {
@@ -2277,7 +2301,7 @@ export default {
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 999px;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
-  opacity: 0.35;
+  opacity: 0.15;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 .reading-tools-rail:hover {
@@ -2306,7 +2330,7 @@ export default {
   color: #1e293b;
 }
 .rail-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.15;
   cursor: default;
 }
 .rail-btn-label {

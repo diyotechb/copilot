@@ -93,6 +93,29 @@ export default {
     this.initMicPermissionCheck();
     this._unloadHandler = () => this.cleanupMedia();
     window.addEventListener('beforeunload', this._unloadHandler);
+
+    // Deep link: open the requested transcript if URL has ?sessionId=...
+    const initialId = this.$route.query.sessionId;
+    if (initialId) {
+      const item = this.history.find(h => h.id === initialId);
+      if (item) this.openDetail(item);
+    }
+  },
+
+  watch: {
+    // Sync view state with the URL when the user hits browser back/forward
+    // or pastes a deep link. Internal navigation already mutates state
+    // before updating the URL, so this watcher no-ops for our own pushes.
+    '$route.query.sessionId'(newId) {
+      if (this.isListening) return;
+      if (newId) {
+        if (newId === this.sessionId && this.isReadOnly) return;
+        const item = this.history.find(h => h.id === newId);
+        if (item) this.openDetail(item);
+      } else if (this.viewMode === 'detail' && this.isReadOnly) {
+        this.openDashboard();
+      }
+    }
   },
 
   beforeRouteLeave(to, from, next) {
@@ -182,6 +205,11 @@ export default {
       this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
+      if (this.$route.query.sessionId) {
+        const next = { ...this.$route.query };
+        delete next.sessionId;
+        this.$router.push({ query: next }).catch(() => {});
+      }
     },
 
     openDetail(item) {
@@ -193,6 +221,9 @@ export default {
       this.sessionDate = item.dateStr;
       this.isReadOnly = true;
       this.lastActivityTime = null;
+      if (this.$route.query.sessionId !== item.id) {
+        this.$router.push({ query: { ...this.$route.query, sessionId: item.id } }).catch(() => {});
+      }
     },
 
     finishRecording() {
