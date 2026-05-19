@@ -24,5 +24,11 @@ export const NAVIGATION_ITEMS = [
         routeName: 'ProfileSettings',
         icon: 'el-icon-user',
         allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
+    },
+    {
+        name: 'System Status',
+        routeName: 'AdminStatus',
+        icon: 'el-icon-monitor',
+        allowedRoles: ROLE_GROUPS.STAFF
     }
 ];
