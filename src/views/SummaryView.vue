@@ -1947,7 +1947,7 @@ export default {
         return true;
       } catch (e) {
         console.error('[SummaryView] transcribeNow failed:', e);
-        this.notify('Transcription failed. Check your connection and try again.', 'error');
+        this.notify(e && e.message ? e.message : 'Transcription failed. Check your connection and try again.', 'error');
         return false;
       } finally {
         this.transcribeRecovering = false;
