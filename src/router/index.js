@@ -21,6 +21,7 @@ const InterviewView     = () => import(/* webpackChunkName: "interview" */     '
 const MyInterviews      = () => import(/* webpackChunkName: "my-interviews" */ '@/views/MyInterviews.vue')
 const TranscriptionsView= () => import(/* webpackChunkName: "transcriptions" */'@/views/TranscriptionsView.vue')
 const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '@/views/ProfileSettings.vue')
+const AdminStatus       = () => import(/* webpackChunkName: "admin" */         '@/views/admin/AdminStatus.vue')
 
 Vue.use(VueRouter)
 
@@ -125,6 +126,15 @@ const routes = [
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
+    }
+  },
+  {
+    path: '/admin',
+    name: 'AdminStatus',
+    component: AdminStatus,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF
     }
   }
 ]
