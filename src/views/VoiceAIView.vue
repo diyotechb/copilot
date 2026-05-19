@@ -73,7 +73,7 @@ export default {
   data() {
     return {
       backendUrl: DEFAULT_BACKEND,
-      conversationId: this.newId(),
+      conversationId: 'diyotech-copilot',
       ws: null,
       connected: false,
       status: 'Idle',
@@ -95,6 +95,13 @@ export default {
       if (this.error) return 'danger';
       if (this.connected) return 'success';
       return 'info';
+    }
+  },
+  mounted() {
+    const id = this.$route.query.conversationId;
+    if (id) {
+      this.conversationId = id;
+      this.connect();
     }
   },
   beforeDestroy() {
