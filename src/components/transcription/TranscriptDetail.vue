@@ -36,7 +36,7 @@
         </div>
       </div>
 
-      <div class="transcript_area">
+      <div class="transcript_area" :style="{ '--detail-font-scale': fontScale }">
         <div v-if="lines.length === 0 && !currentInterim" class="empty-state">
           <div v-if="!isReadOnly">Your transcription will appear here...</div>
           <div v-else>No text recorded.</div>
@@ -91,6 +91,12 @@
           </div>
         </transition>
 
+        <div class="font-controls">
+          <button class="font-btn" :disabled="fontScale <= 0.7" @click="decreaseFontSize" title="Decrease text size">A−</button>
+          <button class="font-btn font-btn-label" @click="resetFontSize" :title="`Reset text size (currently ${Math.round(fontScale * 100)}%)`">{{ Math.round(fontScale * 100) }}%</button>
+          <button class="font-btn" :disabled="fontScale >= 1.8" @click="increaseFontSize" title="Increase text size">A+</button>
+        </div>
+
         <div class="controls action-controls">
           <el-button
               :circle="isListening"
@@ -116,12 +122,29 @@
 
     <div class="control_bar read-only-bar" v-else>
       <span>Viewing History. <a @click="$emit('back')" style="cursor:pointer; color:#409EFF;">Back to Dashboard</a></span>
+      <div class="font-controls">
+        <button class="font-btn" :disabled="fontScale <= 0.7" @click="decreaseFontSize" title="Decrease text size">A−</button>
+        <button class="font-btn font-btn-label" @click="resetFontSize" :title="`Reset text size (currently ${Math.round(fontScale * 100)}%)`">{{ Math.round(fontScale * 100) }}%</button>
+        <button class="font-btn" :disabled="fontScale >= 1.8" @click="increaseFontSize" title="Increase text size">A+</button>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
 import authService from '@/services/authService';
+import storageService from '@/services/storageService';
+
+const FONT_SCALE_MIN = 0.7;
+const FONT_SCALE_MAX = 1.8;
+const FONT_SCALE_DEFAULT = 1.0;
+
+function loadSavedFontScale() {
+  const raw = storageService.getItem(storageService.KEYS.TRANSCRIPTION_FONT_SCALE);
+  const val = parseFloat(raw);
+  if (!isFinite(val)) return FONT_SCALE_DEFAULT;
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, val));
+}
 
 export default {
   name: 'TranscriptDetail',
@@ -137,6 +160,19 @@ export default {
     currentTime: String,
     silenceProgress: { type: Number, default: 0 },
     countdownSecsLeft: { type: [Number, String], default: 0 }
+  },
+  data() {
+    return {
+      // Multiplier on .text font-size; user-adjustable via the A−/A+
+      // controls. Persisted to localStorage so the choice survives
+      // navigation and reloads.
+      fontScale: loadSavedFontScale()
+    };
+  },
+  watch: {
+    fontScale(val) {
+      storageService.setItem(storageService.KEYS.TRANSCRIPTION_FONT_SCALE, val);
+    }
   },
   computed: {
     userEmail() {
@@ -164,6 +200,15 @@ export default {
       }).catch(() => {
         this.$message({ message: 'Could not copy — try selecting text manually', type: 'error', duration: 3000 });
       });
+    },
+    increaseFontSize() {
+      this.fontScale = Math.min(1.8, Math.round((this.fontScale + 0.1) * 10) / 10);
+    },
+    decreaseFontSize() {
+      this.fontScale = Math.max(0.7, Math.round((this.fontScale - 0.1) * 10) / 10);
+    },
+    resetFontSize() {
+      this.fontScale = 1.0;
     }
   }
 }
@@ -318,9 +363,49 @@ export default {
 }
 
 .text {
-  font-size: 1.30em;
+  font-size: calc(1.30em * var(--detail-font-scale, 1));
   color: #0f172a;
   line-height: 1.65;
+}
+
+.font-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+}
+
+.font-btn {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-weight: 700;
+  font-size: 0.78rem;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.font-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.font-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.font-btn-label {
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+  font-size: 0.72rem;
 }
 
 .interim-inline {
@@ -626,7 +711,7 @@ export default {
     font-size: 0.6rem;
     line-height: 24px;
   }
-  .text { font-size: 1.05em; line-height: 1.55; }
+  .text { font-size: calc(1.05em * var(--detail-font-scale, 1)); line-height: 1.55; }
   .transcript_area { padding: 14px 14px; padding-bottom: 55vh; }
 
   .control_bar {
@@ -657,7 +742,7 @@ export default {
 
 @media (max-width: 480px) {
   .transcript_area { padding: 10px; padding-bottom: 55vh; }
-  .text { font-size: 1em; }
+  .text { font-size: calc(1em * var(--detail-font-scale, 1)); }
   .control_bar {
     padding: 12px !important;
     gap: 12px;

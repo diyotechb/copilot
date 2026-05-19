@@ -81,10 +81,15 @@ export default {
     }
   },
   watch: {
-    '$route'() {
+    '$route'(to, from) {
       this.isLoggedIn = authService.isLoggedIn();
       this.isMobileSidebarOpen = false; // Auto-close on navigation
-      this.isSidebarHiddenManually = false; // Reset session-based hiding
+      // Only reset session-based hiding when navigating to a different
+      // route — query-only changes (e.g. /transcriptions?sessionId=...)
+      // shouldn't bring the sidebar back if the view explicitly hid it.
+      if (to.name !== from.name) {
+        this.isSidebarHiddenManually = false;
+      }
     }
   }
 }
