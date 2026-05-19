@@ -615,7 +615,7 @@ import { getInterviewQA, getTranscripts, saveQuestionTimestamps, setInterviewCom
 import { listAllSessionIds, saveCompletedSession, deleteSession } from '@/store/interviewHistoryStore';
 import { pruneRecordingsToActiveSessions, deleteSessionRecordings, logStorageEstimate } from '@/store/recordingStore';
 import storage from '@/services/storageService';
-import { speakWithTTS, speakWithTTSToContext, prefetchSpeech } from '@/services/ttsService';
+import { speakWithTTS, speakWithTTSToContext, prefetchSpeech, clearSpeechCache } from '@/services/ttsService';
 import FeedbackSection from '../views/FeedbackSection.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { APP_CONFIG } from '@/constants/appConfig';
@@ -947,7 +947,7 @@ export default {
     next();
   },
 
-  beforeUnmount() {
+  beforeDestroy() {
     this.releaseMediaDevices();
     if (this._beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this._beforeUnloadHandler);
@@ -955,6 +955,7 @@ export default {
     this.stopTimer();
     this.clearStream();
     if (this._unwatchFirstQ) { this._unwatchFirstQ(); this._unwatchFirstQ = null; }
+    clearSpeechCache();
   },
 
   methods: {

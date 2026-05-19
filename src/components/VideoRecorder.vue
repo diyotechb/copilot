@@ -67,7 +67,7 @@ export default {
     this._unloadHandler = () => this.forceStopAllTracks();
     window.addEventListener('beforeunload', this._unloadHandler);
   },
-  beforeUnmount() {
+  beforeDestroy() {
     if (this._unloadHandler) window.removeEventListener('beforeunload', this._unloadHandler);
     this.forceStopAllTracks();
   },
