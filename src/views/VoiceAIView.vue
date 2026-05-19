@@ -8,6 +8,76 @@
       </p>
     </div>
 
+    <!-- ── Session Builder ─────────────────────────────────────────── -->
+    <el-card class="setup-card session-builder" shadow="never">
+      <div slot="header" class="session-header">
+        <span><i class="el-icon-user"></i> Candidate Session</span>
+        <el-tag v-if="sessionBuilt" type="success" size="small" effect="dark">
+          <i class="el-icon-check"></i> Session Ready
+        </el-tag>
+      </div>
+
+      <div class="row">
+        <label>Resume (PDF / text)</label>
+        <div class="resume-row">
+          <el-input
+            v-model="resumeText"
+            type="textarea"
+            :rows="3"
+            placeholder="Paste resume text, or upload a PDF →"
+            :disabled="sessionBuilding"
+            size="small"
+          />
+          <el-button size="small" icon="el-icon-upload2" @click="$refs.resumeFile.click()" :disabled="sessionBuilding">
+            Upload PDF
+          </el-button>
+          <input ref="resumeFile" type="file" accept=".pdf,.txt,.docx" style="display:none" @change="onResumeFile" />
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Past successful sessions</label>
+        <div class="past-sessions">
+          <div v-if="!pastSessions.length" class="empty-past">No saved interviews found.</div>
+          <el-checkbox-group v-else v-model="selectedSessionIds">
+            <el-checkbox
+              v-for="s in pastSessions"
+              :key="s.id"
+              :label="s.id"
+              class="session-check"
+            >
+              {{ s.difficulty || 'Interview' }} · {{ formatDate(s.savedAt) }}
+              <span class="qa-count">({{ s.qaList ? s.qaList.length : 0 }} Q&amp;As)</span>
+            </el-checkbox>
+          </el-checkbox-group>
+        </div>
+      </div>
+
+      <div class="row actions">
+        <el-tag v-if="sessionBuilding" type="info" effect="dark" size="medium">
+          <i class="el-icon-loading"></i> Building session…
+        </el-tag>
+        <el-tag v-else-if="sessionBuilt" type="success" effect="dark" size="medium">
+          <i class="el-icon-check"></i> Ready · 1hr session active
+        </el-tag>
+        <el-tag v-else type="info" effect="plain" size="medium">No session built</el-tag>
+
+        <el-button
+          type="primary"
+          size="small"
+          icon="el-icon-magic-stick"
+          :loading="sessionBuilding"
+          :disabled="!resumeText.trim() || connected"
+          @click="buildSession"
+        >
+          Build Session
+        </el-button>
+      </div>
+
+      <el-alert v-if="sessionError" :title="sessionError" type="error" :closable="false" show-icon style="margin-top:8px" />
+    </el-card>
+
+    <!-- ── Connection Controls ─────────────────────────────────────── -->
     <el-card class="setup-card" shadow="never">
       <div class="row">
         <label>Backend</label>
@@ -66,6 +136,8 @@
 </template>
 
 <script>
+import { listRecentSessions } from '@/store/interviewHistoryStore';
+
 const DEFAULT_BACKEND = process.env.VUE_APP_SERVER_URL || 'ws://localhost:8080';
 
 export default {
@@ -80,7 +152,14 @@ export default {
       error: '',
       transcriptLines: [],
       livePartial: '',
-      aiReplies: []
+      aiReplies: [],
+      // session builder
+      resumeText: '',
+      selectedSessionIds: [],
+      pastSessions: [],
+      sessionBuilding: false,
+      sessionBuilt: false,
+      sessionError: ''
     };
   },
   computed: {
@@ -89,12 +168,18 @@ export default {
         .replace(/\/$/, '')
         .replace(/^http:\/\//i, 'ws://')
         .replace(/^https:\/\//i, 'wss://');
-      return `${base}/api/realtime-voice?conversationId=${encodeURIComponent(this.conversationId)}`;
+      return `${base}/ws/interview-voice?conversationId=${encodeURIComponent(this.conversationId)}`;
     },
     statusTagType() {
       if (this.error) return 'danger';
       if (this.connected) return 'success';
       return 'info';
+    },
+    httpBase() {
+      return (this.backendUrl || '')
+        .replace(/\/$/, '')
+        .replace(/^wss:\/\//i, 'https://')
+        .replace(/^ws:\/\//i, 'http://');
     }
   },
   mounted() {
@@ -103,6 +188,7 @@ export default {
       this.conversationId = id;
       this.connect();
     }
+    this.loadPastSessions();
   },
   beforeDestroy() {
     this.disconnect();
@@ -118,6 +204,90 @@ export default {
         () => this.$message.error('Copy failed — select & copy manually')
       );
     },
+
+    // ── Session builder ────────────────────────────────────────────────
+    async loadPastSessions() {
+      try {
+        const sessions = await listRecentSessions(20);
+        this.pastSessions = sessions || [];
+      } catch (e) {
+        this.pastSessions = [];
+      }
+    },
+
+    async onResumeFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      e.target.value = '';
+
+      if (file.type === 'application/pdf') {
+        try {
+          const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.BASE_URL}pdf.worker.js`;
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          let text = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            text += content.items.map(it => it.str).join(' ') + '\n';
+          }
+          this.resumeText = text.trim();
+          this.$message.success('PDF extracted successfully');
+        } catch (err) {
+          this.$message.error('Could not parse PDF: ' + err.message);
+        }
+      } else {
+        const text = await file.text();
+        this.resumeText = text.trim();
+      }
+    },
+
+    async buildSession() {
+      this.sessionError = '';
+      this.sessionBuilding = true;
+      this.sessionBuilt = false;
+
+      const selectedSessions = this.pastSessions.filter(s => this.selectedSessionIds.includes(s.id));
+      const pastQAs = [];
+      for (const s of selectedSessions) {
+        if (s.qaList) {
+          for (const qa of s.qaList) {
+            pastQAs.push({ question: qa.question, answer: qa.answer });
+          }
+        }
+      }
+
+      try {
+        const res = await fetch(`${this.httpBase}/ws/interview-voice/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: this.conversationId,
+            resumeText: this.resumeText,
+            pastQAs
+          })
+        });
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          this.sessionError = json.error || `Server error ${res.status}`;
+        } else {
+          this.sessionBuilt = true;
+          this.$message.success('Session built — AI is ready for your interview');
+        }
+      } catch (err) {
+        this.sessionError = err.message;
+      } finally {
+        this.sessionBuilding = false;
+      }
+    },
+
+    formatDate(ts) {
+      if (!ts) return '';
+      return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    },
+
+    // ── Connection ─────────────────────────────────────────────────────
     connect() {
       this.error = '';
       this.status = 'Connecting…';
@@ -314,6 +484,48 @@ export default {
   margin-top: 4px;
   font-size: 11px;
   color: #909399;
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.resume-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.resume-row .el-textarea {
+  flex: 1;
+}
+
+.past-sessions {
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.empty-past {
+  color: #c0c4cc;
+  font-style: italic;
+  font-size: 13px;
+}
+
+.session-check {
+  display: block;
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.qa-count {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 4px;
 }
 
 @media (max-width: 900px) {
