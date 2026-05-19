@@ -22,6 +22,7 @@ const MyInterviews      = () => import(/* webpackChunkName: "my-interviews" */ '
 const TranscriptionsView= () => import(/* webpackChunkName: "transcriptions" */'@/views/TranscriptionsView.vue')
 const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '@/views/ProfileSettings.vue')
 const AdminStatus       = () => import(/* webpackChunkName: "admin" */         '@/views/admin/AdminStatus.vue')
+const VoiceAIView       = () => import(/* webpackChunkName: "voice-ai" */      '@/views/VoiceAIView.vue')
 
 Vue.use(VueRouter)
 
@@ -132,6 +133,15 @@ const routes = [
     path: '/admin',
     name: 'AdminStatus',
     component: AdminStatus,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF
+    }
+  },
+  {
+    path: '/voice-ai',
+    name: 'VoiceAI',
+    component: VoiceAIView,
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.STAFF
