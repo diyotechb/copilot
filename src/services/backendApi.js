@@ -32,6 +32,18 @@ export function handleAuthFailure(response) {
   return false;
 }
 
+export function rateLimitMessage(retryAfterSec) {
+  let when = 'in a little while';
+  if (typeof retryAfterSec === 'number' && retryAfterSec > 0) {
+    if (retryAfterSec < 60) when = `in about ${retryAfterSec} seconds`;
+    else {
+      const mins = Math.max(1, Math.round(retryAfterSec / 60));
+      when = `in about ${mins} minute${mins === 1 ? '' : 's'}`;
+    }
+  }
+  return `You've reached the hourly limit. Please try again ${when} — your interview is saved on this device, you can come back later.`;
+}
+
 // Common gate after a backend fetch. Handles 401 (redirect), 429 (friendly
 // rate-limit message), and generic !ok with parsed detail. Throws on
 // failure; returns the response when ok so caller can read the body.
@@ -42,9 +54,7 @@ export async function assertOk(response, label) {
   if (response.status === 429) {
     const retry = response.headers.get('Retry-After');
     const seconds = retry && !isNaN(Number(retry)) ? Number(retry) : null;
-    throw new Error(seconds
-      ? `Too many requests. Please wait about ${seconds} seconds and try again.`
-      : 'Too many requests. Please wait a moment and try again.');
+    throw new Error(rateLimitMessage(seconds));
   }
   if (!response.ok) {
     let detail = '';
