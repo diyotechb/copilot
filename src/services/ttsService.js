@@ -20,12 +20,40 @@ function isBackendConfigured() {
   return !!APP_CONFIG.SERVICES.COPILOT_BACKEND_URL;
 }
 
+// LRU cap on cached TTS ArrayBuffers. Each entry is ~50–300 KB; capping at 30
+// keeps the per-tab footprint to a few MB even across long interviews. Map
+// preserves insertion order, which we abuse for LRU: re-insert on hit, evict
+// the oldest key when size exceeds the cap.
+const MAX_SPEECH_CACHE_ENTRIES = 30;
 const _speechCache = new Map();
 const _inFlight = new Map();
 
 function cacheKey(text, voice) {
   const { MODEL } = APP_CONFIG.SERVICES.OPENAI_TTS;
   return `${MODEL}|${resolveVoice(voice)}|${text || ''}`;
+}
+
+function cacheGet(key) {
+  const buf = _speechCache.get(key);
+  if (buf === undefined) return undefined;
+  // Move to most-recently-used position.
+  _speechCache.delete(key);
+  _speechCache.set(key, buf);
+  return buf;
+}
+
+function cachePut(key, buf) {
+  if (_speechCache.has(key)) _speechCache.delete(key);
+  _speechCache.set(key, buf);
+  while (_speechCache.size > MAX_SPEECH_CACHE_ENTRIES) {
+    const oldest = _speechCache.keys().next().value;
+    if (oldest === undefined) break;
+    _speechCache.delete(oldest);
+  }
+}
+
+export function clearSpeechCache() {
+  _speechCache.clear();
 }
 
 async function requestSpeech(text, voice) {
@@ -50,13 +78,13 @@ async function getSpeechBuffer(text, voice) {
     return requestSpeech(text, voice);
   }
   const key = cacheKey(text, voice);
-  const cached = _speechCache.get(key);
+  const cached = cacheGet(key);
   if (cached) return cached.slice(0);
   const flight = _inFlight.get(key);
   if (flight) return (await flight).slice(0);
   const promise = requestSpeech(text, voice).then(
     (buf) => {
-      _speechCache.set(key, buf);
+      cachePut(key, buf);
       _inFlight.delete(key);
       return buf;
     },

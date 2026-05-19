@@ -4,19 +4,23 @@ import { Message } from 'element-ui'
 import Login from '@/views/auth/Login.vue'
 import Signup from '@/views/auth/Signup.vue'
 import ResetPassword from '@/views/auth/ResetPassword.vue'
-import ResumeSetup from '@/views/ResumeSetup.vue'
-import SummaryView from '@/views/SummaryView.vue'
-import InterviewView from '@/views/InterviewView.vue'
-import MyInterviews from '@/views/MyInterviews.vue'
+import Unauthorized from '@/views/Unauthorized.vue'
 import { getInterviewQA, getInterviewMeta } from '@/store/interviewStore'
-import TranscriptionsView from '@/views/TranscriptionsView.vue';
-import ProfileSettings from '@/views/ProfileSettings.vue';
-import HomeView from '@/views/HomeView.vue';
 import authService from '@/services/authService';
 import storageService from '@/services/storageService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
-import Unauthorized from '@/views/Unauthorized.vue'
+// Heavy authenticated views are lazy-loaded so the initial bundle only
+// carries auth-flow pages (Login/Signup/ResetPassword/Unauthorized). On
+// authenticated entry, the destination chunk loads in parallel with route
+// resolution. Webpack chunk names make the network panel easier to read.
+const HomeView          = () => import(/* webpackChunkName: "home" */          '@/views/HomeView.vue')
+const ResumeSetup       = () => import(/* webpackChunkName: "resume-setup" */  '@/views/ResumeSetup.vue')
+const SummaryView       = () => import(/* webpackChunkName: "summary" */       '@/views/SummaryView.vue')
+const InterviewView     = () => import(/* webpackChunkName: "interview" */     '@/views/InterviewView.vue')
+const MyInterviews      = () => import(/* webpackChunkName: "my-interviews" */ '@/views/MyInterviews.vue')
+const TranscriptionsView= () => import(/* webpackChunkName: "transcriptions" */'@/views/TranscriptionsView.vue')
+const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '@/views/ProfileSettings.vue')
 
 Vue.use(VueRouter)
 

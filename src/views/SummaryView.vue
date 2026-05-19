@@ -1365,6 +1365,10 @@ export default {
     if (this._highlightTimerId) clearTimeout(this._highlightTimerId);
     if (this._metricsEscHandler) window.removeEventListener('keydown', this._metricsEscHandler);
     if (this._feedbackEscHandler) window.removeEventListener('keydown', this._feedbackEscHandler);
+    if (this.recordedVideoUrl) {
+      try { URL.revokeObjectURL(this.recordedVideoUrl); } catch (e) { /* noop */ }
+      this.recordedVideoUrl = '';
+    }
   },
   methods: {
     // Stat passthroughs for the template
@@ -1593,7 +1597,15 @@ export default {
     // 20s) and the history view (where it's either there or it isn't —
     // it might have been pruned past the video retention cap).
     async loadVideoForActiveSession({ poll = false, retries = 20, interval = 1000 } = {}) {
+      // Always revoke any prior blob URL before reassigning — otherwise a
+      // 200 MB video stays pinned in memory until the tab closes.
+      const releasePrior = () => {
+        if (this.recordedVideoUrl) {
+          try { URL.revokeObjectURL(this.recordedVideoUrl); } catch (e) { /* noop */ }
+        }
+      };
       if (!this.activeSessionId) {
+        releasePrior();
         this.recordedVideoUrl = '';
         this.videoTimeout = !poll ? false : true;
         return;
@@ -1602,6 +1614,7 @@ export default {
       for (let i = 0; i < attempts; i++) {
         const videoBlob = await getVideoForSession(this.activeSessionId);
         if (videoBlob) {
+          releasePrior();
           this.recordedVideoUrl = URL.createObjectURL(videoBlob);
           this.enableVideo = true;
           return;
@@ -1610,6 +1623,7 @@ export default {
           await new Promise(resolve => setTimeout(resolve, interval));
         }
       }
+      releasePrior();
       this.recordedVideoUrl = '';
       // Only flag a "timeout" in live mode — in history a missing video
       // just means it was pruned, which we render differently.

@@ -328,7 +328,7 @@ export default {
       this.silenceStart = null;
     }
   },
-  beforeUnmount() {
+  beforeDestroy() {
     if (this._unloadHandler) window.removeEventListener('beforeunload', this._unloadHandler);
     this.clearSilenceDetection();
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
