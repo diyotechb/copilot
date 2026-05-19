@@ -987,7 +987,7 @@ export default {
         console.error('Failed to generate interview questions:', e);
         this.confirmConfig = {
           title: 'Generation Failed',
-          message: 'Failed to generate interview questions. Please try again or check your documents.',
+          message: (e && e.message) ? e.message : 'Failed to generate interview questions. Please try again or check your documents.',
           type: 'danger',
           confirmText: 'Dismiss',
           showCancel: false,
