@@ -20,7 +20,7 @@
           </div>
         </div>
 
-        <div class="setting-item">
+        <div class="setting-item" v-if="isStaff">
           <label>Beta Features</label>
           <p class="setting-description">Enable experimental features. These are actively developed and may change.</p>
 
@@ -103,7 +103,7 @@
 <script>
 import authService from '@/services/authService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
-import { hasAnyRole } from '@/constants/roles';
+import { hasAnyRole, ROLE_GROUPS } from '@/constants/roles';
 import realStorageService from '@/services/storageService';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 
@@ -142,6 +142,9 @@ export default {
       return NAVIGATION_ITEMS.filter(item => {
         return !item.allowedRoles || hasAnyRole(userRoles, item.allowedRoles);
       });
+    },
+    isStaff() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
     }
   },
   created() {

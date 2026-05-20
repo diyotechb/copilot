@@ -41,8 +41,9 @@ function idFromKey(key) {
 // IDs of every history entry currently on disk, newest first. Used by the
 // recordings prune so we never delete audio belonging to a saved session.
 export async function listAllSessionIds() {
-  const keys = await listEntryKeys();
-  return keys.map(idFromKey).filter(Boolean);
+  const historyIds = (await listEntryKeys()).map(idFromKey).filter(Boolean);
+  const inboxIds = (await listInboxKeys()).map(k => k.slice(INBOX_PREFIX.length)).filter(Boolean);
+  return [...historyIds, ...inboxIds];
 }
 
 async function listEntryKeys() {
@@ -117,9 +118,10 @@ export async function deleteSession(id) {
 }
 
 // ─── Inbox: imported sessions from other users (admin review queue) ───
-// Imports never bring audio/video, only the analysis-relevant fields.
-// They live in a separate keyspace from `history:` and are NEVER pruned —
-// the admin chooses when to delete each one.
+// The text entry here holds only the analysis-relevant fields; a .zip import
+// also restores per-question audio into recordingStore (keyed by this id) so
+// staff can transcribe. Inbox entries live in a separate keyspace from
+// `history:` and are NEVER pruned — the admin chooses when to delete each one.
 
 export async function saveImportedSession(payload) {
   if (!payload || !payload.id) {
@@ -160,6 +162,8 @@ export async function getInboxSession(id) {
 
 export async function deleteInboxSession(id) {
   await deleteItem(STORE, `${INBOX_PREFIX}${id}`);
+  // Drop the imported audio too, otherwise it's orphaned in recordingStore.
+  try { await deleteSessionRecordings(id); } catch (e) { /* best-effort */ }
 }
 
 async function pruneOld() {
@@ -181,7 +185,7 @@ async function pruneOld() {
   // they belong to the one pre-scoping interview and the user may still
   // want to recover it via the Transcribe-answers button.
   try {
-    const remaining = (await listEntryKeys()).map(idFromKey).filter(Boolean);
+    const remaining = await listAllSessionIds();
     await pruneRecordingsToActiveSessions(remaining);
     // Independent video cap: keep videos for the MOST RECENT N sessions
     // only, even though the metadata cap is higher. Videos are heavy

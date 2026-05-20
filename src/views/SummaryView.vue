@@ -76,11 +76,10 @@
                 Download<i class="el-icon-arrow-down el-icon--right"></i>
               </el-button>
               <el-dropdown-menu slot="dropdown">
-                <el-dropdown-item command="all" icon="el-icon-folder-opened">Download all</el-dropdown-item>
-                <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl" divided>Video only</el-dropdown-item>
-                <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts only</el-dropdown-item>
-                <el-dropdown-item command="analysis" icon="el-icon-data-analysis">Analysis only</el-dropdown-item>
-                <el-dropdown-item command="submit-json" icon="el-icon-message" divided>For coach review (JSON)</el-dropdown-item>
+                <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl">Video / Audio</el-dropdown-item>
+                <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts</el-dropdown-item>
+                <el-dropdown-item v-if="llmAnalysis" command="analysis" icon="el-icon-data-analysis">Analysis</el-dropdown-item>
+                <el-dropdown-item command="submit-zip" icon="el-icon-upload2" divided>Export for analysis</el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
           </div>
@@ -524,6 +523,11 @@
               <p v-else class="data-text muted">{{ transcriptStateMessage(transcriptObj) }}</p>
             </div>
 
+            <div class="summary-data-item">
+              <label>Reference Answer</label>
+              <p class="data-text muted">{{ localInterviewQA[idx]?.answer || '(No answer found)' }}</p>
+            </div>
+
             <!-- Stats + bullets -->
             <div v-if="analysisMode !== 'none' && hasTranscriptContent(transcriptObj)" class="summary-data-item">
               <label>Stats</label>
@@ -690,10 +694,6 @@
               />
             </div>
 
-            <div class="summary-data-item">
-              <label>Reference Answer</label>
-              <p class="data-text muted">{{ localInterviewQA[idx]?.answer || '(No answer found)' }}</p>
-            </div>
           </div>
         </div>
       </div>
@@ -913,7 +913,7 @@ import { getSetting } from '@/store/settingStore';
 import { getVideoForSession, getRecordingForSession } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
 import { saveCompletedSession, updateHistoryEntry, getSessionById, getInboxSession } from '@/store/interviewHistoryStore';
-import { buildExportEnvelope, exportFilename, triggerJsonDownload } from '@/utils/sessionTransfer';
+import { buildExportZip, exportZipFilename, triggerBlobDownload } from '@/utils/sessionTransfer';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
 import storageService from '@/services/storageService';
 import authService from '@/services/authService';
@@ -1327,7 +1327,7 @@ export default {
     // require a page reload to take effect, which matches the rest of the
     // app's beta-features flow.
     const features = storageService.getItem(storageService.KEYS.USER_FEATURES, true) || {};
-    this.analysisFeatureEnabled = !!features.analysisEnabled;
+    this.analysisFeatureEnabled = this.isStaff && !!features.analysisEnabled;
 
     // Determine source: live session vs history vs admin inbox.
     // `source=inbox` is set by MyInterviews when opening an imported
@@ -2161,18 +2161,14 @@ export default {
     },
     handleDownloadCommand(cmd) {
       switch (cmd) {
-        case 'all': this.downloadAll(); break;
         case 'video': this.handleDownloadVideo(); break;
         case 'transcripts': this.downloadTranscripts(); break;
         case 'analysis': this.downloadAnalysis(); break;
-        case 'submit-json': this.exportForReview(); break;
+        case 'submit-zip': this.exportForAnalysis(); break;
       }
     },
-    // Portable JSON the user can email/share to a coach. Contains
-    // qaList + transcripts + minimal metadata — everything the LLM
-    // analyzer needs to re-run, nothing more (no audio, no video).
-    async exportForReview() {
-      const session = {
+    buildExportSession() {
+      return {
         id: this.activeSessionId || this.historyEntryId || '',
         savedAt: this.interviewDate || new Date().toISOString(),
         candidateName: this.candidateName,
@@ -2186,21 +2182,28 @@ export default {
         completed: this.completed,
         llmAnalysis: this.llmAnalysis
       };
-      try {
-        const envelope = await buildExportEnvelope(session);
-        triggerJsonDownload(envelope, exportFilename(session));
-      } catch (e) {
-        console.error('Failed to build review export:', e);
-      }
     },
-    // Triggers every available download in one user gesture: video (if
-    // a session-scoped blob is on disk), transcripts, and analysis.
-    // Browsers allow the consecutive downloads because they share the
-    // original click.
-    downloadAll() {
-      if (this.recordedVideoUrl) this.handleDownloadVideo();
-      this.downloadTranscripts();
-      this.downloadAnalysis();
+    async exportForAnalysis() {
+      const session = this.buildExportSession();
+      const sid = this.activeSessionId || this.historyEntryId;
+      try {
+        const total = (this.localInterviewQA && this.localInterviewQA.length) || this.transcripts.length;
+        const audioItems = [];
+        for (let idx = 0; idx < total; idx++) {
+          const blob = await getRecordingForSession(sid, idx);
+          if (blob && blob.size) audioItems.push({ idx, blob });
+        }
+        if (!audioItems.length) {
+          this.notify('No recorded audio found for this interview to export.', 'warning');
+          return;
+        }
+        this.notify('Packaging interview audio…', 'info');
+        const zip = await buildExportZip(session, audioItems);
+        triggerBlobDownload(zip, exportZipFilename(session));
+      } catch (e) {
+        console.error('Failed to build analysis export:', e);
+        this.notify('Could not build the export file. Please try again.', 'error');
+      }
     },
     handleDownloadVideo() {
       if (!this.recordedVideoUrl) return;

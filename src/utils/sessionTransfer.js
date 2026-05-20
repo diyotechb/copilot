@@ -16,6 +16,8 @@
 //   payload: { ... }      // see PAYLOAD_FIELDS below
 // }
 
+import { INPUT_LIMITS } from '@/constants/inputLimits';
+
 export const EXPORT_VERSION = 1;
 
 // Fields lifted from a stored history entry into the export. Keeping the
@@ -96,6 +98,71 @@ export function exportFilename(session) {
   const datePart = (session.savedAt || new Date().toISOString())
     .slice(0, 10);
   return `${namePart}-${datePart}.interview.json`;
+}
+
+const MANIFEST_NAME = 'manifest.json';
+const AUDIO_DIR = 'audio/';
+
+// audioItems: [{ idx, blob }]. Empty/missing blobs are skipped.
+export async function buildExportZip(session, audioItems = []) {
+  const { default: JSZip } = await import('jszip');
+  const envelope = await buildExportEnvelope(session);
+  const zip = new JSZip();
+  zip.file(MANIFEST_NAME, JSON.stringify(envelope, null, 2));
+  for (const { idx, blob } of audioItems) {
+    if (blob && blob.size) zip.file(`${AUDIO_DIR}${idx}.webm`, blob);
+  }
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+}
+
+export function exportZipFilename(session) {
+  return exportFilename(session).replace(/\.json$/, '.zip');
+}
+
+export function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Returns { payload, audio: [{ idx, blob }] }. Audio is rebuilt as typed webm
+// blobs so the transcription upload sends the right format.
+export async function parseImportZip(fileOrBuffer) {
+  const { default: JSZip } = await import('jszip');
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(fileOrBuffer);
+  } catch (e) {
+    throw new Error('File is not a valid .zip archive.');
+  }
+  const manifest = zip.file(MANIFEST_NAME);
+  if (!manifest) {
+    throw new Error('This .zip is not an interview export (missing manifest.json).');
+  }
+  const payload = await parseImportEnvelope(await manifest.async('string'));
+  const maxIdx = Array.isArray(payload.qaList) ? payload.qaList.length : 0;
+  const audio = [];
+  const audioFiles = zip.file(new RegExp('^' + AUDIO_DIR + '\\d+\\.webm$'));
+  if (audioFiles.length > maxIdx) {
+    throw new Error('Export is malformed: more audio files than questions.');
+  }
+  for (const f of audioFiles) {
+    const m = f.name.match(/(\d+)\.webm$/);
+    if (!m) continue;
+    const idx = Number(m[1]);
+    if (idx < 0 || idx >= maxIdx) continue;
+    const buf = await f.async('arraybuffer');
+    if (buf.byteLength > INPUT_LIMITS.AUDIO_BYTES) {
+      throw new Error('Export is malformed: an audio file exceeds the size limit.');
+    }
+    audio.push({ idx, blob: new Blob([buf], { type: 'audio/webm' }) });
+  }
+  return { payload, audio };
 }
 
 export function triggerJsonDownload(envelope, filename) {
