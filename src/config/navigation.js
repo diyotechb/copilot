@@ -30,5 +30,11 @@ export const NAVIGATION_ITEMS = [
         routeName: 'AdminStatus',
         icon: 'el-icon-monitor',
         allowedRoles: ROLE_GROUPS.STAFF
+    },
+    {
+        name: 'Voice AI (Beta)',
+        routeName: 'VoiceAI',
+        icon: 'el-icon-headset',
+        allowedRoles: ROLE_GROUPS.STAFF
     }
 ];
