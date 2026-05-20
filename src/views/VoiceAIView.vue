@@ -1,4 +1,5 @@
 <template>
+
   <div class="voice-ai-view">
     <div class="header">
       <h1>Voice AI <span class="beta-tag">Beta</span></h1>
@@ -6,6 +7,9 @@
         Stream audio from the AI Audio Streamer Chrome extension into this view.
         Both connections must share the same <code>conversationId</code>.
       </p>
+      <div v-if="sessionId" class="session-id-banner">
+        <el-tag type="info" size="medium">Session ID: {{ sessionId }}</el-tag>
+      </div>
     </div>
 
     <!-- ── Session Builder ─────────────────────────────────────────── -->
@@ -146,6 +150,7 @@ export default {
     return {
       backendUrl: DEFAULT_BACKEND,
       conversationId: 'diyotech-copilot',
+      sessionId: '',
       ws: null,
       connected: false,
       status: 'Idle',
@@ -247,34 +252,31 @@ export default {
       this.sessionError = '';
       this.sessionBuilding = true;
       this.sessionBuilt = false;
-
-      const selectedSessions = this.pastSessions.filter(s => this.selectedSessionIds.includes(s.id));
-      const pastQAs = [];
-      for (const s of selectedSessions) {
-        if (s.qaList) {
-          for (const qa of s.qaList) {
-            pastQAs.push({ question: qa.question, answer: qa.answer });
-          }
-        }
-      }
-
       try {
-        const res = await fetch(`${this.httpBase}/ws/interview-voice/session`, {
+        // 1. Create interview session
+        const startRes = await fetch(`${this.httpBase}/api/interview/start?candidateId=${encodeURIComponent(this.conversationId)}`, {
+          method: 'POST'
+        });
+        if (!startRes.ok) {
+          this.sessionError = `Failed to create session: ${startRes.status}`;
+          this.sessionBuilding = false;
+          return;
+        }
+        const session = await startRes.json();
+        this.sessionId = session.sessionId;
+        // 2. Upload resume text
+        const resumeRes = await fetch(`${this.httpBase}/api/interview/${this.sessionId}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: this.conversationId,
-            resumeText: this.resumeText,
-            pastQAs
-          })
+          body: JSON.stringify({ resumeText: this.resumeText })
         });
-        const json = await res.json();
-        if (!res.ok || !json.ok) {
-          this.sessionError = json.error || `Server error ${res.status}`;
-        } else {
-          this.sessionBuilt = true;
-          this.$message.success('Session built — AI is ready for your interview');
+        if (!resumeRes.ok) {
+          this.sessionError = `Failed to upload resume: ${resumeRes.status}`;
+          this.sessionBuilding = false;
+          return;
         }
+        this.sessionBuilt = true;
+        this.$message.success('Session built — AI is ready for your interview');
       } catch (err) {
         this.sessionError = err.message;
       } finally {
@@ -530,5 +532,10 @@ export default {
 
 @media (max-width: 900px) {
   .columns { grid-template-columns: 1fr; }
+}
+<style scoped>
+.session-id-banner {
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 </style>
