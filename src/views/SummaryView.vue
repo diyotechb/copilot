@@ -180,7 +180,9 @@
             </p>
             <div class="processing-progress">
               <div class="processing-bar"><div class="processing-bar-fill"></div></div>
-              <span class="processing-elapsed">{{ llmElapsedLabel }}</span>
+              <span class="processing-elapsed">
+                {{ llmElapsedLabel }}<template v-if="llmBatchProgress.total"> · {{ llmBatchProgress.done }}/{{ llmBatchProgress.total }} questions</template>
+              </span>
             </div>
           </div>
         </div>
@@ -295,13 +297,13 @@
                  cohesive recap instead of two duplicate cards. -->
             <div v-if="showDetailedAnalysis && llmAnalysis && llmAnalysis.session" class="overall-insights">
               <h4 class="overall-insights-title">Session insights</h4>
-              <div class="insight-row">
+              <div v-if="llmAnalysis.session.strongestArea" class="insight-row">
                 <span class="insight-label">Strongest area</span>
-                <p class="insight-text">{{ llmAnalysis.session.strongestArea || '—' }}</p>
+                <p class="insight-text">{{ llmAnalysis.session.strongestArea }}</p>
               </div>
-              <div class="insight-row">
+              <div v-if="llmAnalysis.session.growthArea" class="insight-row">
                 <span class="insight-label">Growth area</span>
-                <p class="insight-text">{{ llmAnalysis.session.growthArea || '—' }}</p>
+                <p class="insight-text">{{ llmAnalysis.session.growthArea }}</p>
               </div>
               <div v-if="llmAnalysis.session.patterns && llmAnalysis.session.patterns.length" class="insight-row">
                 <span class="insight-label">Patterns observed</span>
@@ -956,6 +958,8 @@ export default {
       llmLoading: false,
       llmError: '',
       llmElapsedSec: 0,
+      llmBatchProgress: { done: 0, total: 0 },
+      ANALYSIS_BATCH_SIZE: 10,
       _llmTimerId: null,
       // Reflects the Profile Settings → Beta Features → "Answer Analysis"
       // toggle. When false the Generate Detailed Analysis button + CTA
@@ -1734,6 +1738,7 @@ export default {
       }
       this.llmLoading = true;
       this.llmError = '';
+      this.llmBatchProgress = { done: 0, total: 0 };
       this.startLLMTimer();
       // Make the processing card visible immediately so the user sees
       // something happen, even if they were scrolled down.
@@ -1745,13 +1750,18 @@ export default {
       });
       this.notify(isRegenerate ? 'Regenerating detailed analysis…' : 'Generating detailed analysis…', 'info');
       try {
-        const result = await analyzeInterviewSession({
-          qaList: this.localInterviewQA,
-          transcripts: this.transcripts,
-          difficulty: this.difficulty,
-          category: this.category,
-          analysisTypes: types
-        });
+        const total = (this.localInterviewQA && this.localInterviewQA.length) || 0;
+        // Long interviews exceed the proxy's per-request timeout in one call,
+        // so analyze in batches that each finish well under it.
+        const result = total > this.ANALYSIS_BATCH_SIZE
+          ? await this.analyzeInBatches(types)
+          : await analyzeInterviewSession({
+              qaList: this.localInterviewQA,
+              transcripts: this.transcripts,
+              difficulty: this.difficulty,
+              category: this.category,
+              analysisTypes: types
+            });
         // Tag the result with the types we actually requested so the UI
         // knows which sections to show, even on subsequent page loads.
         if (result && typeof result === 'object') {
@@ -1784,6 +1794,53 @@ export default {
         this.llmLoading = false;
         this.stopLLMTimer();
       }
+    },
+    // Runs analyze in sequential batches so each request stays under the
+    // proxy timeout, then assembles a whole-interview result. perQuestion is
+    // index-aligned to the full qaList; session insights are derived locally
+    // since no single call sees the whole interview.
+    async analyzeInBatches(types) {
+      const total = this.localInterviewQA.length;
+      const size = this.ANALYSIS_BATCH_SIZE;
+      const perQuestion = new Array(total).fill(null);
+      this.llmBatchProgress = { done: 0, total };
+      for (let start = 0; start < total; start += size) {
+        const idxs = [];
+        for (let i = start; i < Math.min(start + size, total); i++) idxs.push(i);
+        const partial = await analyzeInterviewSession({
+          qaList: idxs.map(i => this.localInterviewQA[i]),
+          transcripts: idxs.map(i => this.transcripts[i]),
+          difficulty: this.difficulty,
+          category: this.category,
+          analysisTypes: types
+        });
+        (partial.perQuestion || []).forEach((slot, j) => {
+          if (idxs[j] !== undefined) perQuestion[idxs[j]] = slot || null;
+        });
+        this.llmBatchProgress = { done: Math.min(start + size, total), total };
+      }
+      return { perQuestion, session: this.deriveSessionInsights(perQuestion) };
+    },
+    // Whole-interview insights rebuilt from the merged per-question results:
+    // recurring weaknesses become patterns, delivery stats drive the verdict.
+    deriveSessionInsights(perQuestion) {
+      const counts = {};
+      perQuestion.forEach(q => {
+        if (q && Array.isArray(q.weaknesses)) {
+          q.weaknesses.forEach(w => {
+            if (w && w !== 'Analysis unavailable for this question.') {
+              counts[w] = (counts[w] || 0) + 1;
+            }
+          });
+        }
+      });
+      const patterns = Object.entries(counts)
+        .filter(([, c]) => c >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([w]) => w);
+      const verdict = overallVerdict(aggregateStats(this.transcripts)).description;
+      return { patterns, verdict };
     },
     startLLMTimer() {
       this.llmElapsedSec = 0;
