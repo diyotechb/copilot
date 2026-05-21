@@ -151,10 +151,12 @@ const routes = [
 
 const router = new VueRouter({ routes })
 
+const AUTH_BYPASS = process.env.VUE_APP_BYPASS_AUTH === 'true';
+
 // Global navigation guard
 router.beforeEach(async (to, from, next) => {
-  const isLoggedIn = authService.isLoggedIn();
-  const userRoles = authService.getUserRoles(); // returns array
+  const isLoggedIn = AUTH_BYPASS || authService.isLoggedIn();
+  const userRoles = AUTH_BYPASS ? ['DIYO_EMP'] : authService.getUserRoles();
 
   // 1. Check Authentication
   if (to.matched.some(record => record.meta.requiresAuth)) {

@@ -85,7 +85,7 @@ export default {
             }
 
             this.isLoading = true;
-            this.errorMessage = '';
+            this.errorMessage = ''; 
 
             try {
                 await authService.login(this.email, this.password);
