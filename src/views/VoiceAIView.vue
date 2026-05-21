@@ -141,6 +141,7 @@
 
 <script>
 import { listRecentSessions } from '@/store/interviewHistoryStore';
+import { authHeaders } from '@/services/backendApi';
 
 const DEFAULT_BACKEND = process.env.VUE_APP_SERVER_URL || 'ws://localhost:8080';
 
@@ -255,7 +256,8 @@ export default {
       try {
         // 1. Create interview session
         const startRes = await fetch(`${this.httpBase}/api/interview/start?candidateId=${encodeURIComponent(this.conversationId)}`, {
-          method: 'POST'
+          method: 'POST',
+          headers: authHeaders()
         });
         if (!startRes.ok) {
           this.sessionError = `Failed to create session: ${startRes.status}`;
@@ -267,7 +269,7 @@ export default {
         // 2. Upload resume text
         const resumeRes = await fetch(`${this.httpBase}/api/interview/${this.sessionId}/resume`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ resumeText: this.resumeText })
         });
         if (!resumeRes.ok) {
