@@ -449,6 +449,8 @@ import { saveSetting, getSetting } from '@/store/settingStore';
 import { generateInterviewQA } from '../services/openaiService.js';
 import { clearRecordingsStore } from '@/store/recordingStore.js';
 import { APP_CONFIG } from '@/constants/appConfig';
+import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 // Best-effort: pull a candidate name out of the resume text. Looks at the
 // first non-empty lines and matches "FirstName LastName" or "FirstName M.
@@ -619,11 +621,11 @@ export default {
     // Refresh retention state for the banner + Start gating.
     await this.loadRetentionState();
 
-    // Beta feature gate: only enable Generate-with-AI toggles if the user
-    // opted in via Profile Settings → Beta Features.
+    // Staff-only; re-checked here so a leftover flag from another user on a shared device can't leak.
     const features = storage.getItem(storage.KEYS.USER_FEATURES, true) || {};
-    this.aiSampleGenerationEnabled = !!features.aiSampleGenerationEnabled;
-    this.analysisBetaEnabled = !!features.analysisEnabled;
+    const isStaff = hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    this.aiSampleGenerationEnabled = isStaff && !!features.aiSampleGenerationEnabled;
+    this.analysisBetaEnabled = isStaff && !!features.analysisEnabled;
     // Restore last per-interview analysis preference (default true when beta is on)
     const savedAnalysisChoice = await getSetting('analysisEnabledThisInterview');
     if (savedAnalysisChoice !== null && savedAnalysisChoice !== undefined) {

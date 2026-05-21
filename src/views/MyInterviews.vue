@@ -78,13 +78,6 @@
               </span>
               <button
                   type="button"
-                  class="icon-btn export-btn"
-                  @click.stop="exportSession(s.id)"
-                  title="Export this interview as JSON (to share for review)">
-                <i class="el-icon-download"></i>
-              </button>
-              <button
-                  type="button"
                   class="icon-btn delete-btn"
                   @click.stop="remove(s.id)"
                   title="Delete this interview">
@@ -123,21 +116,21 @@
     <!-- Admin Inbox: imported submissions from other users. Rendered as a
          sibling section to the user's own history so it shows even when
          the admin has no personal interviews of their own. -->
-    <div v-if="isAdmin" class="inbox-section">
+    <div v-if="isStaff" class="inbox-section">
       <div class="recent-header">
         <h3 class="recent-title">
           <i class="el-icon-message"></i>
-          Inbox <span class="inbox-count">({{ inboxSessions.length }})</span>
+          Inbox
         </h3>
         <el-button size="small" type="primary" plain icon="el-icon-upload2" @click="triggerImportPicker">
-          Import interview JSON
+          Import interview (ZIP)
         </el-button>
       </div>
 
       <input
           ref="importInput"
           type="file"
-          accept=".json,application/json"
+          accept=".zip,application/zip"
           style="display:none"
           @change="onImportFileChosen"
       />
@@ -164,13 +157,6 @@
             </div>
             <div class="card-meta">
               <span class="card-date">Received {{ formatDate(s.importedAt || s.savedAt) }}</span>
-              <button
-                  type="button"
-                  class="icon-btn export-btn"
-                  @click.stop="exportSession(s.id, { isInbox: true })"
-                  title="Re-export this submission as JSON">
-                <i class="el-icon-download"></i>
-              </button>
               <button
                   type="button"
                   class="icon-btn delete-btn"
@@ -209,24 +195,18 @@
 import {
   listRecentSessions,
   deleteSession,
-  getSessionById,
   listInboxSessions,
   getInboxSession,
   saveImportedSession,
   deleteInboxSession,
   MAX_ENTRIES
 } from '@/store/interviewHistoryStore';
-import { listSessionsWithVideo, MAX_VIDEO_SESSIONS } from '@/store/recordingStore';
+import { listSessionsWithVideo, MAX_VIDEO_SESSIONS, saveRecordingForSession } from '@/store/recordingStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { wordCount, aggregateStats, overallVerdict, formatDuration } from '@/utils/summaryStats';
-import {
-  buildExportEnvelope,
-  exportFilename,
-  triggerJsonDownload,
-  parseImportEnvelope
-} from '@/utils/sessionTransfer';
+import { parseImportZip } from '@/utils/sessionTransfer';
 import authService from '@/services/authService';
-import { ROLES, hasAnyRole } from '@/constants/roles';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'MyInterviews',
@@ -245,14 +225,15 @@ export default {
       pendingAction: '',
       pendingId: '',
       pendingPayload: null,
+      pendingAudio: null,
       importError: '',
       confirmVisible: false,
       confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Delete', icon: 'el-icon-delete' }
     };
   },
   computed: {
-    isAdmin() {
-      return hasAnyRole(authService.getUserRoles(), [ROLES.ADMIN, ROLES.SUPER_ADMIN]);
+    isStaff() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
     },
     atCap() {
       return this.sessions.length >= this.MAX_VISIBLE;
@@ -276,7 +257,7 @@ export default {
     async refresh() {
       this.loading = true;
       try {
-        const inboxPromise = this.isAdmin ? listInboxSessions() : Promise.resolve([]);
+        const inboxPromise = this.isStaff ? listInboxSessions() : Promise.resolve([]);
         const [recent, withVideo, inbox] = await Promise.all([
           listRecentSessions(this.MAX_VISIBLE),
           listSessionsWithVideo(),
@@ -443,6 +424,7 @@ export default {
           await deleteInboxSession(this.pendingId);
         } else if (action === 'replace-inbox' && this.pendingPayload) {
           await saveImportedSession(this.pendingPayload);
+          await this.restoreImportedAudio(this.pendingPayload.id, this.pendingAudio);
         }
       } catch (e) {
         console.error(`Failed to ${action}:`, e);
@@ -450,24 +432,9 @@ export default {
       this.pendingAction = '';
       this.pendingId = '';
       this.pendingPayload = null;
+      this.pendingAudio = null;
       this.confirmVisible = false;
       await this.refresh();
-    },
-    // ─── Export (anyone) ───
-    async exportSession(id, { isInbox = false } = {}) {
-      try {
-        const session = isInbox
-          ? await getInboxSession(id)
-          : await getSessionById(id);
-        if (!session) {
-          console.error('Cannot export: session not found.');
-          return;
-        }
-        const envelope = await buildExportEnvelope(session);
-        triggerJsonDownload(envelope, exportFilename(session));
-      } catch (e) {
-        console.error('Failed to export session:', e);
-      }
     },
     // ─── Import (admins only) ───
     triggerImportPicker() {
@@ -480,16 +447,22 @@ export default {
     async onImportFileChosen(evt) {
       const file = evt.target.files && evt.target.files[0];
       if (!file) return;
+      const name = (file.name || '').toLowerCase();
+      const isZip = name.endsWith('.zip') || file.type === 'application/zip';
+      if (!isZip) {
+        this.importError = 'Please select a .zip interview export (created with "Export for analysis").';
+        return;
+      }
       try {
-        const text = await file.text();
-        const payload = await parseImportEnvelope(text);
+        const { payload, audio } = await parseImportZip(await file.arrayBuffer());
         const existing = await getInboxSession(payload.id);
         if (existing) {
-          // Don't silently overwrite — ask. Stash the payload so the
+          // Don't silently overwrite — ask. Stash the payload + audio so the
           // shared ConfirmDialog can complete the import after Yes.
           this.pendingAction = 'replace-inbox';
           this.pendingId = payload.id;
           this.pendingPayload = payload;
+          this.pendingAudio = audio;
           this.confirmConfig = {
             title: 'Replace existing submission?',
             message: `An interview from "${existing.candidateName || 'this candidate'}" with the same id is already in your inbox (received ${this.formatDate(existing.importedAt || existing.savedAt)}). Replace it with this file?`,
@@ -501,9 +474,15 @@ export default {
           return;
         }
         await saveImportedSession(payload);
+        await this.restoreImportedAudio(payload.id, audio);
         await this.refresh();
       } catch (e) {
         this.importError = e.message || 'Could not import this file.';
+      }
+    },
+    async restoreImportedAudio(sessionId, audio) {
+      for (const { idx, blob } of audio || []) {
+        await saveRecordingForSession(sessionId, idx, blob);
       }
     }
   }
@@ -717,9 +696,6 @@ export default {
   font-size: 1.05rem;
 }
 
-.icon-btn.export-btn:hover {
-  color: #2563eb;
-}
 
 .icon-btn.delete-btn:hover {
   color: #f56c6c;
