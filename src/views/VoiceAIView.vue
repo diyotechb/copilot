@@ -106,6 +106,13 @@
         <el-tag :type="statusTagType" effect="dark" size="medium">{{ status }}</el-tag>
         <el-button v-if="!connected" type="primary" icon="el-icon-video-play" @click="connect">Connect view</el-button>
         <el-button v-else type="danger" icon="el-icon-video-pause" @click="disconnect">Disconnect</el-button>
+        <el-button
+          v-if="sessionBuilt"
+          type="success"
+          icon="el-icon-circle-check"
+          :loading="completing"
+          @click="completeSession"
+        >Complete Session</el-button>
         <el-button icon="el-icon-delete" @click="clearAll" :disabled="connected">Clear</el-button>
       </div>
 
@@ -165,7 +172,8 @@ export default {
       pastSessions: [],
       sessionBuilding: false,
       sessionBuilt: false,
-      sessionError: ''
+      sessionError: '',
+      completing: false
     };
   },
   computed: {
@@ -254,35 +262,58 @@ export default {
       this.sessionBuilding = true;
       this.sessionBuilt = false;
       try {
-        // 1. Create interview session
-        const startRes = await fetch(`${this.httpBase}/api/interview/start?candidateId=${encodeURIComponent(this.conversationId)}`, {
-          method: 'POST',
-          headers: authHeaders()
-        });
-        if (!startRes.ok) {
-          this.sessionError = `Failed to create session: ${startRes.status}`;
-          this.sessionBuilding = false;
-          return;
-        }
-        const session = await startRes.json();
-        this.sessionId = session.sessionId;
-        // 2. Upload resume text
-        const resumeRes = await fetch(`${this.httpBase}/api/interview/${this.sessionId}/resume`, {
+        const sessionId = this.newId();
+        const res = await fetch(`${this.httpBase}/ws/interview-voice/session`, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ resumeText: this.resumeText })
+          body: JSON.stringify({
+            conversationId: this.conversationId,
+            sessionId,
+            resumeText: this.resumeText,
+            pastQAs: []
+          })
         });
-        if (!resumeRes.ok) {
-          this.sessionError = `Failed to upload resume: ${resumeRes.status}`;
-          this.sessionBuilding = false;
+        if (!res.ok) {
+          this.sessionError = `Failed to build session: ${res.status}`;
           return;
         }
+        const data = await res.json();
+        if (!data.ok) {
+          this.sessionError = data.error || 'Failed to build session';
+          return;
+        }
+        this.sessionId = data.sessionId || sessionId;
         this.sessionBuilt = true;
-        this.$message.success('Session built — AI is ready for your interview');
+        this.$message.success('Session built — AI will ground answers in your resume');
       } catch (err) {
         this.sessionError = err.message;
       } finally {
         this.sessionBuilding = false;
+      }
+    },
+
+    async completeSession() {
+      if (!this.sessionId) {
+        this.$message.warning('Build a session first');
+        return;
+      }
+      this.completing = true;
+      try {
+        const res = await fetch(`${this.httpBase}/ws/interview-voice/session/complete`, {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ sessionId: this.sessionId })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          this.$message.success('Session completed — Q&A saved');
+        } else {
+          this.$message.error(data.error || 'Failed to complete session');
+        }
+      } catch (err) {
+        this.$message.error(err.message);
+      } finally {
+        this.completing = false;
       }
     },
 
