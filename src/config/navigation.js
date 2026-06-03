@@ -20,10 +20,10 @@ export const NAVIGATION_ITEMS = [
         allowedRoles: ROLE_GROUPS.TRANSCRIPTION_ACCESS
     },
     {
-        name: 'Profile Settings',
-        routeName: 'ProfileSettings',
-        icon: 'el-icon-user',
-        allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
+        name: 'Live Assist',
+        routeName: 'LiveAssist',
+        icon: 'el-icon-lightning',
+        allowedRoles: ROLE_GROUPS.STAFF
     },
     {
         name: 'System Status',
@@ -32,9 +32,9 @@ export const NAVIGATION_ITEMS = [
         allowedRoles: ROLE_GROUPS.STAFF
     },
     {
-        name: 'Voice AI (Beta)',
-        routeName: 'VoiceAI',
-        icon: 'el-icon-headset',
-        allowedRoles: ROLE_GROUPS.STAFF
+        name: 'Profile Settings',
+        routeName: 'ProfileSettings',
+        icon: 'el-icon-user',
+        allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
     }
 ];

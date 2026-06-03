@@ -15,7 +15,7 @@
         v-model="text"
         @paste="onPasteText"
         :placeholder="textareaPlaceholder"
-        :disabled="generating"
+        :disabled="generating || disabled"
         class="smart-textarea"
       />
 
@@ -59,7 +59,7 @@
       </div>
 
       <!-- Action Bar — File upload mode (default) -->
-      <div v-else class="smart-footer">
+      <div v-else-if="!disabled" class="smart-footer">
         <div class="file-info" v-if="file">
           <i class="el-icon-document"></i>
           <span class="file-name">{{ file.name }}</span>
@@ -95,6 +95,7 @@ export default {
     accept: { type: String, default: '.pdf,.doc,.docx,.txt,.md,.rtf' },
     aiMode: { type: Boolean, default: false },
     generating: { type: Boolean, default: false },
+    disabled: { type: Boolean, default: false },
     keywordsExample: { type: String, default: 'frontend, 5 years, fintech' }
   },
   data() {
@@ -149,6 +150,7 @@ export default {
     onFileChange(e) { const file = e.target.files[0]; if (file) this.handleFile(file); },
     onDrop(e) {
       this.dragging = false;
+      if (this.disabled) return;
       const file = e.dataTransfer.files[0];
       if (file) this.handleFile(file);
     },

@@ -22,7 +22,8 @@ const MyInterviews      = () => import(/* webpackChunkName: "my-interviews" */ '
 const TranscriptionsView= () => import(/* webpackChunkName: "transcriptions" */'@/views/TranscriptionsView.vue')
 const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '@/views/ProfileSettings.vue')
 const AdminStatus       = () => import(/* webpackChunkName: "admin" */         '@/views/admin/AdminStatus.vue')
-const VoiceAIView       = () => import(/* webpackChunkName: "voice-ai" */      '@/views/VoiceAIView.vue')
+const LiveAssistView = () => import(/* webpackChunkName: "live-assist" */ '@/views/LiveAssistView.vue')
+const LiveAssistSessionsView = () => import(/* webpackChunkName: "live-assist-sessions" */ '@/views/LiveAssistSessionsView.vue')
 
 Vue.use(VueRouter)
 
@@ -139,9 +140,18 @@ const routes = [
     }
   },
   {
-    path: '/voice-ai',
-    name: 'VoiceAI',
-    component: VoiceAIView,
+    path: '/live-assist',
+    name: 'LiveAssist',
+    component: LiveAssistView,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF
+    }
+  },
+  {
+    path: '/live-assist/sessions',
+    name: 'LiveAssistSessions',
+    component: LiveAssistSessionsView,
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.STAFF
