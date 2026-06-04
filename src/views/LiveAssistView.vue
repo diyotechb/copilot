@@ -95,11 +95,17 @@
 
       <div class="stream-note">
         <i class="el-icon-info"></i>
-        <span>Use Conversation ID <code>{{ conversationId }}</code>, and the Backend URL is <code>{{ httpBase }}</code> in your extension.</span>
+        <span>Use this Conversation ID: <code>{{ conversationId }}</code>, and this Backend URL: <code>{{ httpBase }}</code> in your extension.</span>
       </div>
 
       <div class="start-row">
-        <el-button v-if="preparing" type="text" :disabled="starting" @click="cancelPrepare">Cancel</el-button>
+        <el-button
+          v-if="!interviewActive"
+          class="cancel-prepare-btn"
+          :class="{ 'is-hidden': !preparing }"
+          :disabled="starting"
+          @click="cancelPrepare"
+        >Cancel</el-button>
         <el-button
           v-if="interviewActive"
           type="danger"
@@ -108,19 +114,16 @@
           @click="endInterview"
         >End Session</el-button>
         <el-button
-          v-else-if="preparing"
-          type="primary"
-          class="primary-hero-btn"
-          :loading="starting"
-          @click="confirmContinue"
-        >Continue Session <i class="el-icon-right"></i></el-button>
-        <el-button
           v-else
           type="primary"
           class="primary-hero-btn"
+          :class="{ 'continue-mode': preparing }"
           :loading="starting"
-          @click="startInterview"
-        >Start Session <i :class="(resumeText.trim() && !resumeTooLong) ? 'el-icon-right' : 'el-icon-lock'"></i></el-button>
+          @click="onPrimaryClick"
+        >
+          {{ preparing ? 'Continue Session' : 'Start Session' }}
+          <i :class="preparing ? 'el-icon-right' : ((resumeText.trim() && !resumeTooLong) ? 'el-icon-right' : 'el-icon-lock')"></i>
+        </el-button>
       </div>
 
       <el-alert v-if="sessionError" :title="sessionError" type="error" :closable="false" show-icon style="margin-top:12px" />
@@ -191,9 +194,11 @@
             <div class="card-title-group">
               <h3 class="card-title">{{ sessionName(s) }}</h3>
               <el-tag :type="statusType(s.status)" size="mini" effect="dark">{{ s.status }}</el-tag>
-              <span v-if="timeAgo(s.updatedAt || s.createdAt)" class="card-ago">{{ timeAgo(s.updatedAt || s.createdAt) }}</span>
+              <el-tooltip v-if="timeAgo(s.updatedAt || s.createdAt)" placement="top" :content="'Updated at: ' + formatDate(s.updatedAt || s.createdAt)">
+                <span class="card-ago hoverable">{{ timeAgo(s.updatedAt || s.createdAt) }}</span>
+              </el-tooltip>
             </div>
-            <el-button type="text" class="continue-btn" @click.stop="continueFromSaved(s.sessionId)">
+            <el-button v-if="s.isOwner" type="text" class="continue-btn" @click.stop="continueFromSaved(s.sessionId)">
               Continue Session <i class="el-icon-right"></i>
             </el-button>
           </div>
@@ -201,7 +206,9 @@
             <span v-if="sessionSublineParts(s).length" class="card-subline-text">
               <template v-for="(seg, i) in sessionSublineParts(s)">{{ seg.text }}<b v-if="seg.bold" :key="i">{{ seg.bold }}</b></template>
             </span>
-            <span class="card-date">{{ formatDate(s.createdAt) }}</span>
+            <el-tooltip placement="top" :content="'Created at: ' + formatDate(s.createdAt)">
+              <span class="card-date hoverable">{{ formatDate(s.createdAt) }}</span>
+            </el-tooltip>
           </div>
           <div class="card-body">
             <p :class="{ 'empty-preview': !s.preview }">{{ s.preview || 'No responses yet' }}</p>
@@ -227,6 +234,7 @@
 
 <script>
 import { authHeaders } from '@/services/backendApi';
+import authService from '@/services/authService';
 import FileUpload from '@/components/FileUpload.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { fetchCandidatesByDate } from '@/services/candidateService';
@@ -318,7 +326,11 @@ export default {
       const c = this.candidateInfoSource;
       if (!c) return [];
       const parts = [];
-      if (c.vendor) parts.push({ text: 'Interview through ', bold: c.vendor });
+      const lead = c.task ? this.sentenceCase(c.task) : 'Interview';
+      if (c.vendor) {
+        parts.push({ text: '', bold: lead });
+        parts.push({ text: ' through ', bold: c.vendor });
+      }
       if (c.client) parts.push({ text: ' with ', bold: this.toTitleCase(c.client) });
       if (c.duration) parts.push({ text: ' for ', bold: `${c.duration} min` });
       if (c.callTaker) parts.push({ text: ' by ', bold: this.toTitleCase(c.callTaker) });
@@ -461,7 +473,7 @@ export default {
       };
       this.sessionLabel = [this.toTitleCase(c.fullName), this.toTitleCase(c.task), this.toTitleCase(c.client)]
         .filter(Boolean).join('-');
-      this.candidateInfoSource = { vendor: c.vendor, client: c.client, duration: c.duration, callTaker: c.callTaker };
+      this.candidateInfoSource = { vendor: c.vendor, client: c.client, duration: c.duration, callTaker: c.callTaker, task: c.task };
       this.conversationId = this.roomId(c.enrollmentId);
       this.loadCandidateResume(c.enrollmentId);
     },
@@ -529,9 +541,19 @@ export default {
 
     sessionSublineParts(s) {
       const parts = [];
-      if (s.vendor) parts.push({ text: 'Interview through ', bold: s.vendor });
+      const lead = s.task ? this.sentenceCase(s.task) : 'Interview';
+      if (s.vendor) {
+        parts.push({ text: '', bold: lead });
+        parts.push({ text: ' through ', bold: s.vendor });
+      }
       if (s.client) parts.push({ text: ' with ', bold: this.toTitleCase(s.client) });
       return parts;
+    },
+
+    sentenceCase(str) {
+      if (!str) return '';
+      const s = String(str).replace(/_/g, ' ').trim().toLowerCase();
+      return s.charAt(0).toUpperCase() + s.slice(1);
     },
 
     statusType(status) {
@@ -611,6 +633,7 @@ export default {
             vendor: this.candidateMeta ? this.candidateMeta.vendor : null,
             duration: this.candidateMeta ? this.candidateMeta.duration : null,
             outcome: this.candidateMeta ? this.candidateMeta.outcome : null,
+            createdByEmail: authService.getUserEmail() || '',
             pastQAs: []
           })
         });
@@ -754,6 +777,11 @@ export default {
       this.loadRecents();
     },
 
+    onPrimaryClick() {
+      if (this.preparing) this.confirmContinue();
+      else this.startInterview();
+    },
+
     async confirmContinue() {
       this.starting = true;
       this.sessionError = '';
@@ -761,7 +789,7 @@ export default {
         const res = await fetch(`${this.httpBase}/ws/live-assist/session/${encodeURIComponent(this.continueSessionId)}/continue`, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ conversationId: this.conversationId })
+          body: JSON.stringify({ conversationId: this.conversationId, updatedByEmail: authService.getUserEmail() || '' })
         });
         const data = await res.json();
         if (!data.ok) {
@@ -802,7 +830,7 @@ export default {
       await fetch(`${this.httpBase}/ws/live-assist/session/end`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ sessionId: this.sessionId })
+        body: JSON.stringify({ sessionId: this.sessionId, updatedByEmail: authService.getUserEmail() || '' })
       });
     },
 
@@ -1049,6 +1077,44 @@ export default {
   margin-top: 12px;
 }
 
+.start-row .primary-hero-btn { min-width: 190px; }
+
+.primary-hero-btn.continue-mode,
+.primary-hero-btn.continue-mode:focus {
+  background-color: #e6a23c;
+  border-color: #e6a23c;
+}
+.primary-hero-btn.continue-mode:hover {
+  background-color: #ebb563;
+  border-color: #ebb563;
+}
+.primary-hero-btn.continue-mode:active {
+  background-color: #cf9236;
+  border-color: #cf9236;
+}
+
+.cancel-prepare-btn {
+  padding: 10px 22px;
+  border: 1px solid #dcdfe6;
+  border-radius: 10px;
+  background: #fff;
+  color: #909399;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+.cancel-prepare-btn:hover {
+  color: #f56c6c;
+  background-color: #fef0f0;
+  border-color: #fbc4c4;
+}
+.cancel-prepare-btn:active {
+  background-color: #fde2e2;
+}
+.cancel-prepare-btn.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .end-hero-btn {
   box-shadow: 0 4px 14px rgba(245, 108, 108, 0.25);
 }
@@ -1272,6 +1338,8 @@ export default {
   font-size: 12px;
   color: #999;
 }
+
+.hoverable { cursor: pointer; }
 
 .continue-btn {
   padding: 0;

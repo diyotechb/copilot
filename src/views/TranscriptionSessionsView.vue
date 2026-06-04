@@ -1,10 +1,10 @@
 <template>
-  <div class="live-assist-sessions-view">
+  <div class="transcription-sessions-view">
    <div class="dashboard-view">
     <div class="dashboard-header">
-      <h2>Live Assist Sessions</h2>
+      <h2>Transcription Sessions</h2>
       <div class="header-actions">
-        <el-button type="primary" size="small" class="start-session-btn" @click="$router.push({ name: 'LiveAssist' })">Start New Session</el-button>
+        <el-button type="primary" size="small" class="start-session-btn" @click="$router.push({ name: 'TranscriptionsView' })">Start New Session</el-button>
       </div>
     </div>
 
@@ -33,8 +33,8 @@
             <el-select v-model="filters.status" size="small" clearable placeholder="Status">
               <el-option v-for="o in statusOptions" :key="o" :label="o" :value="o" />
             </el-select>
-            <el-select v-model="filters.outcome" size="small" clearable placeholder="Outcome">
-              <el-option v-for="o in outcomeOptions" :key="o" :label="o" :value="o" />
+            <el-select v-model="filters.category" size="small" clearable placeholder="Category">
+              <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
             </el-select>
           </div>
           <div class="filter-row">
@@ -63,8 +63,8 @@
         </div>
 
         <div v-if="loadingList && !sessions.length" class="empty">Loading…</div>
-        <div v-else-if="!sessions.length" class="empty">No saved sessions yet.</div>
-        <div v-else-if="!filteredSessions.length" class="empty">No sessions match the filters.</div>
+        <div v-else-if="!sessions.length" class="empty">No transcriptions yet.</div>
+        <div v-else-if="!filteredSessions.length" class="empty">No transcriptions match the filters.</div>
         <ul v-else class="session-list">
           <li
             v-for="s in filteredSessions"
@@ -77,7 +77,6 @@
               <span class="item-date">{{ formatDate(s.createdAt) }}</span>
               <span class="item-tags">
                 <el-tag :type="statusType(s.status)" size="mini" effect="dark">{{ s.status }}</el-tag>
-                <el-tag v-if="s.outcome" size="mini" effect="dark">{{ s.outcome }}</el-tag>
               </span>
             </div>
           </li>
@@ -87,24 +86,24 @@
       <el-card class="detail-panel" shadow="never">
         <div v-if="!selectedId" class="empty-detail">
           <i class="el-icon-document empty-icon"></i>
-          <p>Select a session to view its transcript and evaluation.</p>
+          <p>Select a transcription to view its transcript.</p>
         </div>
-        <div v-else-if="loadingDetail" class="empty">Loading session…</div>
+        <div v-else-if="loadingDetail" class="empty">Loading transcription…</div>
         <div v-else-if="detail">
-        <div class="recorded-block">
-          <p class="detail-recorded">
-            <el-tooltip placement="top" :content="createdByTooltip" :disabled="!createdByTooltip">
-              <span class="recorded-seg">Created <b>{{ formatDate(detail.createdAt) }}</b></span>
-            </el-tooltip>
-            <template v-if="detail.updatedAt">
-              <span> · </span>
-              <el-tooltip placement="top" :content="updatedByTooltip" :disabled="!updatedByTooltip">
-                <span class="recorded-seg">Last updated <b>{{ formatDate(detail.updatedAt) }}</b></span>
+          <div class="recorded-block">
+            <p class="detail-recorded">
+              <el-tooltip placement="top" :content="createdByTooltip" :disabled="!createdByTooltip">
+                <span class="recorded-seg">Created <b>{{ formatDate(detail.createdAt) }}</b></span>
               </el-tooltip>
-            </template>
-          </p>
-          <p v-if="recordedBy" class="detail-recorded-by">Started By: <b>{{ recordedBy }}</b></p>
-        </div>
+              <template v-if="detail.updatedAt">
+                <span> · </span>
+                <el-tooltip placement="top" :content="updatedByTooltip" :disabled="!updatedByTooltip">
+                  <span class="recorded-seg">Last updated <b>{{ formatDate(detail.updatedAt) }}</b></span>
+                </el-tooltip>
+              </template>
+            </p>
+            <p v-if="recordedBy" class="detail-recorded-by">Recorded By: <b>{{ recordedBy }}</b></p>
+          </div>
           <div class="detail-head">
             <div class="detail-title">
               <h2 v-if="!editingName" @click="startEditName">{{ sessionName(detail) }}</h2>
@@ -117,11 +116,11 @@
                 @keyup.enter.native="saveName"
                 @blur="saveName"
               />
-              <el-button type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
+              <el-button v-if="canManage" type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
             </div>
             <div class="detail-head-right">
               <el-tag :type="statusType(detail.status)" size="small" effect="dark">{{ detail.status }}</el-tag>
-              <el-dropdown trigger="click" @command="onItemCommand($event, detail)">
+              <el-dropdown v-if="canManage" trigger="click" @command="onItemCommand">
                 <i class="el-icon-more detail-menu"></i>
                 <el-dropdown-menu slot="dropdown">
                   <el-dropdown-item command="delete" icon="el-icon-delete">Delete</el-dropdown-item>
@@ -135,74 +134,19 @@
           </p>
 
           <div class="detail-meta">
-            <span><span class="meta-key">Conversation ID</span> <code>{{ detail.conversationId }}</code></span>
             <span><span class="meta-key">Session ID</span> <code>{{ detail.sessionId }}</code></span>
           </div>
 
-          <div class="outcome-row">
-            <span class="outcome-label">Outcome</span>
-            <el-select
-              v-model="detail.outcome"
-              size="small"
-              clearable
-              placeholder="Set outcome"
-              :loading="savingOutcome"
-              @change="saveOutcome"
-            >
-              <el-option v-for="o in outcomeOptions" :key="o" :label="o" :value="o" />
-            </el-select>
-          </div>
-
-          <div v-if="detail.jobDescription || detail.notes" class="context-box">
-            <div v-if="detail.jobDescription" class="context-item">
-              <div class="context-label">Job Description</div>
-              <p class="context-text">{{ detail.jobDescription }}</p>
-            </div>
-            <div v-if="detail.notes" class="context-item">
-              <div class="context-label">Additional Notes</div>
-              <p class="context-text">{{ detail.notes }}</p>
-            </div>
-          </div>
-
-          <div v-if="summary" class="summary-box">
-            <div class="summary-top">
-              <strong>AI Evaluation</strong>
-              <span class="score-badge">Score: {{ summary.score }}/10</span>
-            </div>
-            <p v-if="summary.overall" class="overall">{{ summary.overall }}</p>
-            <div class="sw">
-              <div class="col">
-                <div class="col-title strong">Strengths</div>
-                <ul><li v-for="(x, i) in summary.strengths" :key="'s' + i">{{ x }}</li></ul>
-                <div v-if="!summary.strengths || !summary.strengths.length" class="none">—</div>
-              </div>
-              <div class="col">
-                <div class="col-title weak">Areas to improve</div>
-                <ul><li v-for="(x, i) in summary.weaknesses" :key="'w' + i">{{ x }}</li></ul>
-                <div v-if="!summary.weaknesses || !summary.weaknesses.length" class="none">—</div>
-              </div>
-            </div>
-          </div>
-          <div v-else class="no-summary">
-            <div class="no-summary-text">
-              <strong>No AI evaluation yet</strong>
-              <span>This session wasn't analyzed. Generate the evaluation from its transcript.</span>
-            </div>
-            <el-button
-              type="primary"
-              size="small"
-              :loading="analyzing"
-              :disabled="!pairs.length"
-              @click="analyze"
-            >Analyze now</el-button>
+          <div v-if="detail.notes" class="context-box">
+            <div class="context-label">Notes</div>
+            <p class="context-text">{{ detail.notes }}</p>
           </div>
 
           <div class="qa">
             <div class="qa-header">Transcript</div>
-            <div v-if="!pairs.length" class="empty">No transcript recorded for this session.</div>
-            <div v-for="(p, i) in pairs" :key="'p' + i" class="pair">
-              <div class="q"><span class="tag">Interviewer</span>{{ p.question }}</div>
-              <div class="a"><span class="tag tag-a">AI Answer</span>{{ p.answer }}</div>
+            <div v-if="!detailLines.length" class="empty">No transcript recorded for this session.</div>
+            <div v-for="(l, i) in detailLines" :key="i" class="pair">
+              <div class="a"><span class="tag tag-time">{{ l.time }}</span>{{ l.text }}</div>
             </div>
           </div>
         </div>
@@ -225,12 +169,13 @@
 </template>
 
 <script>
-import { backendUrl, authHeaders, assertOk } from '@/services/backendApi';
+import transcriptionApi from '@/services/transcriptionApi';
 import authService from '@/services/authService';
+import { hasAnyRole, ROLE_GROUPS } from '@/constants/roles';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 
 export default {
-  name: 'LiveAssistSessionsView',
+  name: 'TranscriptionSessionsView',
   components: { ConfirmDialog },
   data() {
     return {
@@ -238,21 +183,30 @@ export default {
       loadingList: false,
       selectedId: '',
       detail: null,
+      detailLines: [],
       loadingDetail: false,
-      analyzing: false,
-      savingOutcome: false,
       editingName: false,
       editName: '',
-      outcomeOptions: ['OFFERED', 'REJECTED', 'ADVANCED', 'WAITING', 'GHOSTED', 'NA'],
-      statusOptions: ['ACTIVE', 'ENDED', 'COMPLETED'],
+      statusOptions: ['ACTIVE', 'ENDED'],
+      categoryOptions: [
+        { value: 'CANDIDATE', label: 'Candidate' },
+        { value: 'OTTER_PRACTICE', label: 'Otter Practice' },
+        { value: 'NONE', label: 'No Selection' }
+      ],
       showFilters: false,
-      filters: { text: '', status: '', outcome: '', client: '', task: '', callTaker: '', date: '' },
+      filters: { text: '', status: '', category: '', client: '', task: '', callTaker: '', date: '' },
       confirmVisible: false,
       confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Confirm', cancelText: 'Cancel', icon: 'el-icon-warning-outline' },
       confirmResolver: null
     };
   },
   computed: {
+    isStaff() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    },
+    canManage() {
+      return !!this.detail && (this.isStaff || !!this.detail.isOwner);
+    },
     createdByTooltip() {
       const d = this.detail;
       const who = d && (d.createdByEmail || d.createdBy);
@@ -269,7 +223,7 @@ export default {
     },
     activeFilterCount() {
       const f = this.filters;
-      return ['status', 'outcome', 'client', 'task', 'callTaker', 'date'].filter(k => f[k]).length;
+      return ['status', 'category', 'client', 'task', 'callTaker', 'date'].filter(k => f[k]).length;
     },
     clientOptions() {
       return [...new Set(this.sessions.map(s => s.client).filter(Boolean))].sort();
@@ -282,10 +236,10 @@ export default {
     },
     filteredSessions() {
       const f = this.filters;
-      const text = f.text.trim().toLowerCase();
+      const text = (f.text || '').trim().toLowerCase();
       return this.sessions.filter(s => {
         if (f.status && s.status !== f.status) return false;
-        if (f.outcome && s.outcome !== f.outcome) return false;
+        if (f.category && s.category !== f.category) return false;
         if (f.client && s.client !== f.client) return false;
         if (f.task && s.task !== f.task) return false;
         if (f.callTaker && s.callTaker !== f.callTaker) return false;
@@ -309,37 +263,18 @@ export default {
       if (d.client) parts.push({ text: ' with ', bold: this.toTitleCase(d.client) });
       if (d.interviewDateTime) parts.push({ text: ' on ', bold: this.formatEt(d.interviewDateTime) });
       return parts;
-    },
-    summary() {
-      if (!this.detail || !this.detail.summary) return null;
-      try {
-        return typeof this.detail.summary === 'string'
-          ? JSON.parse(this.detail.summary)
-          : this.detail.summary;
-      } catch (e) {
-        return null;
-      }
-    },
-    pairs() {
-      const msgs = (this.detail && this.detail.messages) || [];
-      const out = [];
-      for (let i = 0; i < msgs.length; i++) {
-        if (msgs[i].role === 'user') {
-          const next = msgs[i + 1];
-          out.push({
-            question: msgs[i].content,
-            answer: next && next.role === 'assistant' ? next.content : ''
-          });
-          if (next && next.role === 'assistant') i++;
-        }
-      }
-      return out;
     }
   },
   async mounted() {
     await this.loadList();
     const id = this.$route.query.sessionId;
     if (id) this.select(id);
+  },
+  watch: {
+    '$route.query.sessionId'(id) {
+      if (id && id !== this.selectedId) this.select(id);
+      else if (!id) { this.selectedId = ''; this.detail = null; }
+    }
   },
   methods: {
     askConfirm(config) {
@@ -365,11 +300,10 @@ export default {
     async loadList() {
       this.loadingList = true;
       try {
-        const res = await fetch(backendUrl('/ws/live-assist/sessions'), { headers: authHeaders() });
-        await assertOk(res, 'Load sessions');
-        this.sessions = await res.json();
+        const list = await transcriptionApi.list();
+        this.sessions = Array.isArray(list) ? list : [];
       } catch (e) {
-        this.$message.error(e.message);
+        this.$message.error(e.message || 'Could not load transcriptions');
       } finally {
         this.loadingList = false;
       }
@@ -377,23 +311,27 @@ export default {
     async select(id) {
       this.selectedId = id;
       this.detail = null;
+      this.detailLines = [];
       this.loadingDetail = true;
       if (this.$route.query.sessionId !== id) {
         this.$router.push({ query: { ...this.$route.query, sessionId: id } }).catch(() => {});
       }
       try {
-        const res = await fetch(backendUrl(`/ws/live-assist/session/${encodeURIComponent(id)}`), { headers: authHeaders() });
-        await assertOk(res, 'Load session');
-        const data = await res.json();
-        if (data.ok) this.detail = data;
-        else this.$message.error(data.error || 'Could not load session');
+        const data = await transcriptionApi.get(id);
+        if (data && data.ok) {
+          this.detail = data;
+          this.detailLines = (data.lines || []).map(l => ({ time: l.time, text: l.text }));
+        } else {
+          this.$message.error((data && data.error) || 'Could not load transcription');
+        }
       } catch (e) {
-        this.$message.error(e.message);
+        this.$message.error(e.message || 'Could not load transcription');
       } finally {
         this.loadingDetail = false;
       }
     },
     startEditName() {
+      if (!this.canManage) return;
       this.editName = this.sessionName(this.detail);
       this.editingName = true;
       this.$nextTick(() => {
@@ -407,97 +345,40 @@ export default {
       const newName = (this.editName || '').trim();
       if (!newName || newName === this.sessionName(this.detail)) return;
       try {
-        const res = await fetch(backendUrl(`/ws/live-assist/session/${encodeURIComponent(this.selectedId)}/rename`), {
-          method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ label: newName, updatedByEmail: authService.getUserEmail() || '' })
-        });
-        await assertOk(res, 'Rename session');
-        const data = await res.json();
-        if (!data.ok) { this.$message.error(data.error || 'Rename failed'); return; }
-        this.detail.label = data.label;
+        const res = await transcriptionApi.rename(this.selectedId, newName);
+        if (!res || !res.ok) { this.$message.error((res && res.error) || 'Rename failed'); return; }
+        this.detail.label = res.label;
         const s = this.sessions.find(x => x.sessionId === this.selectedId);
-        if (s) s.label = data.label;
-        this.$message.success('Session renamed');
+        if (s) s.label = res.label;
+        this.$message.success('Renamed');
       } catch (e) {
-        this.$message.error(e.message);
+        this.$message.error(e.message || 'Rename failed');
       }
     },
-    async saveOutcome(value) {
-      if (!this.selectedId) return;
-      this.savingOutcome = true;
-      try {
-        const res = await fetch(backendUrl(`/ws/live-assist/session/${encodeURIComponent(this.selectedId)}/outcome`), {
-          method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ outcome: value || '', updatedByEmail: authService.getUserEmail() || '' })
-        });
-        await assertOk(res, 'Save outcome');
-        const s = this.sessions.find(x => x.sessionId === this.selectedId);
-        if (s) s.outcome = value || '';
-        this.$message.success('Outcome saved');
-      } catch (e) {
-        this.$message.error(e.message);
-      } finally {
-        this.savingOutcome = false;
-      }
-    },
-    async analyze() {
-      if (!this.selectedId || !this.pairs.length) return;
-      this.analyzing = true;
-      try {
-        const res = await fetch(backendUrl('/ws/live-assist/session/complete'), {
-          method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ sessionId: this.selectedId, updatedByEmail: authService.getUserEmail() || '' })
-        });
-        await assertOk(res, 'Analyze interview');
-        const data = await res.json();
-        if (!data.ok) {
-          this.$message.error(data.error || 'Analysis failed');
-          return;
-        }
-        await this.select(this.selectedId);
-        await this.loadList();
-        this.$message.success('Session analyzed');
-      } catch (e) {
-        this.$message.error(e.message);
-      } finally {
-        this.analyzing = false;
-      }
-    },
-    async remove(s) {
+    async remove() {
       const ok = await this.askConfirm({
-        title: 'Delete session?',
-        message: 'Delete this session and its transcript? This cannot be undone.',
-        type: 'danger',
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
-        icon: 'el-icon-delete'
+        title: 'Delete transcription?',
+        message: 'Delete this transcription and its transcript? This cannot be undone.',
+        type: 'danger', confirmText: 'Delete', cancelText: 'Cancel', icon: 'el-icon-delete'
       });
       if (!ok) return;
       try {
-        const res = await fetch(backendUrl(`/ws/live-assist/session/${encodeURIComponent(s.sessionId)}`), {
-          method: 'DELETE',
-          headers: authHeaders()
-        });
-        await assertOk(res, 'Delete interview');
-        if (this.selectedId === s.sessionId) {
-          this.selectedId = '';
-          this.detail = null;
-        }
+        const res = await transcriptionApi.remove(this.selectedId);
+        if (!res || !res.ok) { this.$message.error((res && res.error) || 'Delete failed'); return; }
+        this.selectedId = '';
+        this.detail = null;
         await this.loadList();
-        this.$message.success('Session deleted');
+        this.$message.success('Deleted');
       } catch (e) {
-        this.$message.error(e.message);
+        this.$message.error(e.message || 'Delete failed');
       }
     },
-    onItemCommand(command, s) {
-      if (command === 'delete') this.remove(s);
+    onItemCommand(command) {
+      if (command === 'delete') this.remove();
     },
     clearFilters() {
       this.filters.status = '';
-      this.filters.outcome = '';
+      this.filters.category = '';
       this.filters.client = '';
       this.filters.task = '';
       this.filters.callTaker = '';
@@ -506,8 +387,8 @@ export default {
     sessionName(s) {
       if (s && s.label) return s.label;
       const ts = (s && s.createdAt) || (this.detail && this.detail.createdAt);
-      if (!ts) return 'Session';
-      return `Session - ${new Date(ts).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`;
+      if (!ts) return 'Transcription';
+      return `Transcription - ${new Date(ts).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`;
     },
     toTitleCase(str) {
       if (!str) return '';
@@ -522,9 +403,8 @@ export default {
       return s.charAt(0).toUpperCase() + s.slice(1);
     },
     statusType(status) {
-      if (status === 'COMPLETED') return 'success';
       if (status === 'ENDED') return 'warning';
-      return 'info';
+      return 'success';
     },
     formatDate(ts) {
       if (!ts) return '';
@@ -551,7 +431,7 @@ export default {
 </script>
 
 <style scoped>
-.live-assist-sessions-view {
+.transcription-sessions-view {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px);
@@ -666,54 +546,23 @@ export default {
 .detail-meta .meta-key { color: #5c6b7a; margin-right: 4px; }
 .detail-meta code { background: #fff; border: 1px solid #d9ecff; border-radius: 4px; padding: 1px 6px; color: #409eff; font-weight: 600; }
 
-.outcome-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-.outcome-label { font-size: 13px; font-weight: 600; color: #606266; }
-
-.no-summary {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  background: #f8fafc; border: 1px solid #e4e7ed; border-radius: 12px;
-  padding: 16px; margin-bottom: 20px;
-}
-.no-summary-text { display: flex; flex-direction: column; gap: 2px; }
-.no-summary-text strong { color: #2c3e50; }
-.no-summary-text span { color: #909399; font-size: 13px; }
-
 .context-box { background: #fafafa; border: 1px solid #ebeef5; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
-.context-item + .context-item { margin-top: 14px; }
 .context-label { font-size: 13px; font-weight: 600; color: #2c3e50; margin-bottom: 6px; }
 .context-text { margin: 0; font-size: 13px; color: #606266; line-height: 1.6; white-space: pre-wrap; }
-.summary-box { background: #f5f9ff; border: 1px solid #d9ecff; border-radius: 12px; padding: 18px; margin-bottom: 24px; }
-.summary-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.summary-top strong { color: #2c3e50; font-size: 15px; }
-.overall { margin: 4px 0 14px; color: #475569; line-height: 1.6; }
-.sw { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.col-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
-.col-title.strong { color: #67c23a; }
-.col-title.weak { color: #e6a23c; }
-.col ul { margin: 0; padding-left: 18px; }
-.col li { margin: 3px 0; font-size: 13px; line-height: 1.5; }
-.none { color: #c0c4cc; }
 
 .qa-header { font-weight: 600; color: #606266; font-size: 14px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e4e7ed; }
 .pair { padding: 14px 0; border-bottom: 1px solid #f0f2f5; }
-.q { font-weight: 500; margin-bottom: 8px; line-height: 1.6; color: #2c3e50; }
 .a { color: #303133; line-height: 1.6; white-space: pre-wrap; }
 .tag {
   display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.5px; padding: 3px 10px; border-radius: 6px; margin-right: 8px;
   background: #409eff; color: #fff; vertical-align: middle;
 }
-.tag-a { background: #67c23a; }
-
-.score-badge {
-  background: #409eff; color: #fff; font-weight: 700; font-size: 13px;
-  padding: 4px 12px; border-radius: 6px;
-}
+.tag-time { background: #909399; }
 
 .empty { color: #c0c4cc; font-style: italic; text-align: center; padding: 32px 0; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
-  .sw { grid-template-columns: 1fr; }
 }
 </style>

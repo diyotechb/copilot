@@ -20,6 +20,7 @@ const SummaryView       = () => import(/* webpackChunkName: "summary" */       '
 const InterviewView     = () => import(/* webpackChunkName: "interview" */     '@/views/InterviewView.vue')
 const MyInterviews      = () => import(/* webpackChunkName: "my-interviews" */ '@/views/MyInterviews.vue')
 const TranscriptionsView= () => import(/* webpackChunkName: "transcriptions" */'@/views/TranscriptionsView.vue')
+const TranscriptionSessionsView = () => import(/* webpackChunkName: "transcriptions-sessions" */'@/views/TranscriptionSessionsView.vue')
 const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '@/views/ProfileSettings.vue')
 const AdminStatus       = () => import(/* webpackChunkName: "admin" */         '@/views/admin/AdminStatus.vue')
 const LiveAssistView = () => import(/* webpackChunkName: "live-assist" */ '@/views/LiveAssistView.vue')
@@ -116,6 +117,15 @@ const routes = [
     path: '/transcriptions',
     name: 'TranscriptionsView',
     component: TranscriptionsView,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.TRANSCRIPTION_ACCESS
+    }
+  },
+  {
+    path: '/transcriptions/sessions',
+    name: 'TranscriptionSessions',
+    component: TranscriptionSessionsView,
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.TRANSCRIPTION_ACCESS

@@ -24,11 +24,12 @@
 
       <div class="sidebar-nav">
         <div v-for="item in navItems" :key="item.routeName" class="nav-item">
-          <router-link 
-            :to="{ name: item.routeName }" 
-            class="sidebar-link" 
+          <router-link
+            :to="{ name: item.routeName }"
+            class="sidebar-link"
             :class="{ 'active': isActive(item.routeName) }"
             :title="isCollapsed ? item.name : ''"
+            @click.native="handleNavClick"
           >
             <div class="icon-box">
               <i :class="item.icon" class="nav-icon"></i>
@@ -100,12 +101,35 @@ export default {
       return !this.isCollapsed || this.isMobileOpen;
     }
   },
+  watch: {
+    isCollapsed() { this.updateOutsideListener(); },
+    isMobileOpen() { this.updateOutsideListener(); }
+  },
+  beforeDestroy() {
+    document.removeEventListener('click', this.onDocumentClick, true);
+  },
   methods: {
     isActive(routeName) {
       return this.$route.name === routeName;
     },
     toggleCollapse() {
       this.$emit('toggle', !this.isCollapsed);
+    },
+    handleNavClick() {
+      if (!this.isCollapsed && !this.isMobileOpen) this.$emit('toggle', true);
+    },
+    updateOutsideListener() {
+      if (!this.isCollapsed && !this.isMobileOpen) {
+        // Defer so the click that expanded the sidebar isn't caught immediately.
+        this.$nextTick(() => document.addEventListener('click', this.onDocumentClick, true));
+      } else {
+        document.removeEventListener('click', this.onDocumentClick, true);
+      }
+    },
+    onDocumentClick(e) {
+      if (this.isCollapsed || this.isMobileOpen) return;
+      const sidebar = this.$el.querySelector('.app-sidebar');
+      if (sidebar && !sidebar.contains(e.target)) this.$emit('toggle', true);
     },
     handleLogout() {
       authService.logout();
