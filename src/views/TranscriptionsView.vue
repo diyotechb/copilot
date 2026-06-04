@@ -3,8 +3,15 @@
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
       :history="history"
+      :cloud-recent="recentCloud"
       :mic-permission="micPermissionState"
-      @start-new="startNewSession"
+      :continue-target="continueTarget"
+      @start="startCloudRecording"
+      @continue-start="startContinueRecording"
+      @cancel-continue="onCancelContinue"
+      @view-all="goToAll"
+      @open-cloud="goToSession"
+      @continue-cloud="prepareContinue"
       @open-detail="openDetail"
       @delete-item="deleteHistoryItem"
       @delete-all="deleteAllHistory"
@@ -33,15 +40,18 @@
       :message="confirmConfig.message"
       :type="confirmConfig.type"
       :confirm-text="confirmConfig.confirmText"
+      :cancel-text="confirmConfig.cancelText"
       :show-cancel="confirmConfig.showCancel"
       :icon="confirmConfig.icon"
       @confirm="handleConfirmAction"
+      @cancel="onConfirmCancel"
     />
   </div>
 </template>
 
 <script>
 import transcriptService from '@/services/transcriptService';
+import transcriptionApi from '@/services/transcriptionApi';
 import speechService from '@/services/transcriptionSpeechService';
 import TranscriptDashboard from '@/components/transcription/TranscriptDashboard.vue';
 import TranscriptDetail from '@/components/transcription/TranscriptDetail.vue';
@@ -61,6 +71,9 @@ export default {
       sessionTitle: "Note",
       sessionDate: null,
       isReadOnly: false,
+      isCloud: false,
+      cloudSessions: [],
+      continueTarget: null,
       sessionStart: null,
       recordingDurationMs: 0,
       durationTimer: null,
@@ -81,18 +94,30 @@ export default {
       confirmVisible: false,
       confirmConfig: {
         title: '', message: '', type: 'primary',
-        confirmText: 'Confirm', showCancel: true,
+        confirmText: 'Confirm', cancelText: 'Cancel', showCancel: true,
         icon: 'el-icon-warning-outline', data: null, action: null
       }
     };
   },
 
+  computed: {
+    recentCloud() {
+      return this.cloudSessions.slice(0, 20);
+    },
+    isActiveCloudRecording() {
+      return this.viewMode === 'detail' && this.isCloud && !!this.sessionId && !this.isReadOnly;
+    }
+  },
+
   mounted() {
     this.history = transcriptService.loadHistory();
+    this.loadCloud();
     this.initSpeechCallbacks();
     this.initMicPermissionCheck();
-    this._unloadHandler = () => this.cleanupMedia();
-    window.addEventListener('beforeunload', this._unloadHandler);
+    this._beforeUnload = (e) => this.onBeforeUnload(e);
+    this._pageHide = () => this.onPageHide();
+    window.addEventListener('beforeunload', this._beforeUnload);
+    window.addEventListener('pagehide', this._pageHide);
 
     // Deep link: open the requested transcript if URL has ?sessionId=...
     const initialId = this.$route.query.sessionId;
@@ -100,6 +125,7 @@ export default {
       const item = this.history.find(h => h.id === initialId);
       if (item) this.openDetail(item);
     }
+
   },
 
   watch: {
@@ -118,14 +144,22 @@ export default {
     }
   },
 
-  beforeRouteLeave(to, from, next) {
+  async beforeRouteLeave(to, from, next) {
+    if (this.isActiveCloudRecording) {
+      const ok = await this.confirmLeave();
+      if (!ok) { next(false); return; }
+      this._clearCheckpointTimer();
+      try { await transcriptionApi.end(this.sessionId, this.transcriptLines, this.recordingDurationMs); } catch (e) { /* best-effort */ }
+      await this.loadCloud();
+    }
     this.cleanupMedia();
     next();
   },
 
   beforeDestroy() {
     this.cleanupMedia();
-    if (this._unloadHandler) window.removeEventListener('beforeunload', this._unloadHandler);
+    if (this._beforeUnload) window.removeEventListener('beforeunload', this._beforeUnload);
+    if (this._pageHide) window.removeEventListener('pagehide', this._pageHide);
   },
 
   methods: {
@@ -134,7 +168,7 @@ export default {
     // Session management
     // ─────────────────────────────────────────────────────────────────────
 
-    async startNewSession() {
+    async startCloudRecording(payload) {
       if (this.micPermissionState === 'denied') {
         this._showConfirm({
           title: 'Microphone Restricted',
@@ -148,24 +182,6 @@ export default {
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         this.micPermissionState = 'granted';
-
-        this.$root.$emit('toggle-sidebar', true);
-        this.viewMode = 'detail';
-        speechService.stop();
-        this.resetActiveSession();
-
-        this.isInterimInActiveParagraph = true;
-
-        this.sessionId = transcriptService.generateId();
-        const now = new Date();
-        this.sessionDate = now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-        this.sessionTitle = `Note ${now.toLocaleString('en-US', { month: 'short', day: 'numeric' })}`;
-        this.isReadOnly = false;
-
-        this.$nextTick(() => {
-          speechService.start();
-          this.isListening = true;
-        });
       } catch (err) {
         this._showConfirm({
           title: 'Access Required',
@@ -173,7 +189,150 @@ export default {
           type: 'danger', confirmText: 'Got it',
           showCancel: false, icon: 'el-icon-warning', action: 'ack'
         });
+        return;
       }
+
+      const startedAt = Date.now();
+      let created;
+      try {
+        created = await transcriptionApi.createSession({ ...payload, startedAt });
+      } catch (e) {
+        this.$message({ message: e.message || 'Could not start session', type: 'error', duration: 4000 });
+        return;
+      }
+      if (!created || !created.ok) {
+        this.$message({ message: (created && created.error) || 'Could not start session', type: 'error', duration: 4000 });
+        return;
+      }
+
+      this.$root.$emit('toggle-sidebar', true);
+      this.viewMode = 'detail';
+      speechService.stop();
+      this.resetActiveSession();
+
+      this.isInterimInActiveParagraph = true;
+      this.sessionId = created.sessionId;
+      this.isCloud = true;
+      this.isReadOnly = false;
+      const now = new Date();
+      this.sessionDate = now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      this.sessionTitle = payload.label || `Transcription ${now.toLocaleString('en-US', { month: 'short', day: 'numeric' })}`;
+
+      this.$nextTick(() => {
+        speechService.start();
+        this.isListening = true;
+      });
+    },
+
+    // ── Cloud (DynamoDB) transcriptions ──────────────────────────────────
+
+    async loadCloud() {
+      try {
+        const list = await transcriptionApi.list();
+        this.cloudSessions = Array.isArray(list) ? list : [];
+      } catch (e) {
+        this.cloudSessions = [];
+      }
+    },
+
+    scheduleCloudCheckpoint() {
+      if (!this.isCloud || this.isReadOnly || !this.sessionId) return;
+      this._checkpointDirty = true;
+      if (this._checkpointTimer) return;
+      this._checkpointTimer = setTimeout(() => {
+        this._checkpointTimer = null;
+        this.flushCheckpoint();
+      }, 5000);
+    },
+
+    async flushCheckpoint() {
+      if (!this._checkpointDirty || !this.isCloud || !this.sessionId) return;
+      this._checkpointDirty = false;
+      try {
+        await transcriptionApi.checkpoint(this.sessionId, this.transcriptLines, this.recordingDurationMs);
+      } catch (e) {
+        // best-effort — retried on the next finalized turn / on stop
+      }
+    },
+
+    _clearCheckpointTimer() {
+      if (this._checkpointTimer) { clearTimeout(this._checkpointTimer); this._checkpointTimer = null; }
+      this._checkpointDirty = false;
+    },
+
+    async finalizeActiveRecording() {
+      if (this.isReadOnly) return;
+      if (this.isCloud && this.sessionId) {
+        this._clearCheckpointTimer();
+        try {
+          await transcriptionApi.end(this.sessionId, this.transcriptLines, this.recordingDurationMs);
+        } catch (e) {
+          this.$message({ message: e.message || 'Could not save transcription', type: 'error', duration: 4000 });
+        }
+        await this.loadCloud();
+      } else if (this.transcriptLines.length) {
+        this.saveCurrentTranscript();
+      }
+    },
+
+    prepareContinue(item) {
+      this.continueTarget = {
+        sessionId: item.sessionId,
+        label: item.label,
+        category: item.category,
+        candidateName: item.candidateName,
+        vendor: item.vendor,
+        client: item.client,
+        callTaker: item.callTaker,
+        duration: item.duration,
+        createdAt: item.createdAt
+      };
+    },
+
+    onCancelContinue() {
+      this.continueTarget = null;
+    },
+
+    async startContinueRecording(sessionId) {
+      if (this.micPermissionState === 'denied') { this._showMicDeniedDialog(); return; }
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.micPermissionState = 'granted';
+      } catch (e) { this._showMicDeniedDialog(); return; }
+
+      let res;
+      try { res = await transcriptionApi.continueSession(sessionId); }
+      catch (e) { this.$message.error(e.message || 'Could not continue session'); return; }
+      if (!res || !res.ok) { this.$message.error((res && res.error) || 'Could not continue session'); return; }
+
+      const target = this.continueTarget;
+      this.$root.$emit('toggle-sidebar', true);
+      this.viewMode = 'detail';
+      speechService.stop();
+      this.resetActiveSession();
+
+      this.sessionId = sessionId;
+      this.isCloud = true;
+      this.isReadOnly = false;
+      this.sessionTitle = res.label || (target && target.label) || 'Transcription';
+      this.sessionDate = (target && target.createdAt)
+        ? new Date(target.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : '';
+      this.transcriptLines = (res.lines || []).map(l => ({ time: l.time, text: l.text, ts: l.ts, audioStart: 0, audioEnd: 0 }));
+      this.lastActivityTime = 1;
+      this.lastTurnAudioEnd = 0;
+      this.isInterimInActiveParagraph = false;
+      this.continueTarget = null;
+
+      this.$nextTick(() => { speechService.start(); this.isListening = true; });
+    },
+
+    goToAll() {
+      this.$router.push({ name: 'TranscriptionSessions' }).catch(() => {});
+    },
+
+    goToSession(item) {
+      this.$router.push({ name: 'TranscriptionSessions', query: { sessionId: item.sessionId } }).catch(() => {});
     },
 
     resetActiveSession() {
@@ -182,16 +341,18 @@ export default {
       this.sessionId = null;
       this.sessionTitle = "";
       this.isReadOnly = false;
+      this.isCloud = false;
       this.lastActivityTime = null;
       this.lastTurnAudioEnd = 0;
       this.sessionStart = null;
       this.recordingDurationMs = 0;
       this.audioTimeOffset = 0;
       this.isInterimInActiveParagraph = false;
+      this._clearCheckpointTimer();
       this.stopDurationTimer();
     },
 
-    openDashboard() {
+    async openDashboard() {
       if (this.isListening) {
         this._showConfirm({
           title: 'Active Recording',
@@ -201,7 +362,7 @@ export default {
         });
         return;
       }
-      this.saveCurrentTranscript();
+      await this.finalizeActiveRecording();
       this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
@@ -220,17 +381,19 @@ export default {
       this.sessionTitle = item.title || "Note";
       this.sessionDate = item.dateStr;
       this.isReadOnly = true;
+      this.isCloud = false;
       this.lastActivityTime = null;
       if (this.$route.query.sessionId !== item.id) {
         this.$router.push({ query: { ...this.$route.query, sessionId: item.id } }).catch(() => {});
       }
     },
 
-    finishRecording() {
+    async finishRecording() {
+      this._clearCheckpointTimer();
       this.stopDurationTimer();
       speechService.stop();
       this.cleanupMedia();
-      this.saveCurrentTranscript();
+      await this.finalizeActiveRecording();
       this.$root.$emit('toggle-sidebar', false);
       this.viewMode = 'dashboard';
       this.resetActiveSession();
@@ -259,12 +422,53 @@ export default {
       this.isListening = false;
     },
 
+    confirmLeave() {
+      this._showConfirm({
+        title: 'Recording in progress',
+        message: 'Leaving will end this recording. Your transcript so far is saved.',
+        type: 'warning', confirmText: 'End & leave', cancelText: 'Stay',
+        showCancel: true, icon: 'el-icon-warning-outline', action: null
+      });
+      return new Promise((resolve) => { this._leaveResolver = resolve; });
+    },
+
+    onConfirmCancel() {
+      if (this._leaveResolver) {
+        const resolve = this._leaveResolver;
+        this._leaveResolver = null;
+        resolve(false);
+      }
+    },
+
+    onBeforeUnload(e) {
+      if (!this.isActiveCloudRecording) return;
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    },
+
+    onPageHide() {
+      if (!this.isActiveCloudRecording) return;
+      this._clearCheckpointTimer();
+      try { transcriptionApi.endOnUnload(this.sessionId); } catch (e) { /* best-effort */ }
+      this.cleanupMedia();
+    },
+
     // ─────────────────────────────────────────────────────────────────────
     // History & persistence
     // ─────────────────────────────────────────────────────────────────────
 
     updateTitle(newTitle) {
       this.sessionTitle = newTitle;
+      if (this.isCloud) {
+        const name = (newTitle || '').trim();
+        if (this.sessionId && name) {
+          transcriptionApi.rename(this.sessionId, name)
+            .then(() => this.loadCloud())
+            .catch(() => {});
+        }
+        return;
+      }
       this.saveCurrentTranscript();
     },
 
@@ -305,12 +509,20 @@ export default {
       });
     },
 
-    handleConfirmAction() {
+    async handleConfirmAction() {
+      if (this._leaveResolver) {
+        const resolve = this._leaveResolver;
+        this._leaveResolver = null;
+        this.confirmVisible = false;
+        resolve(true);
+        return;
+      }
       const { action, data } = this.confirmConfig;
       if (action === 'stopAndSave') {
+        this._clearCheckpointTimer();
         speechService.stop();
         this.cleanupMedia();
-        this.saveCurrentTranscript();
+        await this.finalizeActiveRecording();
         this.$root.$emit('toggle-sidebar', false);
         this.viewMode = 'dashboard';
         this.resetActiveSession();
@@ -394,7 +606,7 @@ export default {
       this.isInterimInActiveParagraph = true;
       this.lastTurnAudioEnd = audioEnd > 0 ? audioEnd : audioStart;
       this.lastActivityTime = now;
-      this.saveCurrentTranscript();
+      this.scheduleCloudCheckpoint();
     },
 
     _needsNewParagraph(audioStart) {
