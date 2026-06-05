@@ -1,0 +1,46 @@
+/* Recolor only Element UI's primary buttons and links from the default #409EFF
+   to the brand blue (#2563eb). Loads after element-ui's theme-chalk in main.js so
+   it wins. Everything else Element UI colors with #409EFF (tags, inputs, checkboxes,
+   date picker, tabs, etc.) is intentionally left untouched. */
+
+/* Primary buttons */
+.el-button--primary {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+.el-button--primary:active {
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.el-button--primary.is-plain {
+  color: #2563eb;
+}
+.el-button--primary.is-plain:hover,
+.el-button--primary.is-plain:focus {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+/* Text buttons & links */
+.el-button--text {
+  color: #2563eb;
+}
+.el-button--text:hover,
+.el-button--text:focus {
+  color: #3b82f6;
+}
+.el-button--text:active {
+  color: #1d4ed8;
+}
+.el-link.el-link--primary {
+  color: #2563eb;
+}
+.el-link.el-link--primary:hover {
+  color: #3b82f6;
+}

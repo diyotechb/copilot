@@ -4,7 +4,7 @@
     <div class="dashboard-header">
       <h2>Live Assist Sessions</h2>
       <div class="header-actions">
-        <el-button type="primary" size="small" class="start-session-btn" @click="$router.push({ name: 'LiveAssist' })">Start New Session</el-button>
+        <el-button type="primary" class="start-session-btn" @click="$router.push({ name: 'LiveAssist' })">Start New Session <i class="el-icon-right"></i></el-button>
       </div>
     </div>
 
@@ -35,6 +35,9 @@
             </el-select>
             <el-select v-model="filters.outcome" size="small" clearable placeholder="Outcome">
               <el-option v-for="o in outcomeOptions" :key="o" :label="o" :value="o" />
+            </el-select>
+            <el-select v-model="filters.category" size="small" clearable placeholder="Category">
+              <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
             </el-select>
           </div>
           <div class="filter-row">
@@ -107,7 +110,7 @@
         </div>
           <div class="detail-head">
             <div class="detail-title">
-              <h2 v-if="!editingName" @click="startEditName">{{ sessionName(detail) }}</h2>
+              <h2 v-if="!editingName" :class="{ locked: isActive }" @click="startEditName">{{ sessionName(detail) }}</h2>
               <el-input
                 v-else
                 ref="nameInput"
@@ -117,11 +120,11 @@
                 @keyup.enter.native="saveName"
                 @blur="saveName"
               />
-              <el-button type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
+              <el-button v-if="!isActive" type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
             </div>
             <div class="detail-head-right">
               <el-tag :type="statusType(detail.status)" size="small" effect="dark">{{ detail.status }}</el-tag>
-              <el-dropdown trigger="click" @command="onItemCommand($event, detail)">
+              <el-dropdown v-if="!isActive" trigger="click" @command="onItemCommand($event, detail)">
                 <i class="el-icon-more detail-menu"></i>
                 <el-dropdown-menu slot="dropdown">
                   <el-dropdown-item command="delete" icon="el-icon-delete">Delete</el-dropdown-item>
@@ -145,7 +148,8 @@
               v-model="detail.outcome"
               size="small"
               clearable
-              placeholder="Set outcome"
+              :disabled="isActive"
+              :placeholder="isActive ? 'Available after the session ends' : 'Set outcome'"
               :loading="savingOutcome"
               @change="saveOutcome"
             >
@@ -245,14 +249,21 @@ export default {
       editName: '',
       outcomeOptions: ['OFFERED', 'REJECTED', 'ADVANCED', 'WAITING', 'GHOSTED', 'NA'],
       statusOptions: ['ACTIVE', 'ENDED', 'COMPLETED'],
+      categoryOptions: [
+        { value: 'CANDIDATE', label: 'Candidate' },
+        { value: 'NONE', label: 'None' }
+      ],
       showFilters: false,
-      filters: { text: '', status: '', outcome: '', client: '', task: '', callTaker: '', date: '' },
+      filters: { text: '', status: '', outcome: '', category: '', client: '', task: '', callTaker: '', date: '' },
       confirmVisible: false,
       confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Confirm', cancelText: 'Cancel', icon: 'el-icon-warning-outline' },
       confirmResolver: null
     };
   },
   computed: {
+    isActive() {
+      return !!this.detail && this.detail.status === 'ACTIVE';
+    },
     createdByTooltip() {
       const d = this.detail;
       const who = d && (d.createdByEmail || d.createdBy);
@@ -269,7 +280,7 @@ export default {
     },
     activeFilterCount() {
       const f = this.filters;
-      return ['status', 'outcome', 'client', 'task', 'callTaker', 'date'].filter(k => f[k]).length;
+      return ['status', 'outcome', 'category', 'client', 'task', 'callTaker', 'date'].filter(k => f[k]).length;
     },
     clientOptions() {
       return [...new Set(this.sessions.map(s => s.client).filter(Boolean))].sort();
@@ -286,6 +297,7 @@ export default {
       return this.sessions.filter(s => {
         if (f.status && s.status !== f.status) return false;
         if (f.outcome && s.outcome !== f.outcome) return false;
+        if (f.category && s.category !== f.category) return false;
         if (f.client && s.client !== f.client) return false;
         if (f.task && s.task !== f.task) return false;
         if (f.callTaker && s.callTaker !== f.callTaker) return false;
@@ -394,6 +406,10 @@ export default {
       }
     },
     startEditName() {
+      if (this.isActive) {
+        this.$message.info('This session is live. You can rename it after it ends.');
+        return;
+      }
       this.editName = this.sessionName(this.detail);
       this.editingName = true;
       this.$nextTick(() => {
@@ -424,7 +440,7 @@ export default {
       }
     },
     async saveOutcome(value) {
-      if (!this.selectedId) return;
+      if (!this.selectedId || this.isActive) return;
       this.savingOutcome = true;
       try {
         const res = await fetch(backendUrl(`/ws/live-assist/session/${encodeURIComponent(this.selectedId)}/outcome`), {
@@ -467,6 +483,10 @@ export default {
       }
     },
     async remove(s) {
+      if (s && s.status === 'ACTIVE') {
+        this.$message.info('This session is live. End it before deleting.');
+        return;
+      }
       const ok = await this.askConfirm({
         title: 'Delete session?',
         message: 'Delete this session and its transcript? This cannot be undone.',
@@ -498,6 +518,7 @@ export default {
     clearFilters() {
       this.filters.status = '';
       this.filters.outcome = '';
+      this.filters.category = '';
       this.filters.client = '';
       this.filters.task = '';
       this.filters.callTaker = '';
@@ -582,7 +603,7 @@ export default {
 }
 
 .header-actions { display: flex; gap: 10px; }
-.start-session-btn { font-weight: 700; border-radius: 10px; }
+.start-session-btn { font-weight: 700; border-radius: 8px; padding: 13px 26px; font-size: 15px; }
 
 .layout {
   display: grid;
@@ -626,7 +647,7 @@ export default {
   transition: all 0.2s ease;
 }
 .session-item:hover { border-color: #c6e2ff; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.session-item.active { border-color: #409eff; box-shadow: 0 2px 10px rgba(64,158,255,0.15); }
+.session-item.active { border-color: #2563eb; box-shadow: 0 2px 10px rgba(37,99,235,0.15); }
 
 .item-title { font-weight: 600; color: #2c3e50; font-size: 14px; line-height: 1.4; }
 .item-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
@@ -650,10 +671,12 @@ export default {
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .detail-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .detail-title h2 { margin: 0; font-size: 20px; color: #2c3e50; cursor: pointer; }
-.detail-title h2:hover { color: #409eff; }
+.detail-title h2:hover { color: #2563eb; }
+.detail-title h2.locked { cursor: default; }
+.detail-title h2.locked:hover { color: #2c3e50; }
 .name-edit { width: 360px; }
 .edit-name-btn { padding: 0; color: #c0c4cc; }
-.edit-name-btn:hover { color: #409eff; }
+.edit-name-btn:hover { color: #2563eb; }
 .detail-head-right { display: flex; align-items: center; gap: 10px; }
 
 .detail-subline { margin: 5px 0 15px; font-size: 13px; color: #64666b; }
@@ -664,7 +687,7 @@ export default {
 
 .detail-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0 0 18px; font-size: 13px; color: #5c6b7a; }
 .detail-meta .meta-key { color: #5c6b7a; margin-right: 4px; }
-.detail-meta code { background: #fff; border: 1px solid #d9ecff; border-radius: 4px; padding: 1px 6px; color: #409eff; font-weight: 600; }
+.detail-meta code { background: #fff; border: 1px solid #d9ecff; border-radius: 4px; padding: 1px 6px; color: #2563eb; font-weight: 600; }
 
 .outcome-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 .outcome-label { font-size: 13px; font-weight: 600; color: #606266; }
@@ -701,12 +724,12 @@ export default {
 .tag {
   display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.5px; padding: 3px 10px; border-radius: 6px; margin-right: 8px;
-  background: #409eff; color: #fff; vertical-align: middle;
+  background: #2563eb; color: #fff; vertical-align: middle;
 }
 .tag-a { background: #67c23a; }
 
 .score-badge {
-  background: #409eff; color: #fff; font-weight: 700; font-size: 13px;
+  background: #2563eb; color: #fff; font-weight: 700; font-size: 13px;
   padding: 4px 12px; border-radius: 6px;
 }
 

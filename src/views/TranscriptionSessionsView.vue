@@ -4,7 +4,7 @@
     <div class="dashboard-header">
       <h2>Transcription Sessions</h2>
       <div class="header-actions">
-        <el-button type="primary" size="small" class="start-session-btn" @click="$router.push({ name: 'TranscriptionsView' })">Start New Session</el-button>
+        <el-button type="primary" class="start-session-btn" @click="$router.push({ name: 'TranscriptionsView' })">Start New Session <i class="el-icon-right"></i></el-button>
       </div>
     </div>
 
@@ -106,7 +106,7 @@
           </div>
           <div class="detail-head">
             <div class="detail-title">
-              <h2 v-if="!editingName" @click="startEditName">{{ sessionName(detail) }}</h2>
+              <h2 v-if="!editingName" :class="{ locked: isActive }" @click="startEditName">{{ sessionName(detail) }}</h2>
               <el-input
                 v-else
                 ref="nameInput"
@@ -116,11 +116,11 @@
                 @keyup.enter.native="saveName"
                 @blur="saveName"
               />
-              <el-button v-if="canManage" type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
+              <el-button v-if="canModify" type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
             </div>
             <div class="detail-head-right">
               <el-tag :type="statusType(detail.status)" size="small" effect="dark">{{ detail.status }}</el-tag>
-              <el-dropdown v-if="canManage" trigger="click" @command="onItemCommand">
+              <el-dropdown v-if="canModify" trigger="click" @command="onItemCommand">
                 <i class="el-icon-more detail-menu"></i>
                 <el-dropdown-menu slot="dropdown">
                   <el-dropdown-item command="delete" icon="el-icon-delete">Delete</el-dropdown-item>
@@ -206,6 +206,12 @@ export default {
     },
     canManage() {
       return !!this.detail && (this.isStaff || !!this.detail.isOwner);
+    },
+    isActive() {
+      return !!this.detail && this.detail.status === 'ACTIVE';
+    },
+    canModify() {
+      return this.canManage && !this.isActive;
     },
     createdByTooltip() {
       const d = this.detail;
@@ -332,6 +338,10 @@ export default {
     },
     startEditName() {
       if (!this.canManage) return;
+      if (this.isActive) {
+        this.$message.info('This transcription is live. You can rename it after it ends.');
+        return;
+      }
       this.editName = this.sessionName(this.detail);
       this.editingName = true;
       this.$nextTick(() => {
@@ -356,6 +366,10 @@ export default {
       }
     },
     async remove() {
+      if (this.isActive) {
+        this.$message.info('This transcription is live. End it before deleting.');
+        return;
+      }
       const ok = await this.askConfirm({
         title: 'Delete transcription?',
         message: 'Delete this transcription and its transcript? This cannot be undone.',
@@ -462,7 +476,7 @@ export default {
 }
 
 .header-actions { display: flex; gap: 10px; }
-.start-session-btn { font-weight: 700; border-radius: 10px; }
+.start-session-btn { font-weight: 700; border-radius: 8px; padding: 13px 26px; font-size: 15px; }
 
 .layout {
   display: grid;
@@ -506,7 +520,7 @@ export default {
   transition: all 0.2s ease;
 }
 .session-item:hover { border-color: #c6e2ff; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.session-item.active { border-color: #409eff; box-shadow: 0 2px 10px rgba(64,158,255,0.15); }
+.session-item.active { border-color: #2563eb; box-shadow: 0 2px 10px rgba(37,99,235,0.15); }
 
 .item-title { font-weight: 600; color: #2c3e50; font-size: 14px; line-height: 1.4; }
 .item-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
@@ -530,10 +544,12 @@ export default {
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .detail-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .detail-title h2 { margin: 0; font-size: 20px; color: #2c3e50; cursor: pointer; }
-.detail-title h2:hover { color: #409eff; }
+.detail-title h2:hover { color: #2563eb; }
+.detail-title h2.locked { cursor: default; }
+.detail-title h2.locked:hover { color: #2c3e50; }
 .name-edit { width: 360px; }
 .edit-name-btn { padding: 0; color: #c0c4cc; }
-.edit-name-btn:hover { color: #409eff; }
+.edit-name-btn:hover { color: #2563eb; }
 .detail-head-right { display: flex; align-items: center; gap: 10px; }
 
 .detail-subline { margin: 5px 0 15px; font-size: 13px; color: #64666b; }
@@ -544,7 +560,7 @@ export default {
 
 .detail-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0 0 18px; font-size: 13px; color: #5c6b7a; }
 .detail-meta .meta-key { color: #5c6b7a; margin-right: 4px; }
-.detail-meta code { background: #fff; border: 1px solid #d9ecff; border-radius: 4px; padding: 1px 6px; color: #409eff; font-weight: 600; }
+.detail-meta code { background: #fff; border: 1px solid #d9ecff; border-radius: 4px; padding: 1px 6px; color: #2563eb; font-weight: 600; }
 
 .context-box { background: #fafafa; border: 1px solid #ebeef5; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
 .context-label { font-size: 13px; font-weight: 600; color: #2c3e50; margin-bottom: 6px; }
@@ -556,7 +572,7 @@ export default {
 .tag {
   display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.5px; padding: 3px 10px; border-radius: 6px; margin-right: 8px;
-  background: #409eff; color: #fff; vertical-align: middle;
+  background: #2563eb; color: #fff; vertical-align: middle;
 }
 .tag-time { background: #909399; }
 
