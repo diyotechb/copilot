@@ -121,7 +121,7 @@
     </div>
 
     <div class="control_bar read-only-bar" v-else>
-      <span>Viewing History. <a @click="$emit('back')" style="cursor:pointer; color:#409EFF;">Back to Dashboard</a></span>
+      <span>Viewing History. <a @click="$emit('back')" style="cursor:pointer; color:#2563eb;">Back to Dashboard</a></span>
       <div class="font-controls">
         <button class="font-btn" :disabled="fontScale <= 0.7" @click="decreaseFontSize" title="Decrease text size">A−</button>
         <button class="font-btn font-btn-label" @click="resetFontSize" :title="`Reset text size (currently ${Math.round(fontScale * 100)}%)`">{{ Math.round(fontScale * 100) }}%</button>
@@ -275,7 +275,7 @@ export default {
   min-width: 100px;
 }
 .editable-title:focus {
-  border-bottom: 1px solid #409EFF;
+  border-bottom: 1px solid #2563eb;
 }
 
 .edit-icon {
@@ -310,10 +310,9 @@ export default {
 }
 
 .empty-state {
-  text-align: center;
   color: #999;
-  margin-top: 100px;
-  font-size: 1.4em;
+  margin-top: 50px;
+  font-size: calc(1.30em * var(--detail-font-scale, 1));
   font-weight: 300;
 }
 

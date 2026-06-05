@@ -60,16 +60,6 @@
 
             <div class="storage-stat-card">
               <div class="stat-info">
-                <span class="stat-name">Saved Transcripts</span>
-                <span class="stat-val">{{ formatSize(storageStats.history.size) }} ({{ storageStats.history.count }} items)</span>
-              </div>
-              <button @click="clearHistory" class="clear-btn" :disabled="isClearingHistory">
-                {{ isClearingHistory ? 'Clearing...' : 'Clear' }}
-              </button>
-            </div>
-
-            <div class="storage-stat-card">
-              <div class="stat-info">
                 <span class="stat-name">Recordings</span>
                 <span class="stat-val">{{ formatSize(storageStats.recordings.size) }}</span>
               </div>
@@ -122,7 +112,6 @@ export default {
       storageStats: null,
       isClearingInterviews: false,
       isClearingRecordings: false,
-      isClearingHistory: false,
       // Confirmation Modal State
       confirmVisible: false,
       confirmConfig: {
@@ -196,7 +185,7 @@ export default {
     async clearInterviews() {
       this.confirmConfig = {
         title: 'Clear Interview Data',
-        message: 'This will clear your current interview questions and live transcripts. Your transcription history notes will not be affected. Proceed?',
+        message: 'This will clear your current interview questions and live transcripts. Proceed?',
         type: 'warning',
         confirmText: 'Clear Data',
         icon: 'el-icon-refresh-left',
@@ -217,18 +206,6 @@ export default {
       };
       this.confirmVisible = true;
     },
-    async clearHistory() {
-      this.confirmConfig = {
-        title: 'Delete Transcription History',
-        message: 'This will permanently delete ALL your saved transcription history notes. This action cannot be undone. Proceed?',
-        type: 'danger',
-        confirmText: 'Delete Everything',
-        icon: 'el-icon-delete',
-        loading: false,
-        action: 'history'
-      };
-      this.confirmVisible = true;
-    },
     async handleConfirmAction() {
       const { action } = this.confirmConfig;
       this.confirmConfig.loading = true;
@@ -240,9 +217,6 @@ export default {
         } else if (action === 'recordings') {
           await realStorageService.clearRecordingData();
           this.$message.success('Recordings cleared');
-        } else if (action === 'history') {
-          realStorageService.clearTranscriptionHistory();
-          this.$message.success('Transcription history cleared');
         }
         
         await this.refreshStorageStats();

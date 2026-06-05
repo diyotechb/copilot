@@ -5,7 +5,7 @@
       <h2>Live Assist</h2>
     </div>
 
-    <el-card class="setup-card" shadow="never">
+    <el-card v-if="!interviewActive" class="setup-card" shadow="never">
       <div class="field-block">
         <label class="field-label">Select Candidate</label>
         <div class="candidate-row">
@@ -49,7 +49,7 @@
       </div>
 
       <div class="field-block">
-        <label class="field-label">Session Name</label>
+        <label class="field-label">Session Name <span class="req">*</span></label>
         <el-input v-model="sessionLabel" placeholder="Session name" :disabled="fieldsLocked" :maxlength="maxLabelChars" />
       </div>
 
@@ -107,14 +107,6 @@
           @click="cancelPrepare"
         >Cancel</el-button>
         <el-button
-          v-if="interviewActive"
-          type="danger"
-          class="primary-hero-btn end-hero-btn"
-          :loading="completing"
-          @click="endInterview"
-        >End Session</el-button>
-        <el-button
-          v-else
           type="primary"
           class="primary-hero-btn"
           :class="{ 'continue-mode': preparing }"
@@ -135,6 +127,12 @@
           <span class="heartbeat"></span>
           <span class="live-label">{{ statusLabel }}</span>
         </div>
+        <el-button
+          type="danger"
+          class="end-hero-btn end-live-btn"
+          :loading="completing"
+          @click="endInterview"
+        >End Session</el-button>
       </div>
       <div class="live-meta">
         <span><span class="meta-key">Streaming to</span> <code>{{ httpBase }}</code></span>
@@ -145,31 +143,23 @@
 
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="error-banner" />
 
-    <div v-if="interviewActive" class="columns">
-      <el-card class="panel" shadow="never">
-        <div slot="header"><i class="el-icon-microphone"></i> Live Transcript</div>
-        <div class="content transcript">
-          <div v-if="livePartial" class="line partial">{{ livePartial }}</div>
-          <div v-for="(line, i) in transcriptReversed" :key="'t' + i" class="line final">{{ line }}</div>
-          <div v-if="!transcriptLines.length && !livePartial" class="empty">
-            {{ connected ? 'Waiting for audio from the extension…' : 'Connecting…' }}
-          </div>
+    <el-card v-if="interviewActive" class="qa-card" shadow="never">
+      <div class="qa-stream">
+        <div v-if="livePartial" class="qa-item pending">
+          <div class="qa-question">{{ livePartial }}</div>
+          <div class="qa-answer listening"><i class="el-icon-loading"></i> Listening…</div>
         </div>
-      </el-card>
-
-      <el-card class="panel" shadow="never">
-        <div slot="header"><i class="el-icon-chat-line-square"></i> AI Response</div>
-        <div class="content ai-response">
-          <div v-for="(reply, i) in repliesReversed" :key="'r' + i" class="reply">
-            <div class="reply-text">{{ reply.content }}</div>
-            <div v-if="reply.streaming" class="reply-meta"><i class="el-icon-loading"></i> streaming…</div>
-          </div>
-          <div v-if="!aiReplies.length" class="empty">
-            {{ connected ? 'Answers appear here when the interviewer finishes speaking.' : 'Connecting…' }}
-          </div>
+        <div v-for="(pair, i) in qaPairsReversed" :key="'qa' + i" class="qa-item">
+          <div class="qa-question">{{ pair.question }}</div>
+          <div v-if="pair.answer || pair.streaming" class="qa-answer">{{ pair.answer
+            }}<span v-if="pair.streaming" class="qa-streaming"><i class="el-icon-loading"></i> streaming…</span></div>
+          <div v-else class="qa-answer waiting"><i class="el-icon-loading"></i> Thinking…</div>
         </div>
-      </el-card>
-    </div>
+        <div v-if="!qaPairs.length && !livePartial" class="empty">
+          {{ connected ? 'Waiting for audio from the extension…' : 'Connecting…' }}
+        </div>
+      </div>
+    </el-card>
 
     <template v-if="!fieldsLocked">
       <div v-if="loadingRecents" class="empty-dashboard">Loading…</div>
@@ -206,7 +196,8 @@
             <span v-if="sessionSublineParts(s).length" class="card-subline-text">
               <template v-for="(seg, i) in sessionSublineParts(s)">{{ seg.text }}<b v-if="seg.bold" :key="i">{{ seg.bold }}</b></template>
             </span>
-            <el-tooltip placement="top" :content="'Created at: ' + formatDate(s.createdAt)">
+            <span v-if="sessionSublineParts(s).length" class="card-sep">|</span>
+            <el-tooltip placement="top" :content="'Created: ' + timeAgo(s.createdAt)" :disabled="!timeAgo(s.createdAt)">
               <span class="card-date hoverable">{{ formatDate(s.createdAt) }}</span>
             </el-tooltip>
           </div>
@@ -340,11 +331,18 @@ export default {
       if (this.error) return 'Error';
       return this.status === 'Ready' ? 'Live' : this.status;
     },
-    transcriptReversed() {
-      return this.transcriptLines.slice().reverse();
+    qaPairs() {
+      return this.transcriptLines.map((question, i) => {
+        const reply = this.aiReplies[i];
+        return {
+          question,
+          answer: reply ? reply.content : '',
+          streaming: reply ? reply.streaming : false
+        };
+      });
     },
-    repliesReversed() {
-      return this.aiReplies.slice().reverse();
+    qaPairsReversed() {
+      return this.qaPairs.slice().reverse();
     },
     httpBase() {
       return (this.backendUrl || '')
@@ -604,6 +602,10 @@ export default {
       }
       if (this.resumeTooLong) {
         this.$message.warning(`Resume is too long (${this.resumeText.length.toLocaleString()} chars). Please trim it under ${MAX_RESUME_CHARS.toLocaleString()}.`);
+        return;
+      }
+      if (!this.sessionLabel.trim()) {
+        this.$message.warning('Session name is required');
         return;
       }
       if (!this.conversationId.trim()) {
@@ -989,7 +991,7 @@ export default {
 
 .setup-card,
 .live-card,
-.columns,
+.qa-card,
 .transcript-list,
 .error-banner {
   max-width: 1000px;
@@ -1049,7 +1051,7 @@ export default {
 }
 
 .stream-note i {
-  color: #409eff;
+  color: #2563eb;
   font-size: 15px;
 }
 
@@ -1058,7 +1060,7 @@ export default {
   border: 1px solid #d9ecff;
   border-radius: 4px;
   padding: 1px 6px;
-  color: #409eff;
+  color: #2563eb;
   font-weight: 600;
 }
 
@@ -1119,6 +1121,11 @@ export default {
   box-shadow: 0 4px 14px rgba(245, 108, 108, 0.25);
 }
 
+.end-live-btn {
+  font-weight: 700;
+  border-radius: 10px;
+}
+
 .live-card {
   margin-bottom: 16px;
   border: none;
@@ -1177,7 +1184,7 @@ export default {
   border: 1px solid #d9ecff;
   border-radius: 4px;
   padding: 1px 6px;
-  color: #409eff;
+  color: #2563eb;
   font-weight: 600;
 }
 
@@ -1186,19 +1193,11 @@ export default {
   margin-bottom: 16px;
 }
 
-.columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+.qa-card {
+  margin-bottom: 16px;
 }
 
-.panel {
-  min-height: 380px;
-}
-
-.content {
-  height: 340px;
-  overflow-y: auto;
+.qa-stream {
   font-size: 14px;
   line-height: 1.6;
 }
@@ -1210,30 +1209,50 @@ export default {
   padding: 32px 0;
 }
 
-.line.final {
-  padding: 4px 0;
+.qa-item {
+  padding: 18px 0;
   border-bottom: 1px solid #f0f2f5;
 }
 
-.line.partial {
+.qa-item:first-child {
+  padding-top: 0;
+}
+
+.qa-item:last-child {
+  border-bottom: none;
+}
+
+.qa-question {
+  font-weight: 700;
+  color: #2c3e50;
+  line-height: 1.6;
+  font-size: 1.25rem;
+}
+
+.qa-answer {
+  margin-top: 10px;
+  color: #303133;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  font-size: 1.05rem
+}
+
+.qa-item.pending .qa-question {
   color: #909399;
   font-style: italic;
-  padding: 4px 0;
 }
 
-.reply {
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f2f5;
+.qa-answer.listening,
+.qa-answer.waiting {
+  color: #909399;
+  font-style: italic;
 }
 
-.reply-text {
-  white-space: pre-wrap;
-}
-
-.reply-meta {
-  margin-top: 4px;
+.qa-streaming {
+  margin-left: 8px;
   font-size: 11px;
   color: #909399;
+  font-style: italic;
 }
 
 .recent-header {
@@ -1253,7 +1272,7 @@ export default {
 
 .view-all {
   font-size: 0.9em;
-  color: #409eff;
+  color: #2563eb;
   text-decoration: none;
 }
 
@@ -1327,11 +1346,15 @@ export default {
 .card-subline-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   margin: 4px 0 12px;
   font-size: 12px;
   color: #64666b;
+}
+
+.card-sep {
+  color: #c0c4cc;
 }
 
 .card-date {
@@ -1363,7 +1386,4 @@ export default {
   font-style: italic;
 }
 
-@media (max-width: 900px) {
-  .columns { grid-template-columns: 1fr; }
-}
 </style>

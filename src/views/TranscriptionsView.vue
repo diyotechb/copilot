@@ -2,8 +2,8 @@
   <div class="transcriptions_container">
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
-      :history="history"
       :cloud-recent="recentCloud"
+      :loading-cloud="loadingCloud"
       :mic-permission="micPermissionState"
       :continue-target="continueTarget"
       @start="startCloudRecording"
@@ -12,9 +12,6 @@
       @view-all="goToAll"
       @open-cloud="goToSession"
       @continue-cloud="prepareContinue"
-      @open-detail="openDetail"
-      @delete-item="deleteHistoryItem"
-      @delete-all="deleteAllHistory"
     />
 
     <transcript-detail
@@ -50,7 +47,6 @@
 </template>
 
 <script>
-import transcriptService from '@/services/transcriptService';
 import transcriptionApi from '@/services/transcriptionApi';
 import speechService from '@/services/transcriptionSpeechService';
 import TranscriptDashboard from '@/components/transcription/TranscriptDashboard.vue';
@@ -73,6 +69,7 @@ export default {
       isReadOnly: false,
       isCloud: false,
       cloudSessions: [],
+      loadingCloud: true,
       continueTarget: null,
       sessionStart: null,
       recordingDurationMs: 0,
@@ -85,7 +82,6 @@ export default {
       currentInterim: "",
       isInterimInActiveParagraph: false,
       lastActivityTime: null,
-      history: [],
 
       // ── Turn timing ───────────────────────────────────────────────────
       lastTurnAudioEnd: 0,
@@ -110,7 +106,6 @@ export default {
   },
 
   mounted() {
-    this.history = transcriptService.loadHistory();
     this.loadCloud();
     this.initSpeechCallbacks();
     this.initMicPermissionCheck();
@@ -118,30 +113,6 @@ export default {
     this._pageHide = () => this.onPageHide();
     window.addEventListener('beforeunload', this._beforeUnload);
     window.addEventListener('pagehide', this._pageHide);
-
-    // Deep link: open the requested transcript if URL has ?sessionId=...
-    const initialId = this.$route.query.sessionId;
-    if (initialId) {
-      const item = this.history.find(h => h.id === initialId);
-      if (item) this.openDetail(item);
-    }
-
-  },
-
-  watch: {
-    // Sync view state with the URL when the user hits browser back/forward
-    // or pastes a deep link. Internal navigation already mutates state
-    // before updating the URL, so this watcher no-ops for our own pushes.
-    '$route.query.sessionId'(newId) {
-      if (this.isListening) return;
-      if (newId) {
-        if (newId === this.sessionId && this.isReadOnly) return;
-        const item = this.history.find(h => h.id === newId);
-        if (item) this.openDetail(item);
-      } else if (this.viewMode === 'detail' && this.isReadOnly) {
-        this.openDashboard();
-      }
-    }
   },
 
   async beforeRouteLeave(to, from, next) {
@@ -227,11 +198,14 @@ export default {
     // ── Cloud (DynamoDB) transcriptions ──────────────────────────────────
 
     async loadCloud() {
+      this.loadingCloud = true;
       try {
         const list = await transcriptionApi.list();
         this.cloudSessions = Array.isArray(list) ? list : [];
       } catch (e) {
         this.cloudSessions = [];
+      } finally {
+        this.loadingCloud = false;
       }
     },
 
@@ -270,8 +244,6 @@ export default {
           this.$message({ message: e.message || 'Could not save transcription', type: 'error', duration: 4000 });
         }
         await this.loadCloud();
-      } else if (this.transcriptLines.length) {
-        this.saveCurrentTranscript();
       }
     },
 
@@ -373,21 +345,6 @@ export default {
       }
     },
 
-    openDetail(item) {
-      this.$root.$emit('toggle-sidebar', true);
-      this.viewMode = 'detail';
-      this.transcriptLines = JSON.parse(JSON.stringify(item.lines));
-      this.sessionId = item.id;
-      this.sessionTitle = item.title || "Note";
-      this.sessionDate = item.dateStr;
-      this.isReadOnly = true;
-      this.isCloud = false;
-      this.lastActivityTime = null;
-      if (this.$route.query.sessionId !== item.id) {
-        this.$router.push({ query: { ...this.$route.query, sessionId: item.id } }).catch(() => {});
-      }
-    },
-
     async finishRecording() {
       this._clearCheckpointTimer();
       this.stopDurationTimer();
@@ -460,53 +417,12 @@ export default {
 
     updateTitle(newTitle) {
       this.sessionTitle = newTitle;
-      if (this.isCloud) {
-        const name = (newTitle || '').trim();
-        if (this.sessionId && name) {
-          transcriptionApi.rename(this.sessionId, name)
-            .then(() => this.loadCloud())
-            .catch(() => {});
-        }
-        return;
+      const name = (newTitle || '').trim();
+      if (this.sessionId && name) {
+        transcriptionApi.rename(this.sessionId, name)
+          .then(() => this.loadCloud())
+          .catch(() => {});
       }
-      this.saveCurrentTranscript();
-    },
-
-    saveCurrentTranscript() {
-      if (this.isReadOnly) {
-        const idx = this.history.findIndex(h => h.id === this.sessionId);
-        if (idx >= 0 && this.history[idx].title !== this.sessionTitle) {
-          this.history[idx].title = this.sessionTitle;
-          transcriptService.saveHistory(this.history);
-        }
-        return;
-      }
-      if (this.transcriptLines.length === 0) return;
-      this.history = transcriptService.saveTranscript({
-        id: this.sessionId,
-        title: this.sessionTitle,
-        dateStr: this.sessionDate,
-        lines: this.transcriptLines
-      });
-    },
-
-    deleteHistoryItem({ item, index }) {
-      this._showConfirm({
-        title: 'Delete Recording',
-        message: `Are you sure you want to delete "${item.title || 'this recording'}"? This action cannot be undone.`,
-        type: 'danger', confirmText: 'Delete',
-        showCancel: true, icon: 'el-icon-delete',
-        data: { item, index }, action: 'deleteItem'
-      });
-    },
-
-    deleteAllHistory() {
-      this._showConfirm({
-        title: 'Clear All History',
-        message: 'Are you sure you want to delete ALL recordings from your history? This action is permanent.',
-        type: 'danger', confirmText: 'Delete Everything',
-        showCancel: true, icon: 'el-icon-warning', action: 'deleteAll'
-      });
     },
 
     async handleConfirmAction() {
@@ -517,7 +433,7 @@ export default {
         resolve(true);
         return;
       }
-      const { action, data } = this.confirmConfig;
+      const { action } = this.confirmConfig;
       if (action === 'stopAndSave') {
         this._clearCheckpointTimer();
         speechService.stop();
@@ -526,10 +442,6 @@ export default {
         this.$root.$emit('toggle-sidebar', false);
         this.viewMode = 'dashboard';
         this.resetActiveSession();
-      } else if (action === 'deleteItem') {
-        this.history = transcriptService.deleteTranscript(data.item.id);
-      } else if (action === 'deleteAll') {
-        this.history = transcriptService.deleteAll();
       }
       this.confirmVisible = false;
     },

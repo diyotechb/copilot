@@ -19,9 +19,10 @@
     </div>
 
     <div class="card-subline-row">
-      <span class="card-subline-text">
+      <span v-if="infoParts.length" class="card-subline-text">
         <template v-for="(seg, i) in infoParts">{{ seg.text }}<b v-if="seg.bold" :key="i">{{ seg.bold }}</b></template>
       </span>
+      <span v-if="infoParts.length" class="card-sep">|</span>
       <el-tooltip placement="top" :content="dateTooltip" :disabled="!dateTooltip">
         <span class="card-date hoverable">{{ absoluteDate }}</span>
       </el-tooltip>
@@ -58,19 +59,7 @@ export default {
       return parts;
     },
     relativeTime() {
-      const ts = this.item.updatedAt || this.item.createdAt;
-      if (!ts) return '';
-      const diff = Date.now() - new Date(ts).getTime();
-      if (diff < 60000) return 'just now';
-      const m = Math.floor(diff / 60000);
-      if (m < 60) return `${m}m ago`;
-      const h = Math.floor(m / 60);
-      if (h < 24) return `${h}h ago`;
-      const d = Math.floor(h / 24);
-      if (d < 30) return `${d}d ago`;
-      const mo = Math.floor(d / 30);
-      if (mo < 12) return `${mo}mo ago`;
-      return `${Math.floor(mo / 12)}y ago`;
+      return this.timeAgo(this.item.updatedAt || this.item.createdAt);
     },
     absoluteDate() {
       const ts = this.item.createdAt;
@@ -84,11 +73,25 @@ export default {
       return ts ? `Updated at: ${this.formatFull(ts)}` : '';
     },
     dateTooltip() {
-      const ts = this.item.createdAt;
-      return ts ? `Created at: ${this.formatFull(ts)}` : '';
+      const ago = this.timeAgo(this.item.createdAt);
+      return ago ? `Created: ${ago}` : '';
     }
   },
   methods: {
+    timeAgo(ts) {
+      if (!ts) return '';
+      const diff = Date.now() - new Date(ts).getTime();
+      if (diff < 60000) return 'just now';
+      const m = Math.floor(diff / 60000);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      if (d < 30) return `${d}d ago`;
+      const mo = Math.floor(d / 30);
+      if (mo < 12) return `${mo}mo ago`;
+      return `${Math.floor(mo / 12)}y ago`;
+    },
     formatFull(ts) {
       return new Date(ts).toLocaleString(undefined, {
         month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -154,11 +157,15 @@ export default {
 .card-subline-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   margin: 4px 0 12px;
   font-size: 12px;
   color: #64666b;
+}
+
+.card-sep {
+  color: #c0c4cc;
 }
 
 .card-date {

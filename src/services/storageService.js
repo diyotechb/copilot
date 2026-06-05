@@ -89,11 +89,7 @@ class StorageService {
         return {
             recordings: await getStoreStats('recordings'),
             interviews: await getStoreStats('interviewQA'),
-            transcripts: await getStoreStats('transcripts'),
-            history: {
-                count: (this.getItem(KEYS.TRANSCRIPTIONS_HISTORY, true) || []).length,
-                size: new Blob([localStorage.getItem(KEYS.TRANSCRIPTIONS_HISTORY) || '[]']).size
-            }
+            transcripts: await getStoreStats('transcripts')
         };
     }
 
