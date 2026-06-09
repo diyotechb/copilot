@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <div v-if="loadingCloud" class="empty-dashboard">Loading…</div>
+      <div v-if="loadingCloud" class="list-loading"><i class="el-icon-loading"></i><span>Loading…</span></div>
       <div v-else-if="cloudRecent.length" class="ts-list">
         <transcription-session-card
           v-for="s in cloudRecent"
@@ -107,6 +107,19 @@ export default {
 }
 
 .recent-title { color: #606266; font-weight: 600; margin: 0; }
+
+.list-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 200px;
+  color: #909399;
+}
+
+.list-loading i {
+  font-size: 22px;
+}
 
 .recent-actions { display: flex; align-items: center; gap: 18px; }
 .link-action { color: #2563eb; font-weight: 600; font-size: 13px; cursor: pointer; }

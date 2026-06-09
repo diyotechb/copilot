@@ -6,55 +6,50 @@
         <el-button
             type="primary"
             class="primary-hero-btn"
-            :disabled="atCap"
             @click="startNew">
           Start New Interview <i class="el-icon-right"></i>
         </el-button>
       </div>
     </div>
 
-    <!-- Retention warning: at cap (5 sessions saved). Starting another
-         would delete the oldest, so we surface that explicitly and link
-         straight to the oldest session so the user can download what
-         they want first. -->
-    <div v-if="atCap && oldestSession" class="retention-banner">
-      <i class="el-icon-warning-outline"></i>
-      <div class="retention-text">
-        You have <strong>{{ MAX_VISIBLE }} saved interviews</strong>, which is the maximum kept on this device.
-        Starting another interview will permanently delete the oldest one
-        — <strong>{{ oldestLabel }}</strong> — including its audio, video, transcripts, and analysis.
-      </div>
-      <el-button size="small" type="warning" @click="open(oldestSession.id)">
-        Open &amp; download first
-      </el-button>
-    </div>
-
-    <div v-if="loading" class="status-row">
-      <i class="el-icon-loading"></i> Loading…
-    </div>
-
-    <div v-else-if="!sessions.length" class="empty-dashboard">
-      <i class="el-icon-folder-opened empty-icon"></i>
-      <h3>No saved interviews yet</h3>
-      <p>Complete an interview from start to finish to save it here.</p>
-      <div style="display:flex; gap:10px; margin-top: 24px;">
-        <el-button type="primary" class="primary-hero-btn" @click="startNew">
-          Start First Interview <i class="el-icon-right"></i>
-        </el-button>
-      </div>
-    </div>
-
-    <div v-else class="interview-list">
+    <div class="interview-list">
       <div class="recent-header">
         <h3 class="recent-title">Recent Interviews</h3>
+        <div class="recent-actions">
+          <el-button
+              v-if="isStaff"
+              size="small"
+              type="primary"
+              plain
+              @click="goToCandidates">
+            Candidate Overview
+          </el-button>
+          <a v-if="isStaff" class="view-all" @click="goToAll">View All</a>
+        </div>
       </div>
 
       <div class="storage-info">
-        <i class="el-icon-info"></i> Only the {{ MAX_VISIBLE }} most recent completed interviews are saved locally on this device.
-        Video is kept for the {{ MAX_VIDEO_SESSIONS }} most recent only — older sessions retain audio, transcripts, and analysis.
+        <i class="el-icon-info"></i> Interviews are saved in the cloud and kept for 30 days.
+        Video stays on this device for the {{ MAX_VIDEO_SESSIONS }} most recent only — audio, transcripts, and analysis live in the cloud.
       </div>
 
-      <div class="interview-cards">
+      <div v-if="loading" class="loading-center">
+        <i class="el-icon-loading"></i>
+        <span>Loading…</span>
+      </div>
+
+      <div v-else-if="!sessions.length" class="empty-dashboard">
+        <i class="el-icon-folder-opened empty-icon"></i>
+        <h3>No saved interviews yet</h3>
+        <p>Complete an interview from start to finish to save it here.</p>
+        <div style="display:flex; gap:10px; margin-top: 24px;">
+          <el-button type="primary" class="primary-hero-btn" @click="startNew">
+            Start First Interview <i class="el-icon-right"></i>
+          </el-button>
+        </div>
+      </div>
+
+      <div v-else class="interview-cards">
         <div
             v-for="s in sessions"
             :key="s.id"
@@ -69,7 +64,8 @@
               </span>
             </div>
             <div class="card-meta">
-              <span class="card-date">{{ formatDate(s.savedAt) }}</span>
+              <span v-if="statusLabel(s.status)" class="card-status-badge" :class="'st-' + statusTone(s.status)">{{ statusLabel(s.status) }}</span>
+              <span class="card-date">{{ formatDate(s.endedAt || s.startedAt || s.createdAt) }}</span>
               <span
                   v-if="hasVideo(s.id)"
                   class="video-availability has-video"
@@ -90,16 +86,11 @@
               <span class="card-difficulty">{{ s.difficulty || 'Interview' }}</span>
               <span v-if="s.category && s.category !== 'All'" class="meta-sep">·</span>
               <span v-if="s.category && s.category !== 'All'">{{ s.category }}</span>
-              <span class="meta-sep">·</span>
-              <span class="card-state" :class="'state-' + sessionState(s).tone">{{ sessionState(s).label }}</span>
-              <!-- Verdict is a delivery-only judgment (pace + filler %).
-                   When we already have a detailed LLM score on the card,
-                   that score subsumes the verdict and adding "STRONG"
-                   next to a low score reads as contradictory. Show the
-                   verdict only when there's no LLM score yet. -->
               <span v-if="verdictLabel(s) && averageScore(s) === null" class="meta-sep">·</span>
               <span v-if="verdictLabel(s) && averageScore(s) === null" class="card-verdict" :class="'verdict-' + verdictTone(s)">{{ verdictLabel(s) }}</span>
               <template v-if="!s.completed">
+                <span class="meta-sep">·</span>
+                <span class="card-incomplete">Incomplete</span>
                 <span class="meta-sep">·</span>
                 <span class="card-count">{{ answeredCount(s) }} / {{ (s.qaList || []).length }} answered</span>
               </template>
@@ -107,72 +98,6 @@
                 <span class="meta-sep">·</span>
                 <span class="card-duration"><i class="el-icon-time"></i> {{ totalDuration(s) }} total</span>
               </template>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Admin Inbox: imported submissions from other users. Rendered as a
-         sibling section to the user's own history so it shows even when
-         the admin has no personal interviews of their own. -->
-    <div v-if="isStaff" class="inbox-section">
-      <div class="recent-header">
-        <h3 class="recent-title">
-          <i class="el-icon-message"></i>
-          Inbox
-        </h3>
-        <el-button size="small" type="primary" plain icon="el-icon-upload2" @click="triggerImportPicker">
-          Import interview (ZIP)
-        </el-button>
-      </div>
-
-      <input
-          ref="importInput"
-          type="file"
-          accept=".zip,application/zip"
-          style="display:none"
-          @change="onImportFileChosen"
-      />
-
-      <div v-if="importError" class="import-error">
-        <i class="el-icon-warning-outline"></i> {{ importError }}
-      </div>
-
-      <div v-if="!inboxSessions.length" class="inbox-empty">
-        No submissions yet. Imported interviews appear here for analysis.
-      </div>
-
-      <div v-else class="interview-cards">
-        <div
-            v-for="s in inboxSessions"
-            :key="'inbox-' + s.id"
-            class="interview-card inbox-card"
-            @click="openInbox(s.id)"
-        >
-          <div class="card-header">
-            <div class="card-title-wrap">
-              <h3 class="card-title">{{ s.candidateName || 'Interview' }}</h3>
-              <span class="card-badge imported-badge" title="Imported from another user">Imported</span>
-            </div>
-            <div class="card-meta">
-              <span class="card-date">Received {{ formatDate(s.importedAt || s.savedAt) }}</span>
-              <button
-                  type="button"
-                  class="icon-btn delete-btn"
-                  @click.stop="removeInbox(s.id)"
-                  title="Remove from inbox">
-                <i class="el-icon-delete"></i>
-              </button>
-            </div>
-          </div>
-          <div class="card-body">
-            <p class="card-line-1">
-              <span class="card-difficulty">{{ s.difficulty || 'Interview' }}</span>
-              <span v-if="s.category && s.category !== 'All'" class="meta-sep">·</span>
-              <span v-if="s.category && s.category !== 'All'">{{ s.category }}</span>
-              <span class="meta-sep">·</span>
-              <span class="card-count">{{ (s.qaList || []).length }} questions</span>
             </p>
           </div>
         </div>
@@ -195,16 +120,11 @@
 import {
   listRecentSessions,
   deleteSession,
-  listInboxSessions,
-  getInboxSession,
-  saveImportedSession,
-  deleteInboxSession,
   MAX_ENTRIES
 } from '@/store/interviewHistoryStore';
-import { listSessionsWithVideo, MAX_VIDEO_SESSIONS, saveRecordingForSession } from '@/store/recordingStore';
+import { listSessionsWithVideo, MAX_VIDEO_SESSIONS } from '@/store/recordingStore';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { wordCount, aggregateStats, overallVerdict, formatDuration } from '@/utils/summaryStats';
-import { parseImportZip } from '@/utils/sessionTransfer';
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
@@ -216,17 +136,10 @@ export default {
       MAX_VISIBLE: MAX_ENTRIES,
       MAX_VIDEO_SESSIONS,
       sessions: [],
-      inboxSessions: [],
-      videoSessionIds: [], // session ids that currently have a video blob on disk
+      videoSessionIds: [],
       loading: true,
-      // pendingAction lets onConfirm fork on what the dialog was opened for:
-      // 'delete-history' (user's own), 'delete-inbox' (received submission),
-      // or 'replace-inbox' (incoming import collides with an existing inbox id).
       pendingAction: '',
       pendingId: '',
-      pendingPayload: null,
-      pendingAudio: null,
-      importError: '',
       confirmVisible: false,
       confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Delete', icon: 'el-icon-delete' }
     };
@@ -234,20 +147,6 @@ export default {
   computed: {
     isStaff() {
       return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
-    },
-    atCap() {
-      return this.sessions.length >= this.MAX_VISIBLE;
-    },
-    oldestSession() {
-      if (!this.sessions.length) return null;
-      // listRecentSessions returns newest-first; the oldest is at the end.
-      return this.sessions[this.sessions.length - 1];
-    },
-    oldestLabel() {
-      const s = this.oldestSession;
-      if (!s) return '';
-      const name = s.candidateName ? `${s.candidateName} — ` : '';
-      return `${name}${this.formatDate(s.savedAt)}`;
     }
   },
   async mounted() {
@@ -257,33 +156,41 @@ export default {
     async refresh() {
       this.loading = true;
       try {
-        const inboxPromise = this.isStaff ? listInboxSessions() : Promise.resolve([]);
-        const [recent, withVideo, inbox] = await Promise.all([
+        const [recent, withVideo] = await Promise.all([
           listRecentSessions(this.MAX_VISIBLE),
-          listSessionsWithVideo(),
-          inboxPromise
+          listSessionsWithVideo()
         ]);
-        // Hide entries with nothing to show. An abandoned interview
-        // that was never answered (user opened InterviewView and
-        // closed the tab during the opener) leaves a history entry
-        // with no transcripts. Showing it would just be clutter.
-        // Completed sessions always render — even if empty — because
-        // the user explicitly finished them.
+        // hide abandoned, never-answered interviews; keep completed ones
         this.sessions = recent.filter(s => {
           if (s.completed) return true;
           if (!Array.isArray(s.transcripts) || !s.transcripts.length) return false;
           return s.transcripts.some(t => t != null);
         });
-        this.inboxSessions = inbox;
         this.videoSessionIds = withVideo;
       } catch (e) {
         console.error('Failed to load interview history:', e);
         this.sessions = [];
-        this.inboxSessions = [];
         this.videoSessionIds = [];
       } finally {
         this.loading = false;
       }
+    },
+    goToCandidates() {
+      this.$router.push({ name: 'CandidateOverview' });
+    },
+    goToAll() {
+      this.$router.push({ name: 'AllInterviews' });
+    },
+    statusLabel(status) {
+      if (status === 'ANALYZED') return 'Analyzed';
+      if (status === 'ENDED') return 'Ended';
+      if (status === 'ACTIVE') return 'Active';
+      return '';
+    },
+    statusTone(status) {
+      if (status === 'ANALYZED') return 'analyzed';
+      if (status === 'ENDED') return 'done';
+      return 'active';
     },
     hasVideo(id) {
       return this.videoSessionIds.includes(id);
@@ -301,24 +208,6 @@ export default {
       if (mode === 'full') return 'Detailed';
       if (mode === 'basic') return 'Basic analysis';
       return 'No analysis';
-    },
-    // One-word status reflecting what the saved entry actually contains.
-    // Pending = audio recorded but not transcribed yet (next action:
-    // open and click Transcribe). Basic = transcripts done, no detailed
-    // analysis. Detailed = LLM analysis saved. Errors = transcription
-    // failed for one or more answers. None = analysis was off.
-    sessionState(s) {
-      if (!s.analysisMode || s.analysisMode === 'none') {
-        return { label: 'No analysis', tone: 'none' };
-      }
-      const transcripts = Array.isArray(s.transcripts) ? s.transcripts : [];
-      const pending = transcripts.some(t => t && typeof t === 'object' && t.pending);
-      const failed = transcripts.some(t => typeof t === 'string' && t === '[Transcription error]');
-      if (pending) return { label: 'Pending', tone: 'pending' };
-      if (s.llmAnalysis) return { label: 'Detailed', tone: 'detailed' };
-      if (failed) return { label: 'Errors', tone: 'failed' };
-      if (transcripts.length === 0) return { label: 'No data', tone: 'none' };
-      return { label: 'Basic', tone: 'basic' };
     },
     answeredCount(s) {
       if (!Array.isArray(s.transcripts)) return 0;
@@ -385,105 +274,30 @@ export default {
     open(id) {
       this.$router.push({ name: 'SummaryView', query: { sessionId: id } });
     },
-    openInbox(id) {
-      // `source=inbox` tells SummaryView to read from the inbox keyspace
-      // instead of the user's own history (they may share an id when an
-      // admin imports their own export).
-      this.$router.push({ name: 'SummaryView', query: { sessionId: id, source: 'inbox' } });
-    },
     remove(id) {
       this.pendingAction = 'delete-history';
       this.pendingId = id;
       this.confirmConfig = {
         title: 'Delete this saved interview?',
-        message: 'This removes the saved transcripts and feedback for this interview from your device. Cannot be undone.',
+        message: 'This removes the saved transcripts and feedback for this interview. Cannot be undone.',
         type: 'danger',
         confirmText: 'Delete',
         icon: 'el-icon-delete'
       };
       this.confirmVisible = true;
     },
-    removeInbox(id) {
-      this.pendingAction = 'delete-inbox';
-      this.pendingId = id;
-      this.confirmConfig = {
-        title: 'Remove this submission from your inbox?',
-        message: 'The imported interview will be deleted from this device. The submitter still has the original on theirs.',
-        type: 'danger',
-        confirmText: 'Remove',
-        icon: 'el-icon-delete'
-      };
-      this.confirmVisible = true;
-    },
     async onConfirm() {
-      const action = this.pendingAction;
       try {
-        if (action === 'delete-history') {
+        if (this.pendingAction === 'delete-history') {
           await deleteSession(this.pendingId);
-        } else if (action === 'delete-inbox') {
-          await deleteInboxSession(this.pendingId);
-        } else if (action === 'replace-inbox' && this.pendingPayload) {
-          await saveImportedSession(this.pendingPayload);
-          await this.restoreImportedAudio(this.pendingPayload.id, this.pendingAudio);
         }
       } catch (e) {
-        console.error(`Failed to ${action}:`, e);
+        console.error(`Failed to ${this.pendingAction}:`, e);
       }
       this.pendingAction = '';
       this.pendingId = '';
-      this.pendingPayload = null;
-      this.pendingAudio = null;
       this.confirmVisible = false;
       await this.refresh();
-    },
-    // ─── Import (admins only) ───
-    triggerImportPicker() {
-      this.importError = '';
-      if (this.$refs.importInput) {
-        this.$refs.importInput.value = '';
-        this.$refs.importInput.click();
-      }
-    },
-    async onImportFileChosen(evt) {
-      const file = evt.target.files && evt.target.files[0];
-      if (!file) return;
-      const name = (file.name || '').toLowerCase();
-      const isZip = name.endsWith('.zip') || file.type === 'application/zip';
-      if (!isZip) {
-        this.importError = 'Please select a .zip interview export (created with "Export for analysis").';
-        return;
-      }
-      try {
-        const { payload, audio } = await parseImportZip(await file.arrayBuffer());
-        const existing = await getInboxSession(payload.id);
-        if (existing) {
-          // Don't silently overwrite — ask. Stash the payload + audio so the
-          // shared ConfirmDialog can complete the import after Yes.
-          this.pendingAction = 'replace-inbox';
-          this.pendingId = payload.id;
-          this.pendingPayload = payload;
-          this.pendingAudio = audio;
-          this.confirmConfig = {
-            title: 'Replace existing submission?',
-            message: `An interview from "${existing.candidateName || 'this candidate'}" with the same id is already in your inbox (received ${this.formatDate(existing.importedAt || existing.savedAt)}). Replace it with this file?`,
-            type: 'warning',
-            confirmText: 'Replace',
-            icon: 'el-icon-refresh'
-          };
-          this.confirmVisible = true;
-          return;
-        }
-        await saveImportedSession(payload);
-        await this.restoreImportedAudio(payload.id, audio);
-        await this.refresh();
-      } catch (e) {
-        this.importError = e.message || 'Could not import this file.';
-      }
-    },
-    async restoreImportedAudio(sessionId, audio) {
-      for (const { idx, blob } of audio || []) {
-        await saveRecordingForSession(sessionId, idx, blob);
-      }
     }
   }
 };
@@ -520,10 +334,19 @@ export default {
   align-items: center;
 }
 
-.status-row {
-  padding: 24px;
+.loading-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 320px;
   color: #909399;
-  font-size: 0.95rem;
+  font-size: 1rem;
+}
+
+.loading-center i {
+  font-size: 22px;
 }
 
 .retention-banner {
@@ -608,6 +431,19 @@ export default {
   margin: 0;
 }
 
+.recent-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.view-all {
+  font-size: 0.9em;
+  color: #2563eb;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 .storage-info {
   background: #e6f7ff;
   border: 1px solid #91d5ff;
@@ -683,6 +519,19 @@ export default {
   color: #999;
 }
 
+.card-status-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.card-status-badge.st-analyzed { background: #e0edff; color: #2563eb; }
+.card-status-badge.st-done { background: #e3f5e9; color: #16a34a; }
+.card-status-badge.st-active { background: #fdf0dc; color: #b45309; }
+
 .icon-btn {
   background: transparent;
   border: none;
@@ -699,63 +548,6 @@ export default {
 
 .icon-btn.delete-btn:hover {
   color: #f56c6c;
-}
-
-.inbox-section {
-  max-width: 1000px;
-  margin: 40px auto 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.inbox-section .recent-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.inbox-count {
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.inbox-empty {
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 10px;
-  padding: 18px;
-  color: #64748b;
-  font-size: 0.9rem;
-  text-align: center;
-}
-
-.import-error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.inbox-card {
-  border-left: 4px solid #6366f1;
-}
-
-.card-badge.imported-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #4338ca;
 }
 
 .card-body {
@@ -777,21 +569,16 @@ export default {
 
 .meta-sep { color: #cbd5e1; }
 
-.card-state {
+.card-incomplete {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 2px 10px;
   border-radius: 999px;
-  background: #f1f5f9;
-  color: #475569;
+  background: #fdf0dc;
+  color: #b45309;
 }
-.card-state.state-detailed { background: #ecfdf5; color: #047857; }
-.card-state.state-basic    { background: #eff6ff; color: #1e40af; }
-.card-state.state-pending  { background: #fef9c3; color: #854d0e; }
-.card-state.state-failed   { background: #fee2e2; color: #b91c1c; }
-.card-state.state-none     { background: #f1f5f9; color: #475569; }
 
 .card-verdict {
   font-size: 0.78rem;

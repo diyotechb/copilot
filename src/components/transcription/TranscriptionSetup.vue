@@ -2,7 +2,7 @@
   <div class="transcription-setup">
     <div class="setup-fields">
       <div class="field-block">
-        <label class="field-label">Select Candidate</label>
+        <label class="field-label">Select Candidate <span class="required">*</span></label>
         <div class="candidate-row">
           <el-date-picker
             v-model="candidateDate"
@@ -23,11 +23,12 @@
             v-show="!continuing"
             v-model="selectedCandidateId"
             filterable
+            placeholder="Select Candidate"
             :loading="loadingCandidates"
             class="candidate-select"
             @change="onSelectionChange"
           >
-            <el-option label="No Selection" :value="noSelection" />
+            <el-option label="Start without Candidate" :value="noSelection" />
             <el-option label="Otter Practice" :value="otterPractice" />
             <el-option
               v-for="c in candidates"
@@ -132,6 +133,10 @@ export default {
     start() {
       if (!this.candidateDate) {
         this.$message.warning('Please pick a date.');
+        return;
+      }
+      if (!this.candidateChosen) {
+        this.$message.warning('Please select a candidate.');
         return;
       }
       const label = (this.sessionName || '').trim();

@@ -100,11 +100,31 @@ export async function generateInterviewQA({
     if (stallTimer) clearTimeout(stallTimer);
   }
 
-  if (streamError) throw new Error(streamError);
+  if (streamError) throw new Error(friendlyGenerationError(streamError));
   if (!Array.isArray(finalQA)) throw new Error('Interview generation ended without a final result.');
 
   await saveInterviewQA(finalQA);
   return finalQA;
+}
+
+function friendlyGenerationError(raw) {
+  const s = (raw || '').toString();
+  if (/429|too[_ ]?many[_ ]?requests|rate.?limit/i.test(s)) {
+    return 'The interview generator is busy right now. Please wait a minute and try again.';
+  }
+  if (/insufficient_quota|exceeded your current quota|\bquota\b|billing/i.test(s)) {
+    return 'The interview generator is temporarily unavailable. Please try again later or contact your administrator.';
+  }
+  if (/\b50[0234]\b|bad[_ ]?gateway|service unavailable|upstream/i.test(s)) {
+    return 'The interview service is temporarily unavailable. Please try again in a moment.';
+  }
+  if (/timeout|timed out|stalled/i.test(s)) {
+    return 'The request took too long to respond. Please try again.';
+  }
+  if (/exception|org\.springframework|java\.|\bat \w/i.test(s)) {
+    return 'We couldn\'t generate interview questions right now. Please try again in a moment.';
+  }
+  return s || 'We couldn\'t generate interview questions right now. Please try again in a moment.';
 }
 
 function parseSseBlock(block) {

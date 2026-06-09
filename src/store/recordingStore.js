@@ -107,6 +107,20 @@ export async function pruneVideosToCap(recentSessionIdsNewestFirst, cap = MAX_VI
   return purged;
 }
 
+// sessionIds with any local recording (audio or video)
+export async function listSessionsWithRecordings() {
+  const keys = await getAllKeysFromStore(STORE_NAME);
+  const out = new Set();
+  for (const k of keys) {
+    if (typeof k !== 'string') continue;
+    const audio = k.match(/^Recording_(.+?)_\d+$/);
+    if (audio) { out.add(audio[1]); continue; }
+    const video = k.match(/^Video_(.+)$/);
+    if (video) { out.add(video[1]); }
+  }
+  return [...out];
+}
+
 // Save audio for a specific session + question index.
 export async function saveRecordingForSession(sessionId, idx, blob) {
   if (!sessionId) {

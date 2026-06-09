@@ -1,5 +1,5 @@
 <template>
-  <div class="setup-page-view">
+  <div class="setup-page-view" :class="{ 'embedded-summary-root': embedded }">
     <!-- Loading / Processing States -->
     <div v-if="isLoading" class="setup-status-view">
       <div class="status-content">
@@ -20,7 +20,7 @@
              of whether this is a live just-finished summary or a saved
              session opened from history. Gives the user a consistent
              escape hatch to the dashboard from both entry points. -->
-        <div class="header-breadcrumb">
+        <div v-if="!embedded" class="header-breadcrumb">
           <button
               type="button"
               class="back-link-btn"
@@ -58,11 +58,28 @@
             <p class="header-subtitle">
               <span v-if="difficulty" class="header-tag">{{ difficulty }}</span>
               <span v-if="category && category !== 'All'" class="header-tag">{{ category }}</span>
-              <span class="header-tag state-tag" :class="'state-' + interviewState.tone" :title="stateTooltip">{{ interviewState.label }}</span>
+              <span class="header-tag state-tag" :class="completed ? 'state-complete' : 'state-incomplete'" :title="completed ? 'The candidate answered every question.' : 'The interview was stopped before the end.'">{{ completed ? 'Complete' : 'Incomplete' }}</span>
+              <span v-if="!embedded" class="header-tag state-tag" :class="'lc-' + lifecycleStatus.tone" :title="'Interview status'">{{ lifecycleStatus.label }}</span>
               <span v-if="interviewDateLabel" class="header-date">{{ interviewDateLabel }}</span>
             </p>
+            <div v-if="createdAtMeta" class="recorded-block">
+              <p class="detail-recorded">
+                <el-tooltip placement="top" :content="createdByTooltip" :disabled="!createdByTooltip">
+                  <span class="recorded-seg">Created <b>{{ fmtDateTime(createdAtMeta) }}</b></span>
+                </el-tooltip>
+                <template v-if="updatedAtMeta">
+                  <span> · </span>
+                  <el-tooltip placement="top" :content="updatedByTooltip" :disabled="!updatedByTooltip">
+                    <span class="recorded-seg">Last updated <b>{{ fmtDateTime(updatedAtMeta) }}</b></span>
+                  </el-tooltip>
+                </template>
+              </p>
+              <p v-if="createdByEmailMeta" class="detail-recorded-by">Session ID <b>{{ activeSessionId }}</b> | Recorded By: <b>{{ createdByEmailMeta }}</b></p>
+            </div>
           </div>
           <div class="header-actions">
+            <el-tag v-if="embedded" :type="lifecycleTagType" size="small" effect="dark">{{ lifecycleStatus.label }}</el-tag>
+            <slot name="header-actions"></slot>
             <!-- Download dropdown: lets the user pick exactly what they
                  want — everything, just the video, just the transcripts,
                  or just the analysis. Files are named after the
@@ -79,7 +96,6 @@
                 <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl">Video / Audio</el-dropdown-item>
                 <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts</el-dropdown-item>
                 <el-dropdown-item v-if="llmAnalysis" command="analysis" icon="el-icon-data-analysis">Analysis</el-dropdown-item>
-                <el-dropdown-item command="submit-zip" icon="el-icon-upload2" divided>Export for analysis</el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
           </div>
@@ -914,8 +930,7 @@ import {
 import { getSetting } from '@/store/settingStore';
 import { getVideoForSession, getRecordingForSession } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
-import { saveCompletedSession, updateHistoryEntry, getSessionById, getInboxSession } from '@/store/interviewHistoryStore';
-import { buildExportZip, exportZipFilename, triggerBlobDownload } from '@/utils/sessionTransfer';
+import { saveCompletedSession, updateHistoryEntry, getSessionById } from '@/store/interviewHistoryStore';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
 import storageService from '@/services/storageService';
 import authService from '@/services/authService';
@@ -926,7 +941,8 @@ export default {
   name: 'SummaryView',
   components: { FeedbackSection },
   props: {
-    sessionId: { type: String, default: '' }
+    sessionId: { type: String, default: '' },
+    embedded: { type: Boolean, default: false }
   },
   data() {
     return {
@@ -943,6 +959,17 @@ export default {
       difficulty: '',
       category: 'All',
       candidateName: '',
+      enrollmentId: '',
+      sessionLabel: '',
+      sessionStatus: '',
+      createdAtMeta: '',
+      updatedAtMeta: '',
+      createdByMeta: '',
+      updatedByMeta: '',
+      createdByEmailMeta: '',
+      updatedByEmailMeta: '',
+      startedAt: '',
+      endedAt: '',
       preferredKeywords: [],
       // Date the interview happened. ISO string. Comes from history
       // entry.savedAt on saved sessions, or live meta.startedAt for the
@@ -1049,32 +1076,35 @@ export default {
     showDetailedAnalysis() {
       return !!this.llmAnalysis && !this.llmLoading;
     },
-    // One-word status that reflects the actual state of the data, not the
-    // user's setting at session start. Drives the header chip on the
-    // Summary page and the matching chip in the MyInterviews list, so
-    // the user always knows what's been done and what they can do next.
-    interviewState() {
-      if (!this.analysisMode || this.analysisMode === 'none') {
-        return { label: 'No analysis', tone: 'none' };
-      }
+    lifecycleStatus() {
+      const map = {
+        ANALYZED: { label: 'Analyzed', tone: 'analyzed' },
+        ENDED: { label: 'Ended', tone: 'ended' },
+        ACTIVE: { label: 'Active', tone: 'active' }
+      };
       const transcripts = Array.isArray(this.transcripts) ? this.transcripts : [];
-      const pending = transcripts.some(t => t && typeof t === 'object' && t.pending);
-      const failed = transcripts.some(t => typeof t === 'string' && t === '[Transcription error]');
-      if (pending) return { label: 'Pending', tone: 'pending' };
-      if (this.llmAnalysis) return { label: 'Detailed', tone: 'detailed' };
-      if (failed) return { label: 'Errors', tone: 'failed' };
-      if (transcripts.length === 0) return { label: 'No data', tone: 'none' };
-      return { label: 'Basic', tone: 'basic' };
+      const analyzed = !!this.llmAnalysis || transcripts.some(t => {
+        if (typeof t === 'string') return t && t !== '[Transcription error]';
+        if (t && typeof t === 'object') return !t.pending && (!!t.text || (Array.isArray(t.words) && t.words.length > 0));
+        return false;
+      });
+      if (analyzed) return map.ANALYZED;
+      if (this.sessionStatus && map[this.sessionStatus]) return map[this.sessionStatus];
+      return map.ENDED;
     },
-    stateTooltip() {
-      switch (this.interviewState.tone) {
-        case 'pending': return 'Some answers still need to be transcribed.';
-        case 'failed': return 'Some answers couldn\'t be transcribed. Run them again to recover.';
-        case 'basic': return 'Basic analysis is ready. Generate detailed analysis to add LLM feedback.';
-        case 'detailed': return 'Detailed analysis is saved with this interview.';
-        case 'none': return 'Analysis was off for this session, or no answers were recorded.';
-        default: return '';
-      }
+    lifecycleTagType() {
+      const tone = this.lifecycleStatus.tone;
+      if (tone === 'analyzed') return 'primary';
+      if (tone === 'active') return 'warning';
+      return 'info';
+    },
+    createdByTooltip() {
+      const who = this.createdByEmailMeta || this.createdByMeta;
+      return who ? `Created by: ${who}` : '';
+    },
+    updatedByTooltip() {
+      const who = this.updatedByEmailMeta || this.updatedByMeta;
+      return who ? `Updated by: ${who}` : '';
     },
     // CTA visible only when every prerequisite is satisfied:
     //   - feature enabled in profile,
@@ -1333,12 +1363,8 @@ export default {
     const features = storageService.getItem(storageService.KEYS.USER_FEATURES, true) || {};
     this.analysisFeatureEnabled = this.isStaff && !!features.analysisEnabled;
 
-    // Determine source: live session vs history vs admin inbox.
-    // `source=inbox` is set by MyInterviews when opening an imported
-    // submission, so we read it from the right keyspace.
     if (this.sessionId) {
-      const source = (this.$route && this.$route.query && this.$route.query.source) || '';
-      await this.loadFromHistory(this.sessionId, { source });
+      await this.loadFromHistory(this.sessionId);
     } else {
       await this.loadFromLiveSession();
     }
@@ -1375,6 +1401,12 @@ export default {
     }
   },
   methods: {
+    fmtDateTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    },
     // Stat passthroughs for the template
     wordCount, fillerCount, fillerPercent, paceWpm, answerDurationSec, formatDuration,
 
@@ -1521,6 +1553,10 @@ export default {
       this.difficulty = (meta && meta.difficulty) || '';
       this.category = (meta && meta.category) || 'All';
       this.candidateName = (meta && meta.candidateName) || '';
+      this.enrollmentId = (meta && meta.enrollmentId) || '';
+      this.sessionLabel = (meta && meta.label) || '';
+      this.startedAt = (meta && meta.startedAt) || '';
+      this.endedAt = (meta && meta.endedAt) || '';
       this.preferredKeywords = (meta && Array.isArray(meta.preferredKeywords)) ? meta.preferredKeywords : [];
       this.interviewDate = (meta && (meta.endedAt || meta.startedAt)) || '';
       this.activeSessionId = (meta && meta.sessionId) || '';
@@ -1532,11 +1568,9 @@ export default {
       this.checkTranscriptionStatus();
     },
 
-    async loadFromHistory(id, { source = '' } = {}) {
+    async loadFromHistory(id) {
       this.isHistoryView = true;
-      const entry = source === 'inbox'
-        ? await getInboxSession(id)
-        : await getSessionById(id);
+      const entry = await getSessionById(id);
       if (!entry) {
         this.loadingTranscripts = false;
         return;
@@ -1551,12 +1585,19 @@ export default {
       this.transcripts = entry.transcripts || [];
       this.questionTimestamps = entry.questionTimestamps || [];
       this.analysisMode = entry.analysisMode || 'none';
-      this.completed = true;
+      this.completed = entry.completed === true;
+      this.sessionStatus = entry.status || '';
+      this.createdAtMeta = entry.createdAt || '';
+      this.updatedAtMeta = entry.updatedAt || '';
+      this.createdByMeta = entry.createdBy || '';
+      this.updatedByMeta = entry.updatedBy || '';
+      this.createdByEmailMeta = entry.createdByEmail || '';
+      this.updatedByEmailMeta = entry.updatedByEmail || '';
       this.candidateName = entry.candidateName || '';
       this.preferredKeywords = Array.isArray(entry.preferredKeywords) ? entry.preferredKeywords : [];
       this.difficulty = entry.difficulty || '';
       this.category = entry.category || 'All';
-      this.interviewDate = entry.savedAt || '';
+      this.interviewDate = entry.endedAt || entry.startedAt || entry.createdAt || '';
       this.llmAnalysis = entry.llmAnalysis || null;
       this.activeAnalysisTypes = (this.llmAnalysis && this.llmAnalysis.analysisTypes) || null;
       this.selectedVoice = (await getSetting('selectedVoice')) || '';
@@ -1661,7 +1702,10 @@ export default {
             category: this.category,
             analysisMode: this.analysisMode,
             candidateName: this.candidateName,
-            preferredKeywords: this.preferredKeywords,
+            enrollmentId: this.enrollmentId,
+            label: this.sessionLabel,
+            startedAt: this.startedAt,
+            endedAt: this.endedAt,
             qaList: this.localInterviewQA,
             transcripts: this.transcripts,
             questionTimestamps: this.questionTimestamps,
@@ -2221,45 +2265,6 @@ export default {
         case 'video': this.handleDownloadVideo(); break;
         case 'transcripts': this.downloadTranscripts(); break;
         case 'analysis': this.downloadAnalysis(); break;
-        case 'submit-zip': this.exportForAnalysis(); break;
-      }
-    },
-    buildExportSession() {
-      return {
-        id: this.activeSessionId || this.historyEntryId || '',
-        savedAt: this.interviewDate || new Date().toISOString(),
-        candidateName: this.candidateName,
-        preferredKeywords: this.preferredKeywords,
-        difficulty: this.difficulty,
-        category: this.category,
-        analysisMode: this.analysisMode,
-        qaList: this.localInterviewQA,
-        transcripts: this.transcripts,
-        questionTimestamps: this.questionTimestamps,
-        completed: this.completed,
-        llmAnalysis: this.llmAnalysis
-      };
-    },
-    async exportForAnalysis() {
-      const session = this.buildExportSession();
-      const sid = this.activeSessionId || this.historyEntryId;
-      try {
-        const total = (this.localInterviewQA && this.localInterviewQA.length) || this.transcripts.length;
-        const audioItems = [];
-        for (let idx = 0; idx < total; idx++) {
-          const blob = await getRecordingForSession(sid, idx);
-          if (blob && blob.size) audioItems.push({ idx, blob });
-        }
-        if (!audioItems.length) {
-          this.notify('No recorded audio found for this interview to export.', 'warning');
-          return;
-        }
-        this.notify('Packaging interview audio…', 'info');
-        const zip = await buildExportZip(session, audioItems);
-        triggerBlobDownload(zip, exportZipFilename(session));
-      } catch (e) {
-        console.error('Failed to build analysis export:', e);
-        this.notify('Could not build the export file. Please try again.', 'error');
       }
     },
     handleDownloadVideo() {
@@ -2434,6 +2439,48 @@ export default {
   margin: 32px auto 24px;
   max-width: 1000px;
   width: 100%;
+}
+
+.embedded-summary-root {
+  height: auto;
+  overflow-y: visible;
+  padding: 0 24px 24px;
+  background: transparent;
+}
+
+.embedded-summary-root .setup-view-header {
+  margin-top: 12px;
+}
+
+.embedded-summary-root .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recorded-block {
+  margin: 8px 0 0;
+}
+
+.detail-recorded { margin: 0 0 4px; font-size: 12px; color: #909399; }
+.detail-recorded b { color: #606266; }
+.recorded-seg { cursor: pointer; }
+.detail-recorded-by { margin: 0; font-size: 12px; color: #909399; }
+.detail-recorded-by b { color: #606266; }
+
+.em-sessionid {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+.em-sessionid .sid-chip {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-family: monospace;
 }
 
 .header-breadcrumb { margin-bottom: -4px; }
@@ -3545,14 +3592,11 @@ export default {
 .header-tag-basic { background: #eff6ff; color: #1e40af; }
 .header-tag-none { background: #f1f5f9; color: #64748b; }
 
-/* Interview state chip — same scale as the difficulty/category chips
-   above it, but coloured by the actual state of the data so the user
-   sees at a glance what's been done and what's available next. */
-.state-tag.state-detailed { background: #ecfdf5; color: #047857; }
-.state-tag.state-basic    { background: #eff6ff; color: #1e40af; }
-.state-tag.state-pending  { background: #fef9c3; color: #854d0e; }
-.state-tag.state-failed   { background: #fee2e2; color: #b91c1c; }
-.state-tag.state-none     { background: #f1f5f9; color: #64748b; }
+.state-tag.state-complete   { background: #e3f5e9; color: #16a34a; }
+.state-tag.state-incomplete { background: #fdf0dc; color: #b45309; }
+.state-tag.lc-analyzed { background: #e0edff; color: #2563eb; }
+.state-tag.lc-ended    { background: #eef2f7; color: #475569; }
+.state-tag.lc-active   { background: #fdf0dc; color: #b45309; }
 
 /* ── Per-question section header + collapsible card header ── */
 .questions-header-row {

@@ -19,6 +19,8 @@ const ResumeSetup       = () => import(/* webpackChunkName: "resume-setup" */  '
 const SummaryView       = () => import(/* webpackChunkName: "summary" */       '@/views/SummaryView.vue')
 const InterviewView     = () => import(/* webpackChunkName: "interview" */     '@/views/InterviewView.vue')
 const MyInterviews      = () => import(/* webpackChunkName: "my-interviews" */ '@/views/MyInterviews.vue')
+const CandidateOverview = () => import(/* webpackChunkName: "candidate-overview" */ '@/views/CandidateOverview.vue')
+const AllInterviews     = () => import(/* webpackChunkName: "all-interviews" */ '@/views/AllInterviews.vue')
 const TranscriptionsView= () => import(/* webpackChunkName: "transcriptions" */'@/views/TranscriptionsView.vue')
 const TranscriptionSessionsView = () => import(/* webpackChunkName: "transcriptions-sessions" */'@/views/TranscriptionSessionsView.vue')
 const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '@/views/ProfileSettings.vue')
@@ -93,6 +95,24 @@ const routes = [
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.ALL_AUTHORIZED
+    }
+  },
+  {
+    path: '/candidates',
+    name: 'CandidateOverview',
+    component: CandidateOverview,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF
+    }
+  },
+  {
+    path: '/interviews/all',
+    name: 'AllInterviews',
+    component: AllInterviews,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF
     }
   },
   {

@@ -39,6 +39,20 @@
         <div class="metric-sub">Live WebSocket connections right now</div>
       </el-card>
 
+      <!-- Active interviews -->
+      <el-card class="metric-card" shadow="never">
+        <div class="metric-label">Interviews In Progress</div>
+        <div class="metric-value">{{ status.active_interviews }}</div>
+        <div class="metric-sub">Interview sessions currently active</div>
+      </el-card>
+
+      <!-- Live Assist sessions live -->
+      <el-card class="metric-card" shadow="never">
+        <div class="metric-label">Live Assist Sessions Live</div>
+        <div class="metric-value">{{ status.live_assist_live }}</div>
+        <div class="metric-sub">Live Assist conversations connected right now</div>
+      </el-card>
+
       <!-- Interview generations -->
       <el-card class="metric-card" shadow="never">
         <div class="metric-label">Interview Generations</div>

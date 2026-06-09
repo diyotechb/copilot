@@ -7,7 +7,7 @@
 
     <el-card v-if="!interviewActive" class="setup-card" shadow="never">
       <div class="field-block">
-        <label class="field-label">Select Candidate</label>
+        <label class="field-label">Select Candidate <span class="req">*</span></label>
         <div class="candidate-row">
           <el-date-picker
             v-model="candidateDate"
@@ -28,12 +28,13 @@
             v-else
             v-model="selectedCandidateId"
             filterable
+            placeholder="Select Candidate"
             :loading="loadingCandidates"
             :disabled="interviewActive"
             class="candidate-select"
             @change="onCandidateSelect"
           >
-            <el-option label="No selection" :value="''" />
+            <el-option label="Start without Candidate" :value="''" />
             <el-option
               v-for="c in candidates"
               :key="c.id"
@@ -162,18 +163,21 @@
     </el-card>
 
     <template v-if="!fieldsLocked">
-      <div v-if="loadingRecents" class="empty-dashboard">Loading…</div>
-      <div v-else-if="!recentSessions.length" class="empty-dashboard">
-        <i class="el-icon-headset empty-icon"></i>
-        <h3>No sessions yet</h3>
-        <p>Paste a resume and start a session to see it here.</p>
-      </div>
-      <div v-else class="transcript-list">
+      <div class="transcript-list">
         <div class="recent-header">
           <h3 class="recent-title">Recent Sessions</h3>
           <router-link class="view-all" :to="{ name: 'LiveAssistSessions' }">View All</router-link>
         </div>
 
+        <div v-if="loadingRecents" class="list-loading"><i class="el-icon-loading"></i><span>Loading…</span></div>
+
+        <div v-else-if="!recentSessions.length" class="empty-dashboard">
+          <i class="el-icon-headset empty-icon"></i>
+          <h3>No sessions yet</h3>
+          <p>Paste a resume and start a session to see it here.</p>
+        </div>
+
+        <template v-else>
         <div
           v-for="s in recentSessions"
           :key="s.sessionId"
@@ -205,6 +209,7 @@
             <p :class="{ 'empty-preview': !s.preview }">{{ s.preview || 'No responses yet' }}</p>
           </div>
         </div>
+        </template>
       </div>
     </template>
    </div>
@@ -269,7 +274,7 @@ export default {
       candidateDate: '',
       candidates: [],
       loadingCandidates: false,
-      selectedCandidateId: '',
+      selectedCandidateId: null,
       sessionLabel: '',
       candidateMeta: null,
       candidateInfoSource: null,
@@ -421,7 +426,7 @@ export default {
     },
     async loadCandidates() {
       this.candidates = [];
-      this.selectedCandidateId = '';
+      this.selectedCandidateId = null;
       this.candidateMeta = null;
       this.sessionLabel = this.defaultSessionName();
       if (!this.candidateDate) return;
@@ -595,6 +600,10 @@ export default {
     },
 
     async startInterview() {
+      if (this.selectedCandidateId === null || this.selectedCandidateId === undefined) {
+        this.$message.warning('Please select a candidate.');
+        return;
+      }
       if (!this.resumeText.trim()) {
         this.resumeMissing = true;
         this.$message.warning('Please add the candidate resume first');
@@ -852,7 +861,7 @@ export default {
       this.error = '';
       this.sessionError = '';
       this.status = 'Idle';
-      this.selectedCandidateId = '';
+      this.selectedCandidateId = null;
       this.candidateInfoSource = null;
       this.candidateMeta = null;
       this.preparing = false;
@@ -1274,6 +1283,19 @@ export default {
   font-size: 0.9em;
   color: #2563eb;
   text-decoration: none;
+}
+
+.list-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 200px;
+  color: #909399;
+}
+
+.list-loading i {
+  font-size: 22px;
 }
 
 .empty-dashboard {
