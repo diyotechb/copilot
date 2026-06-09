@@ -7,10 +7,12 @@ import 'element-ui/lib/theme-chalk/index.css';
 import '@/assets/styles/element-theme-override.css';
 import storageService from '@/services/storageService';
 import { logStorageEstimate } from '@/store/recordingStore';
+import { discardLegacyLocalInterviews } from '@/store/interviewHistoryStore';
 Vue.use(ElementUI, { locale });
 Vue.config.productionTip = false
 
 storageService.clearTranscriptionHistory();
+discardLegacyLocalInterviews();
 
 // One-shot console summary of IndexedDB usage. Cheap, no UI, just makes
 // growth visible without DevTools digging.

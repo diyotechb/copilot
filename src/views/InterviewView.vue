@@ -613,6 +613,7 @@ import SummaryView from './SummaryView.vue';
 import { getSetting } from '@/store/settingStore';
 import { getInterviewQA, getTranscripts, saveQuestionTimestamps, setInterviewCompleted, getOrCreateInterviewSessionId, getInterviewMeta, saveInterviewMeta } from '@/store/interviewStore';
 import { listAllSessionIds, saveCompletedSession, deleteSession } from '@/store/interviewHistoryStore';
+import interviewApi from '@/services/interviewApi';
 import { pruneRecordingsToActiveSessions, deleteSessionRecordings, logStorageEstimate } from '@/store/recordingStore';
 import storage from '@/services/storageService';
 import { speakWithTTS, speakWithTTSToContext, prefetchSpeech, clearSpeechCache } from '@/services/ttsService';
@@ -932,9 +933,15 @@ export default {
       }
     };
     window.addEventListener('beforeunload', this._beforeUnloadHandler);
+    this._pageHideHandler = () => {
+      if (this.interviewing && !this._intentionalLeave && this.sessionId) {
+        try { interviewApi.endOnUnload(this.sessionId); } catch (e) { /* best-effort */ }
+      }
+    };
+    window.addEventListener('pagehide', this._pageHideHandler);
   },
 
-  beforeRouteLeave(to, from, next) {
+  async beforeRouteLeave(to, from, next) {
     const hasActiveSession = this.interviewing;
     if (hasActiveSession && !this._intentionalLeave) {
       const msg = this.showOnboarding
@@ -942,6 +949,9 @@ export default {
         : 'Leave the interview? Your in-flight answer for this question will be lost (already-completed answers are saved).';
       const ok = window.confirm(msg);
       if (!ok) return next(false);
+      if (this.sessionId) {
+        try { await interviewApi.updateSession(this.sessionId, { endedAt: new Date().toISOString() }); } catch (e) { /* best-effort */ }
+      }
     }
     this.releaseMediaDevices();
     next();
@@ -951,6 +961,9 @@ export default {
     this.releaseMediaDevices();
     if (this._beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+    }
+    if (this._pageHideHandler) {
+      window.removeEventListener('pagehide', this._pageHideHandler);
     }
     this.stopTimer();
     this.clearStream();
@@ -1261,7 +1274,9 @@ export default {
           category: (meta && meta.category) || 'All',
           analysisMode: (meta && meta.analysisMode) || 'basic',
           candidateName: (meta && meta.candidateName) || '',
-          preferredKeywords: (meta && Array.isArray(meta.preferredKeywords)) ? meta.preferredKeywords : [],
+          enrollmentId: (meta && meta.enrollmentId) || '',
+          label: (meta && meta.label) || '',
+          startedAt: (meta && meta.startedAt) || '',
           qaList: Array.isArray(qaList) ? qaList : [],
           transcripts: Array.isArray(transcripts) ? transcripts : [],
           questionTimestamps: Array.isArray(this.questionTimestamps) ? this.questionTimestamps : [],

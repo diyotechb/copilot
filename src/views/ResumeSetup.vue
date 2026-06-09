@@ -40,6 +40,36 @@
           </div>
         </div>
 
+        <!-- Candidate Section -->
+        <div class="setup-card">
+          <div class="card-header">
+            <i class="el-icon-user"></i>
+            <h3>Candidate</h3>
+          </div>
+          <div class="card-body">
+            <div class="setting-field">
+              <label>Select Candidate <span class="req">*</span></label>
+              <el-select
+                class="candidate-select"
+                :value="candidateValue"
+                filterable
+                placeholder="Search candidate by name…"
+                @change="onCandidateSelect"
+              >
+                <el-option label="Not in List" value="none" />
+                <el-option
+                  v-for="c in practiceRoster"
+                  :key="c.enrollmentId"
+                  :label="[c.candidateName, maskEmail(c.email)].filter(Boolean).join(' - ')"
+                  :value="c.enrollmentId"
+                />
+              </el-select>
+              <p v-if="rosterLoading" class="difficulty-meta"><i class="el-icon-loading"></i> Loading candidates…</p>
+              <p v-else-if="rosterError" class="difficulty-meta"><i class="el-icon-warning-outline"></i> {{ rosterError }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Documents Section -->
         <div class="setup-card">
           <div class="card-header">
@@ -49,7 +79,7 @@
           <div class="card-body">
             <div class="upload-group">
               <div class="group-label-row">
-                <label class="group-label">Resume</label>
+                <label class="group-label">Resume <span class="req">*</span></label>
                 <label v-if="aiSampleGenerationEnabled" class="ai-toggle">
                   <input type="checkbox" v-model="resumeAiMode" />
                   <span class="ai-toggle-track"><span class="ai-toggle-knob"></span></span>
@@ -185,7 +215,6 @@
                   class="setup-select"
                   placeholder="e.g., AWS, Kubernetes, microservices, GraphQL"
                   :maxlength="preferredKeywordsMaxLength"
-                  @change="onPreferredKeywordsChange"
                 />
                 <p class="difficulty-meta">
                   <i class="el-icon-collection-tag"></i>
@@ -477,6 +506,7 @@ function extractCandidateName(resumeText) {
 }
 import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA, saveInterviewMeta } from '@/store/interviewStore';
 import { listRecentSessions, MAX_ENTRIES } from '@/store/interviewHistoryStore';
+import { fetchEnrollmentsByStatus } from '@/services/candidateService';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { fetchVoices, playVoiceSample, prefetchSpeech } from '@/services/ttsService';
 import { INPUT_LIMITS } from '@/constants/inputLimits';
@@ -516,6 +546,12 @@ export default {
       analysisBetaEnabled: false,
       analysisEnabledThisInterview: true,
       preferredKeywords: '',
+      practiceRoster: [],
+      rosterLoading: false,
+      rosterError: '',
+      candidateValue: '',
+      selectedEnrollmentId: '',
+      selectedCandidateName: '',
       generationProgress: { ready: 0, target: APP_CONFIG.SERVICES.OPENAI.MIN_Q_COUNT, firstBatchDone: false },
       showDifficultyDetails: false,
       interviewCategory: APP_CONFIG.CATEGORY_DEFAULT,
@@ -552,9 +588,12 @@ export default {
     }
   },
   computed: {
+    candidateChosen() {
+      return this.candidateValue !== '';
+    },
     isSubmitDisabled() {
       const permsOk = this.micPermission === 'granted' && (!this.enableVideo || this.cameraPermission === 'granted');
-      return !this.resumeText || !this.selectedVoice || this.isGenerating || this.voicesLoading || !permsOk;
+      return !this.resumeText || !this.candidateChosen || !this.selectedVoice || this.isGenerating || this.voicesLoading || !permsOk;
     },
     preferredKeywordsMaxLength() {
       // Conservative cap = N keywords × per-keyword char limit, with slack for separators.
@@ -620,6 +659,7 @@ export default {
 
     // Refresh retention state for the banner + Start gating.
     await this.loadRetentionState();
+    this.loadPracticeRoster();
 
     // Staff-only; re-checked here so a leftover flag from another user on a shared device can't leak.
     const features = storage.getItem(storage.KEYS.USER_FEATURES, true) || {};
@@ -630,10 +670,6 @@ export default {
     const savedAnalysisChoice = await getSetting('analysisEnabledThisInterview');
     if (savedAnalysisChoice !== null && savedAnalysisChoice !== undefined) {
       this.analysisEnabledThisInterview = savedAnalysisChoice;
-    }
-    const savedKeywords = await getSetting('preferredKeywords');
-    if (typeof savedKeywords === 'string') {
-      this.preferredKeywords = savedKeywords;
     }
 
     this.enableVideo = await getSetting('enableVideo');
@@ -698,6 +734,42 @@ export default {
         }
       } catch (e) { /* best-effort */ }
     },
+    async loadPracticeRoster() {
+      this.rosterLoading = true;
+      this.rosterError = '';
+      try {
+        this.practiceRoster = await fetchEnrollmentsByStatus('IN_OTTER');
+      } catch (e) {
+        this.practiceRoster = [];
+        this.rosterError = 'Could not load candidates — you can still continue as "Not in List".';
+      } finally {
+        this.rosterLoading = false;
+      }
+    },
+    maskEmail(email) {
+      if (!email) return '';
+      const at = email.indexOf('@');
+      if (at < 1) return email;
+      const local = email.slice(0, at);
+      const domain = email.slice(at);
+      if (local.length <= 5) return `${local.slice(0, 2)}****${domain}`;
+      return `${local.slice(0, 3)}****${local.slice(-2)}${domain}`;
+    },
+    onCandidateSelect(value) {
+      this.candidateValue = value || '';
+      if (value === 'none' || value === '') {
+        this.selectedEnrollmentId = '';
+        this.selectedCandidateName = '';
+        return;
+      }
+      this.selectedEnrollmentId = value;
+      const match = this.practiceRoster.find(c => c.enrollmentId === value);
+      this.selectedCandidateName = match ? match.candidateName : '';
+    },
+    buildPracticeLabel(candidateName) {
+      const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      return [candidateName, 'Interview Practice', date].filter(Boolean).join(' - ');
+    },
     goToOldestSession() {
       if (this.oldestSession) {
         this.$router.push({ name: 'SummaryView', query: { sessionId: this.oldestSession.id } });
@@ -721,9 +793,6 @@ export default {
     toggleAnalysis() {
       this.analysisEnabledThisInterview = !this.analysisEnabledThisInterview;
       saveSetting('analysisEnabledThisInterview', this.analysisEnabledThisInterview);
-    },
-    onPreferredKeywordsChange() {
-      saveSetting('preferredKeywords', this.preferredKeywords);
     },
     selectDifficultyFromModal(level) {
       this.interviewDifficulty = level;
@@ -945,7 +1014,9 @@ export default {
       // line of the resume. Looks for 1-3 capitalized words in a row,
       // strips trailing email/phone artifacts. Defaults to '' if nothing
       // recognizable is found — UI uses the date in that case.
-      const candidateName = extractCandidateName(this.resumeText);
+      // picked candidate overrides the resume-extracted name; never empty
+      const candidateName = this.selectedCandidateName || extractCandidateName(this.resumeText) || 'Candidate';
+      const enrollmentId = this.selectedEnrollmentId || '';
 
       // Parsed list of preferred keywords (comma-separated → array of trimmed strings)
       const keywordsArr = (this.preferredKeywords || '')
@@ -960,6 +1031,8 @@ export default {
         completed: false,
         startedAt: new Date().toISOString(),
         candidateName,
+        enrollmentId,
+        label: this.buildPracticeLabel(candidateName),
         preferredKeywords: keywordsArr
       };
       await saveInterviewMeta(sessionMeta);
@@ -1305,6 +1378,10 @@ export default {
   color: #4b5563;
 }
 
+.req {
+  color: #f56c6c;
+}
+
 .optional-tag {
   display: inline-block;
   margin-left: 6px;
@@ -1320,6 +1397,10 @@ export default {
 
 .difficulty-meta i {
   color: #2563eb;
+}
+
+.candidate-select {
+  width: 100%;
 }
 
 /* Difficulty details modal */

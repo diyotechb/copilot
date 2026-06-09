@@ -65,7 +65,7 @@
           </div>
         </div>
 
-        <div v-if="loadingList && !sessions.length" class="empty">Loading…</div>
+        <div v-if="loadingList && !sessions.length" class="list-loading"><i class="el-icon-loading"></i><span>Loading…</span></div>
         <div v-else-if="!sessions.length" class="empty">No saved sessions yet.</div>
         <div v-else-if="!filteredSessions.length" class="empty">No sessions match the filters.</div>
         <ul v-else class="session-list">
@@ -734,6 +734,8 @@ export default {
 }
 
 .empty { color: #c0c4cc; font-style: italic; text-align: center; padding: 32px 0; }
+.list-loading { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 200px; color: #909399; }
+.list-loading i { font-size: 20px; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }

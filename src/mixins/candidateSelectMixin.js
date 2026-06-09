@@ -9,13 +9,16 @@ export default {
       candidateDate: '',
       candidates: [],
       loadingCandidates: false,
-      selectedCandidateId: NO_SELECTION,
+      selectedCandidateId: null,
       candidateMeta: null,
       candidateInfoSource: null,
       category: 'NONE'
     };
   },
   computed: {
+    candidateChosen() {
+      return this.selectedCandidateId !== null && this.selectedCandidateId !== undefined;
+    },
     candidateInfoParts() {
       const c = this.candidateInfoSource;
       if (!c) return [];
@@ -47,7 +50,7 @@ export default {
       }
     },
     resetCandidateSelection() {
-      this.selectedCandidateId = NO_SELECTION;
+      this.selectedCandidateId = null;
       this.candidateMeta = null;
       this.candidateInfoSource = null;
       this.category = 'NONE';
@@ -72,6 +75,13 @@ export default {
         .filter(Boolean).join(' - ');
     },
     onCandidateSelect(id) {
+      if (id === NO_SELECTION) {
+        this.selectedCandidateId = NO_SELECTION;
+        this.category = 'NONE';
+        this.candidateMeta = null;
+        this.candidateInfoSource = null;
+        return '';
+      }
       if (id === OTTER_PRACTICE) {
         this.selectedCandidateId = OTTER_PRACTICE;
         this.category = 'OTTER_PRACTICE';
