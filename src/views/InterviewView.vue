@@ -614,6 +614,7 @@ import { getSetting } from '@/store/settingStore';
 import { getInterviewQA, getTranscripts, saveQuestionTimestamps, setInterviewCompleted, getOrCreateInterviewSessionId, getInterviewMeta, saveInterviewMeta } from '@/store/interviewStore';
 import { listAllSessionIds, saveCompletedSession, deleteSession } from '@/store/interviewHistoryStore';
 import interviewApi from '@/services/interviewApi';
+import { clearActiveEnrollmentId } from '@/services/activeEnrollment';
 import { pruneRecordingsToActiveSessions, deleteSessionRecordings, logStorageEstimate } from '@/store/recordingStore';
 import storage from '@/services/storageService';
 import { speakWithTTS, speakWithTTSToContext, prefetchSpeech, clearSpeechCache } from '@/services/ttsService';
@@ -937,6 +938,7 @@ export default {
       if (this.interviewing && !this._intentionalLeave && this.sessionId) {
         try { interviewApi.endOnUnload(this.sessionId); } catch (e) { /* best-effort */ }
       }
+      clearActiveEnrollmentId();
     };
     window.addEventListener('pagehide', this._pageHideHandler);
   },
@@ -953,6 +955,7 @@ export default {
         try { await interviewApi.updateSession(this.sessionId, { endedAt: new Date().toISOString() }); } catch (e) { /* best-effort */ }
       }
     }
+    clearActiveEnrollmentId();
     this.releaseMediaDevices();
     next();
   },

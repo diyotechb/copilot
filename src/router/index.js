@@ -103,7 +103,7 @@ const routes = [
     component: CandidateOverview,
     meta: {
       requiresAuth: true,
-      allowedRoles: ROLE_GROUPS.STAFF
+      allowedRoles: ROLE_GROUPS.INTERVIEW_REVIEW
     }
   },
   {
@@ -112,7 +112,7 @@ const routes = [
     component: AllInterviews,
     meta: {
       requiresAuth: true,
-      allowedRoles: ROLE_GROUPS.STAFF
+      allowedRoles: ROLE_GROUPS.INTERVIEW_REVIEW
     }
   },
   {

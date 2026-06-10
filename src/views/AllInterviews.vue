@@ -2,7 +2,6 @@
   <div class="all-interviews-view">
     <div class="dashboard-header">
       <div class="header-left">
-        <el-button size="small" icon="el-icon-back" @click="goBack">Back</el-button>
         <h2>All Interviews</h2>
       </div>
     </div>
@@ -60,7 +59,7 @@
                 <i class="el-icon-more detail-menu"></i>
                 <el-dropdown-menu slot="dropdown">
                   <el-dropdown-item v-if="detail && detail.enrollmentId" command="candidate" icon="el-icon-data-line">View candidate history</el-dropdown-item>
-                  <el-dropdown-item command="delete" icon="el-icon-delete">Delete</el-dropdown-item>
+                  <el-dropdown-item v-if="isStaff" command="delete" icon="el-icon-delete">Delete</el-dropdown-item>
                 </el-dropdown-menu>
               </el-dropdown>
             </template>
@@ -74,6 +73,8 @@
 <script>
 import { listRecentSessions, deleteSession } from '@/store/interviewHistoryStore';
 import SummaryView from './SummaryView.vue';
+import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'AllInterviews',
@@ -95,6 +96,9 @@ export default {
     };
   },
   computed: {
+    isStaff() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    },
     activeFilterCount() {
       return Object.values(this.filters).filter(Boolean).length;
     },
@@ -147,9 +151,6 @@ export default {
     onCommand(cmd) {
       if (cmd === 'delete') this.remove(this.detail);
       else if (cmd === 'candidate' && this.detail) this.viewCandidate(this.detail.enrollmentId);
-    },
-    goBack() {
-      this.$router.push({ name: 'MyInterviews' });
     },
     viewCandidate(enrollmentId) {
       this.$router.push({ name: 'CandidateOverview', query: { enrollmentId } });
@@ -277,6 +278,7 @@ export default {
   font-size: 20px;
   color: #94a3b8;
   cursor: pointer;
+  transform: rotate(90deg);
 }
 
 .embedded-summary {

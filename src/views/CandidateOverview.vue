@@ -59,7 +59,7 @@
           <el-tag :type="statusType(a.status)" size="mini" effect="dark">{{ statusLabel(a.status) }}</el-tag>
           <span v-if="a.avgScore != null" class="attempt-score">{{ formatScore(a.avgScore) }} / 10</span>
           <span v-else class="attempt-score muted">—</span>
-          <button class="del-btn" title="Delete attempt" @click.stop="remove(a)"><i class="el-icon-delete"></i></button>
+          <button v-if="isStaff" class="del-btn" title="Delete attempt" @click.stop="remove(a)"><i class="el-icon-delete"></i></button>
         </li>
       </ul>
     </el-card>
@@ -68,6 +68,8 @@
 
 <script>
 import interviewApi from '@/services/interviewApi';
+import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'CandidateOverview',
@@ -89,6 +91,9 @@ export default {
     };
   },
   computed: {
+    isStaff() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    },
     filteredCandidates() {
       const q = this.search.trim().toLowerCase();
       if (!q) return this.candidates;
