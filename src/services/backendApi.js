@@ -1,6 +1,7 @@
 import { APP_CONFIG } from '@/constants/appConfig';
 import authService from './authService';
 import router from '@/router';
+import { getActiveEnrollmentId } from './activeEnrollment';
 
 export function backendUrl(path) {
   const base = APP_CONFIG.SERVICES.COPILOT_BACKEND_URL;
@@ -14,6 +15,8 @@ export function authHeaders(extra = {}) {
   const headers = { ...extra };
   const token = authService.getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const enrollmentId = getActiveEnrollmentId();
+  if (enrollmentId) headers['X-Enrollment-Id'] = enrollmentId;
   return headers;
 }
 
@@ -32,29 +35,11 @@ export function handleAuthFailure(response) {
   return false;
 }
 
-export function rateLimitMessage(retryAfterSec) {
-  let when = 'in a little while';
-  if (typeof retryAfterSec === 'number' && retryAfterSec > 0) {
-    if (retryAfterSec < 60) when = `in about ${retryAfterSec} seconds`;
-    else {
-      const mins = Math.max(1, Math.round(retryAfterSec / 60));
-      when = `in about ${mins} minute${mins === 1 ? '' : 's'}`;
-    }
-  }
-  return `You've reached the hourly limit. Please try again ${when} — your interview is saved on this device, you can come back later.`;
-}
+export const SYSTEM_UNAVAILABLE_MSG = 'The system is temporarily unavailable. Please try again in a little while.';
 
-// Common gate after a backend fetch. Handles 401 (redirect), 429 (friendly
-// rate-limit message), and generic !ok with parsed detail. Throws on
-// failure; returns the response when ok so caller can read the body.
 export async function assertOk(response, label) {
   if (handleAuthFailure(response)) {
     throw new Error('Your session has ended. Please sign in again.');
-  }
-  if (response.status === 429) {
-    const retry = response.headers.get('Retry-After');
-    const seconds = retry && !isNaN(Number(retry)) ? Number(retry) : null;
-    throw new Error(rateLimitMessage(seconds));
   }
   if (!response.ok) {
     let detail = '';
@@ -62,7 +47,8 @@ export async function assertOk(response, label) {
       const body = await response.clone().json();
       detail = body.error || body.message || '';
     } catch (e) { /* not json or empty */ }
-    throw new Error(`${label} failed (${response.status})${detail ? ': ' + detail : ''}`);
+    console.warn(`[api] ${label} failed (${response.status})${detail ? ': ' + detail : ''}`);
+    throw new Error(SYSTEM_UNAVAILABLE_MSG);
   }
   return response;
 }

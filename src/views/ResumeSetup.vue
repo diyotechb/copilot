@@ -507,6 +507,7 @@ function extractCandidateName(resumeText) {
 import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA, saveInterviewMeta } from '@/store/interviewStore';
 import { listRecentSessions, MAX_ENTRIES } from '@/store/interviewHistoryStore';
 import { fetchEnrollmentsByStatus } from '@/services/candidateService';
+import { setActiveEnrollmentId, clearActiveEnrollmentId } from '@/services/activeEnrollment';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { fetchVoices, playVoiceSample, prefetchSpeech } from '@/services/ttsService';
 import { INPUT_LIMITS } from '@/constants/inputLimits';
@@ -1017,6 +1018,8 @@ export default {
       // picked candidate overrides the resume-extracted name; never empty
       const candidateName = this.selectedCandidateName || extractCandidateName(this.resumeText) || 'Candidate';
       const enrollmentId = this.selectedEnrollmentId || '';
+      if (enrollmentId) setActiveEnrollmentId(enrollmentId);
+      else clearActiveEnrollmentId();
 
       // Parsed list of preferred keywords (comma-separated → array of trimmed strings)
       const keywordsArr = (this.preferredKeywords || '')

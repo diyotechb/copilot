@@ -59,7 +59,7 @@
               <span v-if="difficulty" class="header-tag">{{ difficulty }}</span>
               <span v-if="category && category !== 'All'" class="header-tag">{{ category }}</span>
               <span class="header-tag state-tag" :class="completed ? 'state-complete' : 'state-incomplete'" :title="completed ? 'The candidate answered every question.' : 'The interview was stopped before the end.'">{{ completed ? 'Complete' : 'Incomplete' }}</span>
-              <span v-if="!embedded" class="header-tag state-tag" :class="'lc-' + lifecycleStatus.tone" :title="'Interview status'">{{ lifecycleStatus.label }}</span>
+              <span class="header-tag state-tag" :class="'lc-' + lifecycleStatus.tone" :title="'Interview status'">{{ lifecycleStatus.label }}</span>
               <span v-if="interviewDateLabel" class="header-date">{{ interviewDateLabel }}</span>
             </p>
             <div v-if="createdAtMeta" class="recorded-block">
@@ -78,12 +78,6 @@
             </div>
           </div>
           <div class="header-actions">
-            <el-tag v-if="embedded" :type="lifecycleTagType" size="small" effect="dark">{{ lifecycleStatus.label }}</el-tag>
-            <slot name="header-actions"></slot>
-            <!-- Download dropdown: lets the user pick exactly what they
-                 want — everything, just the video, just the transcripts,
-                 or just the analysis. Files are named after the
-                 candidate so they're easy to file away. -->
             <el-dropdown
                 v-if="(localInterviewQA && localInterviewQA.length) || transcripts.length"
                 trigger="click"
@@ -96,6 +90,19 @@
                 <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl">Video / Audio</el-dropdown-item>
                 <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts</el-dropdown-item>
                 <el-dropdown-item v-if="llmAnalysis" command="analysis" icon="el-icon-data-analysis">Analysis</el-dropdown-item>
+              </el-dropdown-menu>
+            </el-dropdown>
+            <slot name="header-actions"></slot>
+            <el-dropdown
+                v-if="!embedded && isStaff"
+                trigger="click"
+                @command="handleDetailCommand"
+            >
+              <el-button size="small" plain class="detail-kebab">
+                <i class="el-icon-more" style="transform: rotate(90deg);"></i>
+              </el-button>
+              <el-dropdown-menu slot="dropdown">
+                <el-dropdown-item command="delete" icon="el-icon-delete">Delete</el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
           </div>
@@ -930,7 +937,7 @@ import {
 import { getSetting } from '@/store/settingStore';
 import { getVideoForSession, getRecordingForSession } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
-import { saveCompletedSession, updateHistoryEntry, getSessionById } from '@/store/interviewHistoryStore';
+import { saveCompletedSession, updateHistoryEntry, getSessionById, deleteSession } from '@/store/interviewHistoryStore';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
 import storageService from '@/services/storageService';
 import authService from '@/services/authService';
@@ -1091,12 +1098,6 @@ export default {
       if (analyzed) return map.ANALYZED;
       if (this.sessionStatus && map[this.sessionStatus]) return map[this.sessionStatus];
       return map.ENDED;
-    },
-    lifecycleTagType() {
-      const tone = this.lifecycleStatus.tone;
-      if (tone === 'analyzed') return 'primary';
-      if (tone === 'active') return 'warning';
-      return 'info';
     },
     createdByTooltip() {
       const who = this.createdByEmailMeta || this.createdByMeta;
@@ -1401,6 +1402,24 @@ export default {
     }
   },
   methods: {
+    handleDetailCommand(cmd) {
+      if (cmd === 'delete') this.confirmDelete();
+    },
+    async confirmDelete() {
+      try {
+        await this.$confirm('Delete this interview? This cannot be undone.', 'Delete interview', {
+          confirmButtonText: 'Delete', cancelButtonText: 'Cancel', type: 'warning'
+        });
+      } catch (e) {
+        return;
+      }
+      try {
+        await deleteSession(this.activeSessionId);
+        this.$router.push({ name: 'MyInterviews' });
+      } catch (e) {
+        if (this.$message) this.$message.error('Failed to delete interview.');
+      }
+    },
     fmtDateTime(iso) {
       if (!iso) return '';
       const d = new Date(iso);

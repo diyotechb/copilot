@@ -31,6 +31,14 @@ export const ROLE_GROUPS = {
         ROLES.SUPER_ADMIN,
         ROLES.DIYO_EMP,
         ROLES.DIYO_EXTERNAL
+    ],
+
+    // Roles allowed to review interviews (All Interviews, Candidate Overview) — read-only for DIYO_EXTERNAL
+    INTERVIEW_REVIEW: [
+        ROLES.ADMIN,
+        ROLES.SUPER_ADMIN,
+        ROLES.DIYO_EMP,
+        ROLES.DIYO_EXTERNAL
     ]
 };
 

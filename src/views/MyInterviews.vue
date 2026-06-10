@@ -17,14 +17,14 @@
         <h3 class="recent-title">Recent Interviews</h3>
         <div class="recent-actions">
           <el-button
-              v-if="isStaff"
+              v-if="canReview"
               size="small"
               type="primary"
               plain
               @click="goToCandidates">
             Candidate Overview
           </el-button>
-          <a v-if="isStaff" class="view-all" @click="goToAll">View All</a>
+          <a v-if="canReview" class="view-all" @click="goToAll">View All</a>
         </div>
       </div>
 
@@ -72,13 +72,6 @@
                   title="Video recording available">
                 <i class="el-icon-video-camera"></i>
               </span>
-              <button
-                  type="button"
-                  class="icon-btn delete-btn"
-                  @click.stop="remove(s.id)"
-                  title="Delete this interview">
-                <i class="el-icon-delete"></i>
-              </button>
             </div>
           </div>
           <div class="card-body">
@@ -88,12 +81,10 @@
               <span v-if="s.category && s.category !== 'All'">{{ s.category }}</span>
               <span v-if="verdictLabel(s) && averageScore(s) === null" class="meta-sep">·</span>
               <span v-if="verdictLabel(s) && averageScore(s) === null" class="card-verdict" :class="'verdict-' + verdictTone(s)">{{ verdictLabel(s) }}</span>
-              <template v-if="!s.completed">
-                <span class="meta-sep">·</span>
-                <span class="card-incomplete">Incomplete</span>
-                <span class="meta-sep">·</span>
-                <span class="card-count">{{ answeredCount(s) }} / {{ (s.qaList || []).length }} answered</span>
-              </template>
+              <span class="meta-sep">·</span>
+              <span :class="s.completed ? 'card-complete' : 'card-incomplete'">{{ s.completed ? 'Complete' : 'Incomplete' }}</span>
+              <span class="meta-sep">·</span>
+              <span class="card-count">{{ answeredCount(s) }} / {{ (s.qaList || []).length }} answered</span>
               <template v-if="totalDuration(s)">
                 <span class="meta-sep">·</span>
                 <span class="card-duration"><i class="el-icon-time"></i> {{ totalDuration(s) }} total</span>
@@ -104,49 +95,33 @@
       </div>
     </div>
 
-    <ConfirmDialog
-        :visible.sync="confirmVisible"
-        :title="confirmConfig.title"
-        :message="confirmConfig.message"
-        :type="confirmConfig.type"
-        :confirm-text="confirmConfig.confirmText"
-        :icon="confirmConfig.icon"
-        @confirm="onConfirm"
-    />
   </div>
 </template>
 
 <script>
 import {
   listRecentSessions,
-  deleteSession,
   MAX_ENTRIES
 } from '@/store/interviewHistoryStore';
 import { listSessionsWithVideo, MAX_VIDEO_SESSIONS } from '@/store/recordingStore';
-import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { wordCount, aggregateStats, overallVerdict, formatDuration } from '@/utils/summaryStats';
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'MyInterviews',
-  components: { ConfirmDialog },
   data() {
     return {
       MAX_VISIBLE: MAX_ENTRIES,
       MAX_VIDEO_SESSIONS,
       sessions: [],
       videoSessionIds: [],
-      loading: true,
-      pendingAction: '',
-      pendingId: '',
-      confirmVisible: false,
-      confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Delete', icon: 'el-icon-delete' }
+      loading: true
     };
   },
   computed: {
-    isStaff() {
-      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    canReview() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.INTERVIEW_REVIEW);
     }
   },
   async mounted() {
@@ -273,31 +248,6 @@ export default {
     },
     open(id) {
       this.$router.push({ name: 'SummaryView', query: { sessionId: id } });
-    },
-    remove(id) {
-      this.pendingAction = 'delete-history';
-      this.pendingId = id;
-      this.confirmConfig = {
-        title: 'Delete this saved interview?',
-        message: 'This removes the saved transcripts and feedback for this interview. Cannot be undone.',
-        type: 'danger',
-        confirmText: 'Delete',
-        icon: 'el-icon-delete'
-      };
-      this.confirmVisible = true;
-    },
-    async onConfirm() {
-      try {
-        if (this.pendingAction === 'delete-history') {
-          await deleteSession(this.pendingId);
-        }
-      } catch (e) {
-        console.error(`Failed to ${this.pendingAction}:`, e);
-      }
-      this.pendingAction = '';
-      this.pendingId = '';
-      this.confirmVisible = false;
-      await this.refresh();
     }
   }
 };
@@ -578,6 +528,17 @@ export default {
   border-radius: 999px;
   background: #fdf0dc;
   color: #b45309;
+}
+
+.card-complete {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .card-verdict {

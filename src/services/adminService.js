@@ -11,3 +11,12 @@ export async function fetchAdminStatus() {
   await assertOk(response, 'Admin status');
   return response.json();
 }
+
+export async function fetchAdminDetails() {
+  const response = await fetch(backendUrl('/api/admin/details'), {
+    method: 'GET',
+    headers: authHeaders()
+  });
+  await assertOk(response, 'Admin details');
+  return response.json();
+}
