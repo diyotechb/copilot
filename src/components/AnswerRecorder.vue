@@ -317,6 +317,12 @@ export default {
         clearInterval(this.silenceTimer);
         this.silenceTimer = null;
       }
+      if (this.mediaStreamSource) {
+        try { this.mediaStreamSource.disconnect(); } catch (e) { /* noop */ }
+      }
+      if (this.analyser) {
+        try { this.analyser.disconnect(); } catch (e) { /* noop */ }
+      }
       if (this.audioContext && this._ownContext) {
         this.audioContext.close();
         this.audioContext = null;

@@ -148,6 +148,38 @@ export function aggregateStats(transcripts) {
 
 // Simple, deterministic verdict from the aggregates. Scored on pace and
 // filler percentage only.
+export function scoreBand(score) {
+  if (score === null || score === undefined || Number.isNaN(Number(score))) {
+    return { label: 'No data', tone: 'neutral' };
+  }
+  const s = Number(score);
+  if (s >= 8) return { label: 'Strong', tone: 'good' };
+  if (s >= 6) return { label: 'Average', tone: 'ok' };
+  if (s >= 4) return { label: 'Below average', tone: 'warn' };
+  return { label: 'Needs work', tone: 'bad' };
+}
+
+export function deliveryRating(agg) {
+  if (!agg || !agg.answeredCount) return null;
+  const wpm = agg.averagePaceWpm || 0;
+  let pace = 3;
+  if (wpm >= 110 && wpm <= 180) pace = 7;
+  else if ((wpm >= 90 && wpm < 110) || (wpm > 180 && wpm <= 210)) pace = 5;
+  const fp = agg.fillerPercent || 0;
+  let filler = 2;
+  if (fp < 3) filler = 7;
+  else if (fp < 5) filler = 6;
+  else if (fp < 10) filler = 5;
+  else if (fp < 15) filler = 4;
+  const avgWords = (agg.totalWords || 0) / agg.answeredCount;
+  let substance = 2;
+  if (avgWords >= 80) substance = 7;
+  else if (avgWords >= 50) substance = 6;
+  else if (avgWords >= 25) substance = 4;
+  const raw = (pace + filler + substance) / 3;
+  return Math.min(7, Math.round(raw * 10) / 10);
+}
+
 export function overallVerdict(agg) {
   if (!agg || agg.answeredCount === 0) {
     return {
@@ -156,36 +188,11 @@ export function overallVerdict(agg) {
       description: 'No spoken answers were recorded, so there is nothing to score.'
     };
   }
-  const okFillers = agg.fillerPercent < 10;
-  const okPace = agg.averagePaceWpm >= 110 && agg.averagePaceWpm <= 180;
-  const score = [okFillers, okPace].filter(Boolean).length;
-
-  // Build a description tailored to what passed and what didn't, so the
-  // verdict label is never just a colored sticker — it always has a sentence
-  // that tells the user *why* this is the verdict.
-  if (score === 2) {
-    return {
-      label: 'Strong',
-      tone: 'good',
-      description: `Natural pace (${agg.averagePaceWpm} WPM) and few fillers (${agg.fillerPercent}% of speech) across the interview. Polished delivery overall.`
-    };
-  }
-  if (score === 1) {
-    const issue = !okPace
-      ? `pace was ${agg.averagePaceWpm} WPM (a comfortable interview rhythm sits between 110 and 180 WPM)`
-      : `fillers were ${agg.fillerPercent}% of your speech (under 10% reads as polished)`;
-    const win = okPace
-      ? `pace stayed in the natural conversational band`
-      : `you kept fillers low at ${agg.fillerPercent}%`;
-    return {
-      label: 'Solid',
-      tone: 'ok',
-      description: `Mostly steady delivery — ${win}, but ${issue}.`
-    };
-  }
+  const rating = deliveryRating(agg);
+  const band = scoreBand(rating);
   return {
-    label: 'Needs work',
-    tone: 'bad',
-    description: `Both pace (${agg.averagePaceWpm} WPM) and fillers (${agg.fillerPercent}% of speech) are outside the natural interview range. Slow down where you sped up, and pause instead of using "um"/"like" while you think.`
+    label: band.label,
+    tone: band.tone,
+    description: `Delivery-only score (${rating}/10) from pace (${agg.averagePaceWpm} WPM), fillers (${agg.fillerPercent}% of speech) and answer length. This basic view does not judge whether the answers were correct — only a detailed analysis can confirm that.`
   };
 }

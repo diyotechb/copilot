@@ -122,24 +122,13 @@
           <span>Answer Analysis is off in Profile Settings → Beta Features. Turn it on there to transcribe your answers and run analysis on this interview. Your recorded audio is saved either way.</span>
         </div>
 
-        <!-- Banner: incomplete interview — informs the user that only the
-             answers they actually recorded will appear below. They can
-             still transcribe and run analysis on the partial data. -->
         <div v-if="!completed && !isHistoryView && analysisMode !== 'none'" class="info-banner warning">
           <i class="el-icon-warning-outline"></i>
-          <span>This interview was stopped before reaching the end. Only the answers you recorded will be shown. You can still transcribe and run detailed analysis on what's available.</span>
+          <span>This interview was stopped before reaching the end, so transcription and detailed analysis are not available for it.</span>
         </div>
 
-        <!-- Primary action: Transcribe. Visible whenever the live session
-             has at least one answer waiting on a transcript and the
-             profile-level Answer Analysis toggle is on. Works the same
-             whether the interview was completed or stopped early. -->
-        <!-- The Transcribe button must be reachable from history too — a
-             user can land here with pending slots after a network glitch
-             during the original interview, and the recovery path is the
-             whole point of the feature. -->
         <div
-            v-if="analysisFeatureEnabled && analysisMode !== 'none' && hasUnresolvedTranscripts && !transcribeRecovering"
+            v-if="analysisFeatureEnabled && analysisMode !== 'none' && completed && hasUnresolvedTranscripts && !transcribeRecovering"
             class="info-banner action"
         >
           <i class="el-icon-info"></i>
@@ -148,7 +137,32 @@
             Transcribe answers
           </el-button>
         </div>
-        <div v-if="transcribeRecovering && analysisFeatureEnabled" class="info-banner action">
+        <div
+            v-if="isCandidateSession && allAnswered && hasUnresolvedTranscripts && !transcribeRecovering"
+            class="info-banner action"
+        >
+          <i class="el-icon-info"></i>
+          <span v-if="dailyTranscribeUsed">You have already used today's transcription. Please try again tomorrow.</span>
+          <span v-else-if="!transcribeAllowanceChecked">Checking your daily transcription…</span>
+          <template v-else>
+            <span>Transcribe your answers to see your basic analysis. You can do this once per day.</span>
+            <el-button size="small" type="primary" icon="el-icon-microphone" @click="candidateTranscribe" :loading="transcribeRecovering">
+              Transcribe answers
+            </el-button>
+          </template>
+        </div>
+
+        <ConfirmDialog
+            :visible.sync="showTranscribeConfirm"
+            type="warning"
+            title="Transcribe this session?"
+            message-title="You can transcribe only once per day"
+            message="Make sure this is the practice session you want analyzed — once you transcribe, that is your run for today."
+            confirm-text="Yes, transcribe now"
+            cancel-text="Not yet"
+            @confirm="confirmCandidateTranscribe"
+        />
+        <div v-if="transcribeRecovering && (analysisFeatureEnabled || isCandidateSession)" class="info-banner action">
           <i class="el-icon-loading"></i>
           <span>
             Transcribing… {{ batchProgress.done }} / {{ batchProgress.total }} done<span v-if="batchProgress.failed > 0">, {{ batchProgress.failed }} failed</span>. Please keep this page open.
@@ -924,7 +938,9 @@ import {
   answerDurationSec,
   formatDuration,
   aggregateStats,
-  overallVerdict
+  overallVerdict,
+  deliveryRating,
+  scoreBand
 } from '@/utils/summaryStats';
 import {
   topRepeatedWords,
@@ -939,14 +955,17 @@ import { getVideoForSession, getRecordingForSession } from '@/store/recordingSto
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
 import { saveCompletedSession, updateHistoryEntry, getSessionById, deleteSession } from '@/store/interviewHistoryStore';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
+import { claimDailyTranscribe, checkDailyTranscribeAllowance } from '@/services/interviewApi';
+import { setActiveEnrollmentId, clearActiveEnrollmentId } from '@/services/activeEnrollment';
 import storageService from '@/services/storageService';
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 import FeedbackSection from '@/views/FeedbackSection.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 
 export default {
   name: 'SummaryView',
-  components: { FeedbackSection },
+  components: { FeedbackSection, ConfirmDialog },
   props: {
     sessionId: { type: String, default: '' },
     embedded: { type: Boolean, default: false }
@@ -1016,6 +1035,9 @@ export default {
       // recovery banner can show its own loading state.
       transcribeRecovering: false,
       historyEntryId: '',
+      showTranscribeConfirm: false,
+      dailyTranscribeUsed: false,
+      transcribeAllowanceChecked: false,
       // Session id for the audio currently being viewed. Set in
       // loadFromLiveSession (from interview meta) and loadFromHistory
       // (from the history entry id, which is the same value). Used to
@@ -1033,6 +1055,19 @@ export default {
   computed: {
     isStaff() {
       return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    },
+    isCandidateSession() {
+      return !this.isStaff && !!this.enrollmentId;
+    },
+    allAnswered() {
+      const total = (this.localInterviewQA && this.localInterviewQA.length) || this.transcripts.length;
+      if (!total) return false;
+      for (let i = 0; i < total; i++) {
+        const t = this.transcripts[i];
+        if (!t) return false;
+        if (typeof t === 'object' && t.skipped) return false;
+      }
+      return true;
     },
     isLoading() {
       if (this.isHistoryView) return false; // history loads synchronously
@@ -1071,6 +1106,14 @@ export default {
       return aggregateStats(this.transcripts);
     },
     verdict() {
+      if (this.showDetailedAnalysis && this.averageContentScore !== null) {
+        const band = scoreBand(this.averageContentScore);
+        return {
+          label: band.label,
+          tone: band.tone,
+          description: `Overall answer quality scored ${this.averageContentScore}/10 across the answered questions, graded against the reference answers.`
+        };
+      }
       return overallVerdict(this.aggregate);
     },
     hasAnyTranscript() {
@@ -1119,6 +1162,7 @@ export default {
       const hasTranscripts = Array.isArray(this.transcripts) && this.transcripts.length > 0;
       return this.analysisFeatureEnabled
         && this.analysisMode !== 'none'
+        && this.completed
         && hasTranscripts
         && !this.hasUnresolvedTranscripts
         && this.aggregate.answeredCount > 0
@@ -1139,11 +1183,7 @@ export default {
       return Math.round((sum / scores.length) * 10) / 10; // one decimal
     },
     averageContentScoreTone() {
-      const s = this.averageContentScore;
-      if (s === null) return 'neutral';
-      if (s >= 7) return 'good';
-      if (s >= 5) return 'ok';
-      return 'bad';
+      return scoreBand(this.averageContentScore).tone;
     },
     llmElapsedLabel() {
       const s = Math.max(0, this.llmElapsedSec);
@@ -1322,36 +1362,10 @@ export default {
       if (this.showDetailedAnalysis && this.averageContentScore !== null) {
         return this.averageContentScore;
       }
-      const a = this.aggregate || {};
-      if (!a.answeredCount) return null;
-
-      // Pace component (0-10): natural conversational range scores high.
-      let paceScore = 5;
-      const wpm = a.averagePaceWpm || 0;
-      if (wpm >= 110 && wpm <= 180) paceScore = 9;
-      else if (wpm >= 90 && wpm < 110) paceScore = 7;
-      else if (wpm > 180 && wpm <= 210) paceScore = 7;
-      else if (wpm > 0 && wpm < 90) paceScore = 4;
-      else if (wpm > 210) paceScore = 4;
-
-      // Filler component (0-10): under 5% scores high, over 15% low.
-      let fillerScore = 5;
-      const fp = a.fillerPercent || 0;
-      if (fp < 3) fillerScore = 10;
-      else if (fp < 5) fillerScore = 9;
-      else if (fp < 10) fillerScore = 7;
-      else if (fp < 15) fillerScore = 6;
-      else if (fp < 20) fillerScore = 4;
-      else fillerScore = 2;
-
-      return Math.round(((paceScore + fillerScore) / 2) * 10) / 10;
+      return deliveryRating(this.aggregate);
     },
     overallRatingTone() {
-      const r = this.overallRating;
-      if (r === null) return 'neutral';
-      if (r >= 7.5) return 'good';
-      if (r >= 5) return 'ok';
-      return 'bad';
+      return scoreBand(this.overallRating).tone;
     },
     hasSpeakingPatterns() {
       return this.sessionTopFillers.length || this.sessionExtraWords.length;
@@ -1368,6 +1382,9 @@ export default {
       await this.loadFromHistory(this.sessionId);
     } else {
       await this.loadFromLiveSession();
+    }
+    if (this.isCandidateSession && this.allAnswered && this.hasUnresolvedTranscripts) {
+      await this.refreshDailyTranscribeAllowance();
     }
   },
   watch: {
@@ -2021,6 +2038,50 @@ export default {
         await this.refreshHistorySnapshot();
       }
     },
+    async refreshDailyTranscribeAllowance() {
+      if (!this.isCandidateSession || !this.enrollmentId) return;
+      setActiveEnrollmentId(this.enrollmentId);
+      try {
+        const allowed = await checkDailyTranscribeAllowance();
+        this.dailyTranscribeUsed = !allowed;
+        this.transcribeAllowanceChecked = true;
+      } catch (e) {
+        this.transcribeAllowanceChecked = true;
+      } finally {
+        clearActiveEnrollmentId();
+      }
+    },
+    candidateTranscribe() {
+      if (this.transcribeRecovering) return;
+      if (!this.allAnswered) {
+        this.notify('Please answer every question before transcribing.', 'warning');
+        return;
+      }
+      this.showTranscribeConfirm = true;
+    },
+    async confirmCandidateTranscribe() {
+      this.showTranscribeConfirm = false;
+      setActiveEnrollmentId(this.enrollmentId);
+      try {
+        let allowed;
+        try {
+          allowed = await claimDailyTranscribe();
+        } catch (e) {
+          this.notify('The system is temporarily unavailable. Please try again in a little while.', 'error');
+          return;
+        }
+        if (!allowed) {
+          this.dailyTranscribeUsed = true;
+          this.notify('You can transcribe once per day. Please try again tomorrow.', 'warning');
+          return;
+        }
+        this.dailyTranscribeUsed = true;
+        const ok = await this._ensureTranscribed({ silent: false });
+        if (ok) await this.refreshHistorySnapshot();
+      } finally {
+        clearActiveEnrollmentId();
+      }
+    },
     // Internal helper. Runs the batch transcribe job, updates state, and
     // returns true on success. `silent` suppresses the success toast (used
     // when called as part of the Generate Detailed flow so we don't
@@ -2029,7 +2090,7 @@ export default {
       if (this.transcribeRecovering) return false;
       // Profile-flag guard. Belt-and-braces — the UI already hides the
       // Transcribe button when the toggle is off, but never trust the UI.
-      if (!this.analysisFeatureEnabled) {
+      if (!this.analysisFeatureEnabled && !this.isCandidateSession) {
         this.notify('Turn on Answer Analysis in Profile Settings to transcribe.', 'warning');
         return false;
       }
@@ -3048,6 +3109,7 @@ export default {
 }
 .overall-verdict.verdict-good { background: #dcfce7; color: #15803d; }
 .overall-verdict.verdict-ok   { background: #fef9c3; color: #a16207; }
+.overall-verdict.verdict-warn { background: #ffedd5; color: #c2410c; }
 .overall-verdict.verdict-bad  { background: #fee2e2; color: #b91c1c; }
 .overall-verdict.verdict-neutral { background: #f1f5f9; color: #64748b; }
 
@@ -3072,6 +3134,7 @@ export default {
 }
 .overall-rating.rating-good { background: #dcfce7; color: #15803d; }
 .overall-rating.rating-ok   { background: #fef9c3; color: #a16207; }
+.overall-rating.rating-warn { background: #ffedd5; color: #c2410c; }
 .overall-rating.rating-bad  { background: #fee2e2; color: #b91c1c; }
 .overall-rating.rating-neutral { background: #f1f5f9; color: #64748b; }
 

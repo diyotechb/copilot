@@ -27,6 +27,26 @@ function sessionBody(payload) {
   };
 }
 
+export async function claimDailyTranscribe() {
+  const res = await fetch(backendUrl('/api/interviews/transcribe-claim'), {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  if (res.status === 429) return false;
+  await assertOk(res, 'Transcribe claim');
+  return true;
+}
+
+export async function checkDailyTranscribeAllowance() {
+  const res = await fetch(backendUrl('/api/interviews/transcribe-allowance'), {
+    method: 'GET',
+    headers: authHeaders()
+  });
+  await assertOk(res, 'Transcribe allowance');
+  const data = await res.json();
+  return !!(data && data.allowed);
+}
+
 export default {
   async saveSession(payload) {
     const res = await fetch(backendUrl('/api/interviews/session'), {
