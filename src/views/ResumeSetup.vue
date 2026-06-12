@@ -12,21 +12,6 @@
       </div>
 
       <div class="setup-form-container">
-        <!-- Retention warning: at cap. Starting this interview will
-             permanently delete the oldest saved one. Surface it before
-             the user fills out resume/JD so they can back out cheaply. -->
-        <div v-if="atCap && oldestSession" class="setup-warning-banner">
-          <i class="el-icon-warning-outline"></i>
-          <div class="warning-text">
-            You have <strong>{{ MAX_VISIBLE }} saved interviews</strong>, the maximum kept on this device.
-            Starting a new interview will permanently delete the oldest —
-            <strong>{{ oldestLabel }}</strong> — including its audio, video, transcripts, and analysis.
-          </div>
-          <el-button size="small" type="warning" @click="goToOldestSession">
-            Open &amp; download first
-          </el-button>
-        </div>
-
         <!-- Browser storage running low. Best-effort check via
              navigator.storage.estimate(). Surfaces at >80% used so the
              user has time to delete old interviews from My Interviews
@@ -338,15 +323,10 @@
           <el-button
               type="primary"
               class="setup-submit-btn"
-              :disabled="isSubmitDisabled || atCap"
+              :disabled="isSubmitDisabled"
               @click="submitSetup">
             Start Generating My Interview
           </el-button>
-
-          <div v-if="atCap" class="mic-warning-hint" style="justify-content: center;">
-            <i class="el-icon-warning-outline"></i>
-            Delete or open the oldest interview above before starting a new one.
-          </div>
 
           <div v-if="micPermission === 'denied' || (enableVideo && cameraPermission === 'denied')" class="mic-warning-hint" style="justify-content: center; flex-direction: column;">
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -505,7 +485,6 @@ function extractCandidateName(resumeText) {
   return '';
 }
 import { clearInterviewQAStore, clearTranscriptsStore, saveInterviewQA, saveInterviewMeta } from '@/store/interviewStore';
-import { listRecentSessions, MAX_ENTRIES } from '@/store/interviewHistoryStore';
 import { fetchEnrollmentsByStatus } from '@/services/candidateService';
 import { setActiveEnrollmentId, clearActiveEnrollmentId } from '@/services/activeEnrollment';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -517,11 +496,6 @@ export default {
   components: { FileUpload, InterviewInstructions, ConfirmDialog },
   data() {
     return {
-      // Retention awareness — populated in mounted() once. We don't refetch
-      // because the user can't add a session from this page; the count is
-      // either at cap when they land here or it isn't.
-      MAX_VISIBLE: MAX_ENTRIES,
-      savedSessions: [],
       // null | { used, quota, percent, usedMB, quotaMB }. Surfaces only
       // when used/quota crosses 80%.
       storageWarning: null,
@@ -625,28 +599,6 @@ export default {
       // is now on-demand from the Summary screen, regardless of difficulty.
       return false;
     },
-    atCap() {
-      return this.savedSessions.length >= this.MAX_VISIBLE;
-    },
-    oldestSession() {
-      if (!this.savedSessions.length) return null;
-      return this.savedSessions[this.savedSessions.length - 1];
-    },
-    oldestLabel() {
-      const s = this.oldestSession;
-      if (!s) return '';
-      const name = s.candidateName ? `${s.candidateName} — ` : '';
-      const iso = s.savedAt || '';
-      let dateStr = '';
-      if (iso) {
-        try {
-          dateStr = new Date(iso).toLocaleString([], {
-            month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
-          });
-        } catch (e) { /* keep empty */ }
-      }
-      return `${name}${dateStr}`;
-    }
   },
   async mounted() {
     await this.fetchVoices();
@@ -659,7 +611,7 @@ export default {
     await storage.clearInterviewSession();
 
     // Refresh retention state for the banner + Start gating.
-    await this.loadRetentionState();
+    await this.loadStorageState();
     this.loadPracticeRoster();
 
     // Staff-only; re-checked here so a leftover flag from another user on a shared device can't leak.
@@ -707,16 +659,9 @@ export default {
     next();
   },
   methods: {
-    // Read history + browser storage estimate to drive the retention
-    // banner, storage-warning banner, and Start-button gating. Called
-    // once on mount; not refetched because the user can't change either
-    // value from this screen.
-    async loadRetentionState() {
-      try {
-        this.savedSessions = await listRecentSessions(this.MAX_VISIBLE);
-      } catch (e) {
-        this.savedSessions = [];
-      }
+    // Best-effort browser-storage estimate to warn before local recording
+    // can fail mid-session. Called once on mount.
+    async loadStorageState() {
       try {
         if (navigator && navigator.storage && navigator.storage.estimate) {
           const est = await navigator.storage.estimate();
@@ -770,11 +715,6 @@ export default {
     buildPracticeLabel(candidateName) {
       const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       return [candidateName, 'Interview Practice', date].filter(Boolean).join(' - ');
-    },
-    goToOldestSession() {
-      if (this.oldestSession) {
-        this.$router.push({ name: 'SummaryView', query: { sessionId: this.oldestSession.id } });
-      }
     },
     toggleShowQuestions() {
       this.showQuestions = !this.showQuestions;

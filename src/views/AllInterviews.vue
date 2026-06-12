@@ -38,7 +38,10 @@
             :class="['session-item', { active: selectedId === s.id }]"
             @click="select(s)"
           >
-            <div class="item-title">{{ s.candidateName || 'Interview' }}</div>
+            <div class="item-head">
+              <span class="item-title">{{ s.candidateName || 'Interview' }}</span>
+              <el-tag :type="s.completed ? 'success' : 'warning'" size="mini" effect="plain">{{ s.completed ? 'Complete' : 'Incomplete' }}</el-tag>
+            </div>
             <div class="item-meta">
               <span class="item-date">{{ formatDate(s.endedAt || s.createdAt) }}</span>
               <el-tag :type="statusType(s.status)" size="mini" effect="dark">{{ statusLabel(s.status) }}</el-tag>
@@ -253,7 +256,15 @@ export default {
 .session-item:hover { background: #f8fafc; }
 .session-item.active { background: #eff6ff; border-color: #bfdbfe; }
 
-.item-title { font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+.item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.item-title { font-weight: 600; color: #1e293b; }
 
 .item-meta {
   display: flex;
