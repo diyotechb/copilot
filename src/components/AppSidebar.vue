@@ -58,7 +58,6 @@
 
 <script>
 import authService from '@/services/authService';
-import storageService from '@/services/storageService';
 import { NAVIGATION_ITEMS } from '@/config/navigation';
 import { hasAnyRole } from '@/constants/roles';
 import { APP_CONFIG } from '@/constants/appConfig';
@@ -95,7 +94,7 @@ export default {
       return this.userEmail.charAt(0).toUpperCase();
     },
     logoTarget() {
-      return storageService.getItem(storageService.KEYS.USER_LANDING_PAGE) || 'Home';
+      return 'Home';
     },
     showFullContent() {
       return !this.isCollapsed || this.isMobileOpen;

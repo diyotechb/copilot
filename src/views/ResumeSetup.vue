@@ -206,6 +206,25 @@
                   Comma-separated. The interviewer will pick "what is X" questions from these and weave them into the reference answers when natural.
                 </p>
               </div>
+
+              <div v-if="showFullyPersonalizedToggle" class="setting-field">
+                <label>Fully Personalized Questions <span class="optional-tag">Staff</span></label>
+                <div class="toggle-wrapper" style="margin: 6px 0 0 0;">
+                  <div class="toggle-text">
+                    <span class="toggle-main-label">{{ fullyPersonalized ? 'On' : 'Off' }}</span>
+                    <p class="toggle-description">When on, questions are generated entirely from this resume (bypasses the shared daily cache). When off, candidates get cached questions tailored with resume and keyword questions.</p>
+                  </div>
+                  <div
+                    class="modern-switch"
+                    @click="fullyPersonalized = !fullyPersonalized"
+                    :class="{ 'is-active': fullyPersonalized }"
+                  >
+                    <div class="switch-handle">
+                      <i :class="fullyPersonalized ? 'el-icon-user' : 'el-icon-close'"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="recording-settings">
@@ -520,6 +539,8 @@ export default {
       aiSampleGenerationEnabled: false,
       analysisBetaEnabled: false,
       analysisEnabledThisInterview: true,
+      isStaffUser: false,
+      fullyPersonalized: false,
       preferredKeywords: '',
       practiceRoster: [],
       rosterLoading: false,
@@ -599,6 +620,11 @@ export default {
       // is now on-demand from the Summary screen, regardless of difficulty.
       return false;
     },
+    showFullyPersonalizedToggle() {
+      // Staff-only escape hatch: bypass the shared daily cache and generate
+      // questions 100% from this resume. Candidates always use the cache.
+      return this.isStaffUser;
+    },
   },
   async mounted() {
     await this.fetchVoices();
@@ -617,6 +643,7 @@ export default {
     // Staff-only; re-checked here so a leftover flag from another user on a shared device can't leak.
     const features = storage.getItem(storage.KEYS.USER_FEATURES, true) || {};
     const isStaff = hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    this.isStaffUser = isStaff;
     this.aiSampleGenerationEnabled = isStaff && !!features.aiSampleGenerationEnabled;
     this.analysisBetaEnabled = isStaff && !!features.analysisEnabled;
     // Restore last per-interview analysis preference (default true when beta is on)
@@ -987,6 +1014,7 @@ export default {
           difficulty: this.interviewDifficulty,
           category: this.showCategoryField ? this.interviewCategory : 'All',
           preferredKeywords: keywordsArr,
+          fullyPersonalized: this.showFullyPersonalizedToggle && this.fullyPersonalized,
           onProgress: (progress) => {
             this.generationProgress = progress;
           },

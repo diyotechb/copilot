@@ -54,7 +54,6 @@
 <script>
 import { validateEmail } from '@/utils/validation';
 import authService from '@/services/authService';
-import storageService from '@/services/storageService';
 import { APP_CONFIG } from '@/constants/appConfig';
 
 export default {
@@ -89,8 +88,7 @@ export default {
 
             try {
                 await authService.login(this.email, this.password);
-                const preferredPage = storageService.getItem(storageService.KEYS.USER_LANDING_PAGE);
-                this.$router.push({ name: preferredPage || 'Home' });
+                this.$router.push({ name: 'Home' });
             } catch (error) {
                 console.error('Login error:', error);
                 const errorMsg = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';

@@ -75,25 +75,14 @@
           <p v-else class="detail-empty">No active usage right now.</p>
 
           <h3 class="detail-subhead">What the system allows</h3>
-          <p class="detail-lead">Each limit is how many times that action is allowed per time window, for each person, before it is paused. "Burst" means a short spike above the steady rate is allowed before it settles back.</p>
+          <p class="detail-lead">Every action each kind of user can do, the limit, and what that limit means in plain terms.</p>
           <el-table :data="rlCapabilities" size="small" class="detail-table">
-            <el-table-column prop="action" label="Action" width="260" />
-            <el-table-column prop="scope" label="Who" width="150" />
-            <el-table-column label="Limit" width="220">
-              <template slot="header">
-                Limit
-                <el-tooltip content="Reads as 'allowed / time window'. e.g. 10 / 1 day = 10 times per day, per person. 'burst 720' = up to 720 in a quick spike, then it refills at the steady rate." placement="top">
-                  <i class="el-icon-info col-info"></i>
-                </el-tooltip>
-              </template>
-              <template slot-scope="{ row }">
-                <el-tooltip :content="limitTooltip(row)" placement="top" :open-delay="150">
-                  <span>{{ row.limit }}</span>
-                </el-tooltip>
-              </template>
-            </el-table-column>
-            <el-table-column />
+            <el-table-column prop="action" label="Action" width="200" />
+            <el-table-column prop="scope" label="Who" width="130" />
+            <el-table-column prop="limit" label="Limit" width="160" />
+            <el-table-column prop="plain" label="What it means" min-width="320" />
           </el-table>
+          <p class="detail-note">At the same time: up to {{ maxGenerations }} interviews can be generated across everyone (shared pool) — extras queue rather than fail. Live transcription and Live Assist sessions each close automatically after {{ sessionMaxHours }} hours.</p>
         </template>
 
         <template v-else-if="selectedCard === 'interviews'">
@@ -111,6 +100,42 @@
             </el-table-column>
           </el-table>
           <p v-else class="detail-empty">No interviews in progress.</p>
+
+          <h3 class="detail-subhead">What the system allows</h3>
+          <p class="detail-lead">How many interviews each kind of user can start, per person.</p>
+          <el-table :data="startInterviewLimits" size="small" class="detail-table">
+            <el-table-column prop="scope" label="Who" width="160" />
+            <el-table-column prop="limit" label="Limit" width="170" />
+            <el-table-column prop="plain" label="What it means" min-width="320" />
+          </el-table>
+          <p class="detail-note">At the same time: up to {{ maxGenerations }} interviews can be generated across everyone (shared pool) — extras queue rather than fail.</p>
+        </template>
+
+        <template v-else-if="selectedCard === 'transcription'">
+          <p class="detail-lead">Live recording connections streaming audio for transcription right now. Each live session closes automatically after {{ sessionMaxHours }} hours.</p>
+          <el-table v-if="transcriptionList.length" :data="transcriptionList" size="small" stripe class="detail-table">
+            <el-table-column prop="id" label="Connection" min-width="220" show-overflow-tooltip />
+            <el-table-column label="Connected" min-width="170">
+              <template slot-scope="{ row }">{{ formatTime(row.startedAt) }}</template>
+            </el-table-column>
+            <el-table-column />
+          </el-table>
+          <p v-else class="detail-empty">No live transcriptions right now.</p>
+
+          <h3 class="detail-subhead">What the system allows</h3>
+
+          <p class="detail-grouplabel">Live transcription — recording in real time (limited by time, not a count):</p>
+          <el-table :data="liveTranscriptionLimits" size="small" class="detail-table">
+            <el-table-column prop="aspect" label="What" min-width="200" />
+            <el-table-column prop="value" label="Allowed" min-width="320" />
+          </el-table>
+
+          <p class="detail-grouplabel">Answer transcription — turning recorded answers into text afterwards (counted per answer):</p>
+          <el-table :data="transcribeLimits" size="small" class="detail-table">
+            <el-table-column prop="scope" label="Who" width="160" />
+            <el-table-column prop="limit" label="Limit" width="170" />
+            <el-table-column prop="plain" label="What it means" min-width="320" />
+          </el-table>
         </template>
 
         <template v-else-if="selectedCard === 'liveAssist'">
@@ -125,6 +150,43 @@
             </el-table-column>
           </el-table>
           <p v-else class="detail-empty">No live sessions.</p>
+
+          <h3 class="detail-subhead">What the system allows</h3>
+          <p class="detail-lead">Live Assist runs over a live connection rather than per-request, so it has no usage quota.</p>
+          <el-table :data="liveAssistLimits" size="small" class="detail-table">
+            <el-table-column prop="aspect" label="What" min-width="200" />
+            <el-table-column prop="value" label="Allowed" min-width="220" />
+            <el-table-column />
+          </el-table>
+        </template>
+
+        <template v-else-if="selectedCard === 'questionCache'">
+          <p class="detail-lead">Shared question banks generated today. Each interview type builds its bank once, then every candidate of that type reuses it for the day — cutting AI generation calls. A small per-candidate set tailored to the resume and keywords is added on top.</p>
+          <div class="qc-summary">
+            <div class="qc-stat"><span class="qc-stat-value">{{ questionCache.banks_built_today ?? 0 }}</span><span class="qc-stat-label">Banks built today</span></div>
+            <div class="qc-stat"><span class="qc-stat-value">{{ questionCache.interviews_served_from_cache ?? 0 }}</span><span class="qc-stat-label">Interviews served from cache</span></div>
+            <div class="qc-stat"><span class="qc-stat-value">{{ (questionCache.estimated_openai_calls_saved ?? 0).toLocaleString() }}</span><span class="qc-stat-label">Est. AI calls saved</span></div>
+            <div class="qc-stat"><span class="qc-stat-value">~${{ (questionCache.estimated_savings_usd ?? 0).toFixed(2) }}</span><span class="qc-stat-label">Est. savings</span></div>
+            <div class="qc-stat"><span class="qc-stat-value">{{ questionCache.fully_personalized_bypass ?? 0 }}</span><span class="qc-stat-label">Fully-personalized (staff)</span></div>
+          </div>
+
+          <h3 class="detail-subhead">Today's banks by interview type</h3>
+          <el-table v-if="questionBanks.length" :data="questionBanks" size="small" stripe class="detail-table">
+            <el-table-column prop="category" label="Category" min-width="140">
+              <template slot-scope="{ row }">{{ row.category || '—' }}</template>
+            </el-table-column>
+            <el-table-column prop="difficulty" label="Difficulty" width="140" />
+            <el-table-column prop="status" label="Status" width="120">
+              <template slot-scope="{ row }">
+                <el-tag size="mini" :type="row.status === 'READY' ? 'success' : 'info'" effect="plain">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="count" label="Questions" width="110" align="right" />
+            <el-table-column label="Built" min-width="170">
+              <template slot-scope="{ row }">{{ formatTime(row.generatedAt) }}</template>
+            </el-table-column>
+          </el-table>
+          <p v-else class="detail-empty">No question banks built today yet — the first interview of each type builds one.</p>
         </template>
       </div>
     </template>
@@ -167,6 +229,8 @@ export default {
       const ex = s.interview_executor || {};
       const mem = s.memory || {};
       const tts = s.tts_cache || {};
+      const qc = s.question_cache || {};
+      const qcBank = qc.bank || {};
       return [
         {
           key: 'uptime',
@@ -180,7 +244,8 @@ export default {
           label: 'Active Transcriptions',
           value: s.active_websocket_sessions,
           sub: 'Live recording connections',
-          info: 'People recording a live transcription this very moment (open audio connections).'
+          info: 'People recording a live transcription this very moment. Click to see live connections and who can transcribe how much.',
+          rich: true
         },
         {
           key: 'interviews',
@@ -222,6 +287,14 @@ export default {
           info: 'How often spoken-question audio is reused from cache instead of regenerated — higher means lower voice cost.'
         },
         {
+          key: 'questionCache',
+          label: 'Question Cache Hit Rate',
+          value: `${((qcBank.hit_rate ?? 0) * 100).toFixed(0)}%`,
+          sub: `${qc.banks_built_today ?? 0} banks today · saved ~$${(qc.estimated_savings_usd ?? 0).toFixed(2)}`,
+          info: 'How often interview questions are reused from the shared daily cache instead of generated fresh. Click to see today\'s question banks per interview type.',
+          rich: true
+        },
+        {
           key: 'rateLimits',
           label: 'Rate Limits',
           value: s.rate_limit_buckets,
@@ -236,6 +309,8 @@ export default {
         case 'rateLimits': return 'Rate limits & current usage';
         case 'interviews': return 'Interviews in progress';
         case 'liveAssist': return 'Live Assist sessions';
+        case 'transcription': return 'Active transcriptions';
+        case 'questionCache': return 'Daily question cache';
         default: return '';
       }
     },
@@ -248,8 +323,44 @@ export default {
     activeInterviews() {
       return this.details?.interviews || [];
     },
+    transcriptionList() {
+      return this.details?.transcriptions || [];
+    },
+    startInterviewLimits() {
+      return this.rlCapabilities.filter(c => /start interview/i.test(c.action));
+    },
+    transcribeLimits() {
+      return this.rlCapabilities.filter(c => /transcribe/i.test(c.action));
+    },
+    maxGenerations() {
+      return this.status?.interview_executor?.max_pool ?? 0;
+    },
+    sessionMaxHours() {
+      return this.status?.session_max_hours ?? 4;
+    },
+    liveTranscriptionLimits() {
+      return [
+        { aspect: 'Who can use it', value: 'Staff and reviewers' },
+        { aspect: 'At the same time', value: 'Multiple sessions — no concurrency limit' },
+        { aspect: 'Session length', value: `Up to ${this.sessionMaxHours} hours each` },
+        { aspect: 'Per-request limit', value: 'None — not metered' }
+      ];
+    },
+    liveAssistLimits() {
+      return [
+        { aspect: 'Who can use it', value: 'Staff only' },
+        { aspect: 'Session length', value: `Up to ${this.sessionMaxHours} hours each` },
+        { aspect: 'Per-request limit', value: 'None — not metered' }
+      ];
+    },
     liveAssistList() {
       return this.details?.liveAssist || [];
+    },
+    questionCache() {
+      return this.status?.question_cache || {};
+    },
+    questionBanks() {
+      return this.details?.questionBanks || [];
     },
     uptimeFormatted() {
       if (!this.status) return '';
@@ -311,23 +422,6 @@ export default {
       if (type === 'Candidate') return 'success';
       if (type === 'Device') return 'info';
       return 'primary';
-    },
-    actionNoun(action) {
-      const a = action || '';
-      if (/generate/i.test(a)) return 'interviews';
-      if (/save/i.test(a)) return 'saves';
-      if (/analysis/i.test(a)) return 'detailed analyses';
-      if (/transcribe/i.test(a)) return 'transcriptions';
-      return 'API calls';
-    },
-    limitTooltip(row) {
-      const m = /^(\d+)\s*\/\s*(.+?)(?:\s*\(burst\s*(\d+)\))?$/.exec(row.limit || '');
-      if (!m) return '';
-      const window = m[2].trim().replace(/^1\s+/, '').replace('min', 'minute');
-      const noun = this.actionNoun(row.action);
-      let text = `${m[1]} ${noun} per ${window}, per person`;
-      if (m[3]) text += ` — briefly up to ${m[3]} after an idle period, then it settles back to ${m[1]} per ${window}`;
-      return text;
     },
     usePct(row) {
       if (!row.capacity) return 0;
@@ -555,6 +649,23 @@ export default {
   font-size: 0.85rem;
 }
 
+.detail-grouplabel {
+  margin: 18px 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.detail-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 0.82rem;
+}
+
 .detail-subhead {
   margin: 22px 0 10px;
   font-size: 0.95rem;
@@ -573,6 +684,35 @@ export default {
   padding: 16px;
   border: 1px dashed #e5e7eb;
   border-radius: 8px;
+}
+
+.qc-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 4px;
+}
+
+.qc-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.qc-stat-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.qc-stat-label {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-top: 2px;
 }
 
 .detail-loading {

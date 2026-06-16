@@ -36,7 +36,6 @@
 import NavBar from '@/components/NavBar.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import authService from '@/services/authService';
-import storageService from '@/services/storageService';
 
 export default {
   name: 'App',
@@ -77,7 +76,7 @@ export default {
       return publicPages.includes(this.$route.name) && !this.showSidebar;
     },
     logoTarget() {
-      return storageService.getItem(storageService.KEYS.USER_LANDING_PAGE) || 'Home';
+      return 'Home';
     }
   },
   watch: {

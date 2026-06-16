@@ -7,19 +7,6 @@
       </div>
 
       <div class="settings-content">
-        <div class="setting-item">
-          <label for="landing-page">Default Landing Page</label>
-          <p class="setting-description">Select the page you want to see immediately after logging in.</p>
-          
-          <div class="select-wrapper">
-            <select id="landing-page" v-model="selectedLandingPage" @change="saveLandingPage" class="styled-select">
-              <option v-for="item in availablePages" :key="item.routeName" :value="item.routeName">
-                {{ item.name }}
-              </option>
-            </select>
-          </div>
-        </div>
-
         <div class="setting-item" v-if="isStaff">
           <label>Beta Features</label>
           <p class="setting-description">Enable experimental features. These are actively developed and may change.</p>
@@ -32,40 +19,20 @@
               </div>
               <el-switch v-model="features.aiSampleGenerationEnabled" @change="saveFeatures"></el-switch>
             </div>
-
-            <div class="feature-toggle-row">
-              <div class="feature-toggle-info">
-                <span class="feature-name">Answer Analysis</span>
-                <span class="feature-desc">Records your spoken answers during the interview. On the Summary screen you can run on-demand transcription to unlock basic per-question stats (pace, fillers, repeated words), and optionally generate detailed feedback covering delivery, answer evaluation, and an improvement plan. Works for any difficulty. History of your last 5 sessions is kept locally on this device, including ones you stopped early.</span>
-              </div>
-              <el-switch v-model="features.analysisEnabled" @change="saveFeatures"></el-switch>
-            </div>
           </div>
         </div>
 
         <div class="setting-item">
           <label>Storage Management</label>
-          <p class="setting-description">Manage the data stored locally in your browser. Large recordings and old interview data can be cleared to free up space.</p>
-          
-          <div class="storage-stats-container" v-if="storageStats">
-            <div class="storage-stat-card">
-              <div class="stat-info">
-                <span class="stat-name">Interview Data</span>
-                <span class="stat-val">{{ formatSize(storageStats.interviews.size + storageStats.transcripts.size) }}</span>
-              </div>
-              <button @click="clearInterviews" class="clear-btn" :disabled="isClearingInterviews">
-                {{ isClearingInterviews ? 'Clearing...' : 'Clear' }}
-              </button>
-            </div>
+          <p class="setting-description">Recordings (audio and video) are stored locally in this browser, not in the cloud. Clear them to free up space on this device.</p>
 
+          <div class="storage-stats-container" v-if="storageStats">
             <div class="storage-stat-card">
               <div class="stat-info">
                 <span class="stat-name">Recordings</span>
                 <span class="stat-val">{{ formatSize(storageStats.recordings.size) }}</span>
               </div>
-              <button @click="clearRecordings" class="clear-btn secondary" :disabled="isClearingRecordings">
-                {{ isClearingRecordings ? 'Clearing...' : 'Clear' }}
-              </button>
+              <button @click="clearRecordings" class="clear-btn secondary">Clear</button>
             </div>
           </div>
           <div v-else class="stats-loading">
@@ -76,7 +43,6 @@
       </div>
     </div>
 
-    <!-- Custom Confirmation Modal -->
     <ConfirmDialog
       :visible.sync="confirmVisible"
       :title="confirmConfig.title"
@@ -92,7 +58,6 @@
 
 <script>
 import authService from '@/services/authService';
-import { NAVIGATION_ITEMS } from '@/config/navigation';
 import { hasAnyRole, ROLE_GROUPS } from '@/constants/roles';
 import realStorageService from '@/services/storageService';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -104,15 +69,10 @@ export default {
   },
   data() {
     return {
-      selectedLandingPage: 'Home',
       features: {
-        aiSampleGenerationEnabled: false,
-        analysisEnabled: false
+        aiSampleGenerationEnabled: false
       },
       storageStats: null,
-      isClearingInterviews: false,
-      isClearingRecordings: false,
-      // Confirmation Modal State
       confirmVisible: false,
       confirmConfig: {
         title: '',
@@ -120,41 +80,22 @@ export default {
         type: 'primary',
         confirmText: 'Confirm',
         icon: 'el-icon-warning-outline',
-        loading: false,
-        action: null
+        loading: false
       }
     };
   },
   computed: {
-    availablePages() {
-      const userRoles = authService.getUserRoles();
-      return NAVIGATION_ITEMS.filter(item => {
-        return !item.allowedRoles || hasAnyRole(userRoles, item.allowedRoles);
-      });
-    },
     isStaff() {
       return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
     }
   },
   created() {
-    const savedPage = realStorageService.getItem(realStorageService.KEYS.USER_LANDING_PAGE);
-    if (savedPage) this.selectedLandingPage = savedPage;
-
     const savedFeatures = realStorageService.getItem(realStorageService.KEYS.USER_FEATURES, true);
     if (savedFeatures) this.features = { ...this.features, ...savedFeatures };
 
     this.refreshStorageStats();
   },
   methods: {
-    saveLandingPage() {
-      try {
-        realStorageService.setItem(realStorageService.KEYS.USER_LANDING_PAGE, this.selectedLandingPage);
-        this.flashSaved();
-      } catch (error) {
-        console.error('Failed to save landing page:', error);
-        this.$message.error('Could not save your preference. Please try again.');
-      }
-    },
     saveFeatures() {
       try {
         realStorageService.setItem(realStorageService.KEYS.USER_FEATURES, this.features);
@@ -182,48 +123,27 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     },
-    async clearInterviews() {
-      this.confirmConfig = {
-        title: 'Clear Interview Data',
-        message: 'This will clear your current interview questions and live transcripts. Proceed?',
-        type: 'warning',
-        confirmText: 'Clear Data',
-        icon: 'el-icon-refresh-left',
-        loading: false,
-        action: 'interviews'
-      };
-      this.confirmVisible = true;
-    },
-    async clearRecordings() {
+    clearRecordings() {
       this.confirmConfig = {
         title: 'Delete All Recordings',
-        message: 'This will permanently delete all locally stored video and audio recordings. Make sure you have downloaded any recordings you want to keep. Proceed?',
+        message: 'This will permanently delete all locally stored video and audio recordings on this device. Make sure you have downloaded any you want to keep. Proceed?',
         type: 'danger',
         confirmText: 'Delete All',
         icon: 'el-icon-video-camera',
-        loading: false,
-        action: 'recordings'
+        loading: false
       };
       this.confirmVisible = true;
     },
     async handleConfirmAction() {
-      const { action } = this.confirmConfig;
       this.confirmConfig.loading = true;
-
       try {
-        if (action === 'interviews') {
-          await realStorageService.clearInterviewSession();
-          this.$message.success('Interview data cleared');
-        } else if (action === 'recordings') {
-          await realStorageService.clearRecordingData();
-          this.$message.success('Recordings cleared');
-        }
-        
+        await realStorageService.clearRecordingData();
+        this.$message.success('Recordings cleared');
         await this.refreshStorageStats();
         this.confirmVisible = false;
       } catch (error) {
         console.error('Action failed:', error);
-        this.$message.error('Failed to perform action.');
+        this.$message.error('Failed to clear recordings.');
       } finally {
         this.confirmConfig.loading = false;
       }
@@ -286,41 +206,6 @@ export default {
   margin-bottom: 16px;
 }
 
-.select-wrapper {
-  position: relative;
-}
-
-.styled-select {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background-color: #f8fafc;
-  font-size: 1rem;
-  color: #1e293b;
-  cursor: pointer;
-  appearance: none;
-  transition: all 0.2s;
-}
-
-.styled-select:focus {
-  outline: none;
-  border-color: #2563eb;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.select-wrapper::after {
-  content: '\e6df'; /* el-icon-arrow-down */
-  font-family: 'element-icons';
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #94a3b8;
-}
-
 .autosave-hint {
   display: inline-flex;
   align-items: center;
@@ -333,19 +218,6 @@ export default {
 
 .autosave-hint i {
   font-size: 0.95rem;
-}
-
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: white;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 .feature-toggle-list {
@@ -384,9 +256,6 @@ export default {
 }
 
 .storage-stats-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
   background: #f8fafc;
   padding: 16px;
   border-radius: 12px;
@@ -398,10 +267,6 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 8px 0;
-}
-
-.storage-stat-card:not(:last-child) {
-  border-bottom: 1px solid #edf2f7;
 }
 
 .stat-info {
@@ -425,40 +290,16 @@ export default {
   font-size: 0.8rem;
   font-weight: 600;
   border-radius: 6px;
-  border: 1px solid #2563eb;
+  border: 1px solid #ef4444;
   background: white;
-  color: #2563eb;
+  color: #ef4444;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.clear-btn:hover:not(:disabled) {
-  background: #2563eb;
-  color: white;
-}
-
-.clear-btn.secondary {
-  border-color: #ef4444;
-  color: #ef4444;
-}
-
-.clear-btn.secondary:hover:not(:disabled) {
+.clear-btn.secondary:hover {
   background: #ef4444;
   color: white;
-}
-
-.clear-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.persistent-badge {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #94a3b8;
-  background: #f1f5f9;
-  padding: 4px 8px;
-  border-radius: 4px;
 }
 
 .stats-loading {
@@ -470,8 +311,16 @@ export default {
   padding: 12px;
 }
 
-.spinner.dark {
-  border-color: rgba(0, 0, 0, 0.1);
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
   border-top-color: #2563eb;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

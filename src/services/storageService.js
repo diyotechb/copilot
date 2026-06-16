@@ -4,7 +4,6 @@ const KEYS = {
     USER_ROLES: 'roles',
     TRANSCRIPTIONS_HISTORY: 'transcriptions_history',
     TRANSCRIPTION_FONT_SCALE: 'transcription_font_scale',
-    USER_LANDING_PAGE: 'user_landing_page',
     USER_FEATURES: 'user_features'
 };
 
