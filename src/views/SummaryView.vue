@@ -110,17 +110,6 @@
       </div>
 
       <div class="setup-form-container">
-        <!-- Banner: profile-level Answer Analysis is off. Audio is still
-             saved with the session — user just can't run transcription or
-             detailed analysis until the toggle is on.
-             Staff-only: regular users can't toggle the beta flag, so the
-             hint would just be noise for them. Shown in both live and
-             history view so staff reviewing a saved interview can still
-             see the current toggle state. -->
-        <div v-if="!analysisFeatureEnabled && isStaff" class="info-banner">
-          <i class="el-icon-info"></i>
-          <span>Answer Analysis is off in Profile Settings → Beta Features. Turn it on there to transcribe your answers and run analysis on this interview. Your recorded audio is saved either way.</span>
-        </div>
 
         <div v-if="!completed && !isHistoryView && analysisMode !== 'none'" class="info-banner warning">
           <i class="el-icon-warning-outline"></i>
@@ -957,7 +946,6 @@ import { saveCompletedSession, updateHistoryEntry, getSessionById, deleteSession
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
 import { claimDailyTranscribe, checkDailyTranscribeAllowance } from '@/services/interviewApi';
 import { setActiveEnrollmentId, clearActiveEnrollmentId } from '@/services/activeEnrollment';
-import storageService from '@/services/storageService';
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 import FeedbackSection from '@/views/FeedbackSection.vue';
@@ -1014,9 +1002,6 @@ export default {
       llmBatchProgress: { done: 0, total: 0 },
       ANALYSIS_BATCH_SIZE: 10,
       _llmTimerId: null,
-      // Reflects the Profile Settings → Beta Features → "Answer Analysis"
-      // toggle. When false the Generate Detailed Analysis button + CTA
-      // banner are hidden (basic stats are still shown).
       analysisFeatureEnabled: false,
       // Analysis-type selector modal state
       showTypeSelector: false,
@@ -1372,11 +1357,7 @@ export default {
     }
   },
   async mounted() {
-    // Read the user's feature toggle once. Changes from Profile Settings
-    // require a page reload to take effect, which matches the rest of the
-    // app's beta-features flow.
-    const features = storageService.getItem(storageService.KEYS.USER_FEATURES, true) || {};
-    this.analysisFeatureEnabled = this.isStaff && !!features.analysisEnabled;
+    this.analysisFeatureEnabled = this.isStaff;
 
     if (this.sessionId) {
       await this.loadFromHistory(this.sessionId);
@@ -1630,6 +1611,7 @@ export default {
       this.createdByEmailMeta = entry.createdByEmail || '';
       this.updatedByEmailMeta = entry.updatedByEmail || '';
       this.candidateName = entry.candidateName || '';
+      this.enrollmentId = entry.enrollmentId || '';
       this.preferredKeywords = Array.isArray(entry.preferredKeywords) ? entry.preferredKeywords : [];
       this.difficulty = entry.difficulty || '';
       this.category = entry.category || 'All';
@@ -2088,10 +2070,8 @@ export default {
     // double-notify).
     async _ensureTranscribed({ silent = false } = {}) {
       if (this.transcribeRecovering) return false;
-      // Profile-flag guard. Belt-and-braces — the UI already hides the
-      // Transcribe button when the toggle is off, but never trust the UI.
       if (!this.analysisFeatureEnabled && !this.isCandidateSession) {
-        this.notify('Turn on Answer Analysis in Profile Settings to transcribe.', 'warning');
+        this.notify('Transcription is not available for this session.', 'warning');
         return false;
       }
       this.transcribeRecovering = true;

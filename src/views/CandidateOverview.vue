@@ -31,6 +31,9 @@
         <template slot-scope="{ row }">{{ row.candidateName || 'Candidate' }}</template>
       </el-table-column>
       <el-table-column prop="practiceCount" label="Practices" width="120" sortable align="center" />
+      <el-table-column prop="completedCount" label="Completed" width="120" sortable align="center">
+        <template slot-scope="{ row }">{{ row.completedCount != null ? row.completedCount : 0 }}</template>
+      </el-table-column>
       <el-table-column prop="avgScore" label="Avg score" width="130" sortable align="center">
         <template slot-scope="{ row }">{{ row.avgScore != null ? formatScore(row.avgScore) : '—' }}</template>
       </el-table-column>

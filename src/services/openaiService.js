@@ -9,6 +9,7 @@ export async function generateInterviewQA({
   difficulty,
   category,
   preferredKeywords,
+  fullyPersonalized,
   onProgress,
   onUpdate
 }) {
@@ -36,7 +37,8 @@ export async function generateInterviewQA({
         jobDescriptionText: jobDescriptionText || '',
         difficulty,
         category,
-        preferredKeywords: Array.isArray(preferredKeywords) ? preferredKeywords : []
+        preferredKeywords: Array.isArray(preferredKeywords) ? preferredKeywords : [],
+        fullyPersonalized: fullyPersonalized === true
       }),
       signal: controller.signal
     });
