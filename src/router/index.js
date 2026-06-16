@@ -27,6 +27,7 @@ const ProfileSettings   = () => import(/* webpackChunkName: "profile" */       '
 const AdminStatus       = () => import(/* webpackChunkName: "admin" */         '@/views/admin/AdminStatus.vue')
 const LiveAssistView = () => import(/* webpackChunkName: "live-assist" */ '@/views/LiveAssistView.vue')
 const LiveAssistSessionsView = () => import(/* webpackChunkName: "live-assist-sessions" */ '@/views/LiveAssistSessionsView.vue')
+const AvailableResumes = () => import(/* webpackChunkName: "available-resumes" */ '@/views/AvailableResumes.vue')
 
 Vue.use(VueRouter)
 
@@ -182,6 +183,15 @@ const routes = [
     path: '/live-assist/sessions',
     name: 'LiveAssistSessions',
     component: LiveAssistSessionsView,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF
+    }
+  },
+  {
+    path: '/live-assist/resumes',
+    name: 'AvailableResumes',
+    component: AvailableResumes,
     meta: {
       requiresAuth: true,
       allowedRoles: ROLE_GROUPS.STAFF

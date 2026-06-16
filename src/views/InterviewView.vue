@@ -1062,6 +1062,7 @@ export default {
       // Hard guard — only one advance at a time
       if (this.transitioning || !this.interviewing || this.interviewStopping) return;
       this.transitioning = true;
+      if (this._ttsWatchdog) { clearTimeout(this._ttsWatchdog); this._ttsWatchdog = null; }
 
       // Tear down current recorder and any streaming
       this.clearStream();
@@ -1138,6 +1139,7 @@ export default {
           ? (text, voice, onEnd) => speakWithTTSToContext(text, voice, this.sharedAudioCtx, this.mixDestination, onEnd)
           : speakWithTTS;
       ttsFunc(qa.question, this.selectedVoice, () => {
+        if (this._ttsWatchdog) { clearTimeout(this._ttsWatchdog); this._ttsWatchdog = null; }
         if (!this.interviewing) { this.transitioning = false; return; }
         // Safety nets if the `playing` event never fired (e.g., browser
         // fallback synthesis): make sure the question text and answer have
@@ -1157,6 +1159,7 @@ export default {
         if (audio && typeof audio.addEventListener === 'function') {
           const onPlaying = () => {
             audio.removeEventListener('playing', onPlaying);
+            if (this._ttsWatchdog) { clearTimeout(this._ttsWatchdog); this._ttsWatchdog = null; }
             showQuestionNow();
             // Warm the speech cache for the next question while the
             // user is hearing this one. Audio fetch typically takes
@@ -1182,6 +1185,20 @@ export default {
           audio.addEventListener('timeupdate', onTimeUpdate);
         }
       });
+
+      const TTS_REVEAL_WATCHDOG_MS = 12000;
+      this._ttsWatchdog = setTimeout(() => {
+        this._ttsWatchdog = null;
+        if (!this.interviewing) return;
+        if (this.turn - 1 !== turnIdx) return;
+        if (questionShown || !this.transitioning) return;
+        showQuestionNow();
+        startAnswerStream();
+        this.isReading = false;
+        this.showAnswer = true;
+        this.transcriptLoaded = true;
+        this.transitioning = false;
+      }, TTS_REVEAL_WATCHDOG_MS);
     },
 
     streamAnswer(text, entry) {
@@ -1380,6 +1397,15 @@ export default {
       try {
         await setInterviewCompleted(!!this._naturalCompletion);
       } catch (e) { /* noop */ }
+
+      if (this.sessionId) {
+        try {
+          await interviewApi.updateSession(this.sessionId, {
+            completed: !!this._naturalCompletion,
+            endedAt: new Date().toISOString()
+          });
+        } catch (e) { /* best-effort */ }
+      }
 
       // Transcription is now manual: the Summary page shows a Transcribe
       // button. We don't auto-trigger AssemblyAI here, so abandoned and

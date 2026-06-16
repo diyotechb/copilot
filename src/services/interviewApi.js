@@ -104,5 +104,32 @@ export default {
   async listCandidateStats() {
     const res = await fetch(backendUrl('/api/interviews/candidates/stats'), { headers: authHeaders() });
     return jsonOrThrow(res, 'Load candidate stats');
+  },
+
+  async listCandidateResumes() {
+    const res = await fetch(backendUrl('/ws/live-assist/resumes'), { headers: authHeaders() });
+    return jsonOrThrow(res, 'Load candidate resumes');
+  },
+
+  async getCandidateResume(enrollmentId) {
+    const res = await fetch(backendUrl(`/ws/live-assist/resume/${encodeURIComponent(enrollmentId)}`), { headers: authHeaders() });
+    return jsonOrThrow(res, 'Load candidate resume');
+  },
+
+  async saveCandidateResume(enrollmentId, resumeText) {
+    const res = await fetch(backendUrl(`/ws/live-assist/resume/${encodeURIComponent(enrollmentId)}`), {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ resumeText })
+    });
+    return jsonOrThrow(res, 'Save candidate resume');
+  },
+
+  async deleteCandidateResume(enrollmentId) {
+    const res = await fetch(backendUrl(`/ws/live-assist/resume/${encodeURIComponent(enrollmentId)}`), {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    return jsonOrThrow(res, 'Delete candidate resume');
   }
 };

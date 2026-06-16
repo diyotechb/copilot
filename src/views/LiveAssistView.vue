@@ -55,7 +55,12 @@
       </div>
 
       <div class="field-block">
-        <label class="field-label">Resume <span class="req">*</span></label>
+        <div class="resume-label-row">
+          <label class="field-label">Resume <span class="req">*</span></label>
+          <el-button type="text" class="available-resume-link" @click="$router.push({ name: 'AvailableResumes' })">
+            Available Resume
+          </el-button>
+        </div>
         <div :class="{ 'field-error-wrap': resumeMissing || resumeTooLong }">
           <FileUpload
             label="Resume"
@@ -1029,6 +1034,22 @@ export default {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
+}
+
+.resume-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.resume-label-row .field-label {
+  margin-bottom: 8px;
+}
+
+.available-resume-link {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .field-error-wrap >>> .smart-container {

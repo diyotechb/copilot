@@ -66,6 +66,17 @@
         </li>
       </ul>
     </el-card>
+
+    <ConfirmDialog
+      :visible.sync="confirmVisible"
+      title="Delete attempt"
+      message="Delete this practice attempt? This cannot be undone."
+      confirm-text="Delete"
+      type="danger"
+      icon="el-icon-delete"
+      :loading="deleting"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
@@ -73,9 +84,11 @@
 import interviewApi from '@/services/interviewApi';
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 
 export default {
   name: 'CandidateOverview',
+  components: { ConfirmDialog },
   data() {
     return {
       candidates: [],
@@ -90,7 +103,10 @@ export default {
         { value: 'ACTIVE', label: 'Active' },
         { value: 'ENDED', label: 'Ended' },
         { value: 'ANALYZED', label: 'Analyzed' }
-      ]
+      ],
+      confirmVisible: false,
+      deleting: false,
+      pendingDelete: null
     };
   },
   computed: {
@@ -139,17 +155,23 @@ export default {
         this.loadingDetail = false;
       }
     },
-    async remove(a) {
-      try {
-        await this.$confirm('Delete this practice attempt? This cannot be undone.', 'Delete attempt', {
-          confirmButtonText: 'Delete', cancelButtonText: 'Cancel', type: 'warning'
-        });
-      } catch (e) { return; }
+    remove(a) {
+      this.pendingDelete = a;
+      this.confirmVisible = true;
+    },
+    async confirmDelete() {
+      const a = this.pendingDelete;
+      if (!a) { this.confirmVisible = false; return; }
+      this.deleting = true;
       try {
         await interviewApi.deleteSession(a.id);
         this.attempts = this.attempts.filter(x => x.id !== a.id);
         await this.refresh();
-      } catch (e) { /* best-effort */ }
+      } catch (e) { /* best-effort */ } finally {
+        this.deleting = false;
+        this.confirmVisible = false;
+        this.pendingDelete = null;
+      }
     },
     startNew() {
       this.$router.push({ name: 'ResumeSetup' });
