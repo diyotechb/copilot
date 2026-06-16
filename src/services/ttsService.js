@@ -56,21 +56,30 @@ export function clearSpeechCache() {
   _speechCache.clear();
 }
 
+const TTS_FETCH_TIMEOUT_MS = 18000;
+
 async function requestSpeech(text, voice) {
   const { FORMAT } = APP_CONFIG.SERVICES.OPENAI_TTS;
 
-  const response = await fetch(backendUrl('/api/tts/speech'), {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      text,
-      voice: resolveVoice(voice),
-      format: FORMAT
-    })
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TTS_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(backendUrl('/api/tts/speech'), {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        text,
+        voice: resolveVoice(voice),
+        format: FORMAT
+      }),
+      signal: controller.signal
+    });
 
-  await assertOk(response, 'Backend TTS');
-  return response.arrayBuffer();
+    await assertOk(response, 'Backend TTS');
+    return await response.arrayBuffer();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function getSpeechBuffer(text, voice) {
