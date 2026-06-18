@@ -107,7 +107,9 @@ export const APP_CONFIG = {
     //   ~15-30 = normal conversational speech
     //   ~30+   = loud speech
     // 6 sits comfortably above typical room noise but below soft speech.
-    SILENCE_RMS_THRESHOLD: 6
+    SILENCE_RMS_THRESHOLD: 6,
+    PRE_SPEECH_GRACE_MS: 30000,
+    MIN_SPEECH_MS: 400
   },
 
   /**

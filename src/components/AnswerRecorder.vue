@@ -44,6 +44,10 @@ export default {
       silenceTimer: null,
       silenceStart: null,
       silenceThreshold: APP_CONFIG.INTERVIEW.SILENCE_WAIT_MS,
+      preSpeechGraceMs: APP_CONFIG.INTERVIEW.PRE_SPEECH_GRACE_MS,
+      minSpeechMs: APP_CONFIG.INTERVIEW.MIN_SPEECH_MS,
+      hasSpoken: false,
+      speechMs: 0,
     };
   },
   watch: {
@@ -57,8 +61,10 @@ export default {
     async startRecording() {
       this.error = '';
       this.audioChunks = [];
+      this.hasSpoken = false;
+      this.speechMs = 0;
       try {
-        this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.mediaStream = await this.getUserMediaWithTimeout({ audio: true }, 15000);
         // Choose a supported format
         let mimeType = '';
         if (MediaRecorder.isTypeSupported('audio/webm')) {
@@ -147,33 +153,7 @@ export default {
       if (this.silenceTimer) { clearInterval(this.silenceTimer); }
       this.silenceStart = null;
       const data = new Uint8Array(this.analyser.fftSize);
-      this.silenceTimer = setInterval(() => {
-        this.analyser.getByteTimeDomainData(data);
-
-        // RMS energy detection — see startSilenceDetection() for rationale.
-        let sumSquares = 0;
-        for (let i = 0; i < data.length; i++) {
-          const sample = data[i] - APP_CONFIG.INTERVIEW.PCM_MIDPOINT;
-          sumSquares += sample * sample;
-        }
-        const rms = Math.sqrt(sumSquares / data.length);
-        const isSilent = rms < APP_CONFIG.INTERVIEW.SILENCE_RMS_THRESHOLD;
-
-        if (isSilent) {
-          if (!this.silenceStart) this.silenceStart = Date.now();
-          const elapsed = Date.now() - this.silenceStart;
-          this.$emit('silenceProgress', Math.min(elapsed / this.silenceThreshold, 1));
-          if (elapsed > this.silenceThreshold) {
-            this.clearSilenceDetection();
-            this.stopRecording();
-            this.$emit('silenceProgress', 0);
-            this.$emit('silenceDetected');
-          }
-        } else {
-          if (this.silenceStart) this.$emit('silenceProgress', 0);
-          this.silenceStart = null;
-        }
-      }, 100);
+      this.silenceTimer = setInterval(() => this.evaluateSilence(data), APP_CONFIG.INTERVIEW.TIMER_TICK_MS);
     },
     // Stop the recorder WITHOUT saving the audio chunks. Used by the
     // parent's pause→resume "restart current question" flow: when the
@@ -281,36 +261,40 @@ export default {
       }
       const data = new Uint8Array(this.analyser.fftSize);
       this.silenceStart = null;
-      this.silenceTimer = setInterval(() => {
-        this.analyser.getByteTimeDomainData(data);
-
-        // Use RMS energy of the buffer rather than per-sample amplitude
-        // so isolated noise spikes (cough, mouse click, fan blip) don't
-        // reset the silence countdown — only sustained speech does.
-        let sumSquares = 0;
-        for (let i = 0; i < data.length; i++) {
-          const sample = data[i] - APP_CONFIG.INTERVIEW.PCM_MIDPOINT;
-          sumSquares += sample * sample;
-        }
-        const rms = Math.sqrt(sumSquares / data.length);
-        const isSilent = rms < APP_CONFIG.INTERVIEW.SILENCE_RMS_THRESHOLD;
-
-        if (isSilent) {
-          if (!this.silenceStart) this.silenceStart = Date.now();
-          const elapsed = Date.now() - this.silenceStart;
-          this.$emit('silenceProgress', Math.min(elapsed / this.silenceThreshold, 1));
-          if (elapsed > this.silenceThreshold) {
-            // Stop everything FIRST before emitting — prevents re-entry
-            this.clearSilenceDetection();
-            this.stopRecording();
-            this.$emit('silenceProgress', 0);
-            this.$emit('silenceDetected');
-          }
-        } else {
-          if (this.silenceStart) this.$emit('silenceProgress', 0);
-          this.silenceStart = null;
-        }
-      }, 100);
+      this.silenceTimer = setInterval(() => this.evaluateSilence(data), APP_CONFIG.INTERVIEW.TIMER_TICK_MS);
+    },
+    evaluateSilence(data) {
+      this.analyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i++) {
+        const sample = data[i] - APP_CONFIG.INTERVIEW.PCM_MIDPOINT;
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+      const isSilent = rms < APP_CONFIG.INTERVIEW.SILENCE_RMS_THRESHOLD;
+      if (!isSilent) {
+        this.speechMs += APP_CONFIG.INTERVIEW.TIMER_TICK_MS;
+        if (this.speechMs >= this.minSpeechMs) this.hasSpoken = true;
+        if (this.silenceStart) this.$emit('silenceProgress', 0);
+        this.silenceStart = null;
+        return;
+      }
+      if (!this.silenceStart) this.silenceStart = Date.now();
+      const elapsed = Date.now() - this.silenceStart;
+      const threshold = this.hasSpoken ? this.silenceThreshold : this.preSpeechGraceMs;
+      this.$emit('silenceProgress', Math.min(elapsed / threshold, 1));
+      if (elapsed > threshold) {
+        this.clearSilenceDetection();
+        this.stopRecording();
+        this.$emit('silenceProgress', 0);
+        this.$emit('silenceDetected');
+      }
+    },
+    getUserMediaWithTimeout(constraints, ms) {
+      return Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        new Promise((resolve, reject) => setTimeout(() => reject(new Error('getUserMedia timeout')), ms))
+      ]);
     },
     clearSilenceDetection() {
       if (this.silenceTimer) {

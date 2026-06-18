@@ -189,7 +189,7 @@ export default {
       editName: '',
       statusOptions: ['ACTIVE', 'ENDED'],
       categoryOptions: [
-        { value: 'CANDIDATE', label: 'Candidate' },
+        { value: 'INTERVIEW', label: 'Interview' },
         { value: 'OTTER_PRACTICE', label: 'Otter Practice' },
         { value: 'NONE', label: 'No Selection' }
       ],

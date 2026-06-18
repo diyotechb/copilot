@@ -46,6 +46,26 @@
         </div>
       </div>
 
+      <div v-if="!continuing && selectedCandidateId === otterPractice" class="field-block">
+        <label class="field-label">Otter Practice Candidate <span class="required">*</span></label>
+        <el-select
+          class="candidate-select otter-candidate-select"
+          :value="otterCandidateValue"
+          filterable
+          placeholder="Search candidate by name…"
+          :loading="loadingOtterRoster"
+          @change="onOtterCandidateSelect"
+        >
+          <el-option label="Not in List" value="none" />
+          <el-option
+            v-for="c in otterRoster"
+            :key="c.enrollmentId"
+            :label="[c.candidateName, maskEmail(c.email)].filter(Boolean).join(' - ')"
+            :value="c.enrollmentId"
+          />
+        </el-select>
+      </div>
+
       <div class="field-block">
         <label class="field-label">Session Name <span class="required">*</span></label>
         <el-input v-model="sessionName" placeholder="Session name" :maxlength="maxLabelChars" :disabled="continuing" />
@@ -69,6 +89,7 @@
 
 <script>
 import candidateSelectMixin, { NO_SELECTION, OTTER_PRACTICE } from '@/mixins/candidateSelectMixin';
+import { fetchEnrollmentsByStatus } from '@/services/candidateService';
 
 export default {
   name: 'TranscriptionSetup',
@@ -83,7 +104,11 @@ export default {
       maxLabelChars: 200,
       noSelection: NO_SELECTION,
       otterPractice: OTTER_PRACTICE,
-      continueCandidateName: ''
+      continueCandidateName: '',
+      otterRoster: [],
+      otterLoaded: false,
+      loadingOtterRoster: false,
+      otterCandidateValue: 'none'
     };
   },
   computed: {
@@ -103,6 +128,7 @@ export default {
       } else {
         this.continueCandidateName = '';
         this.resetCandidateSelection();
+        this.otterCandidateValue = 'none';
         this.sessionName = this.defaultSessionName();
       }
     }
@@ -124,11 +150,47 @@ export default {
       }
     },
     onDateChange() {
+      this.otterCandidateValue = 'none';
       this.sessionName = this.defaultSessionName();
       this.loadCandidates();
     },
     onSelectionChange(id) {
+      this.otterCandidateValue = 'none';
       this.sessionName = this.onCandidateSelect(id) || this.defaultSessionName();
+      if (id === this.otterPractice) this.loadOtterRoster();
+    },
+    async loadOtterRoster() {
+      if (this.otterLoaded) return;
+      this.loadingOtterRoster = true;
+      try {
+        this.otterRoster = await fetchEnrollmentsByStatus('IN_OTTER');
+        this.otterLoaded = true;
+      } catch (e) {
+        this.otterRoster = [];
+      } finally {
+        this.loadingOtterRoster = false;
+      }
+    },
+    onOtterCandidateSelect(value) {
+      this.otterCandidateValue = value || 'none';
+      const date = this.candidateDate || new Date().toISOString().split('T')[0];
+      const c = (value && value !== 'none') ? this.otterRoster.find(x => x.enrollmentId === value) : null;
+      if (c && c.candidateName) {
+        this.candidateMeta = { candidateName: c.candidateName, enrollmentId: value };
+        this.sessionName = `Otter Practice - ${c.candidateName} - ${date}`;
+      } else {
+        this.candidateMeta = null;
+        this.sessionName = `Otter Practice - ${date}`;
+      }
+    },
+    maskEmail(email) {
+      if (!email) return '';
+      const at = email.indexOf('@');
+      if (at < 1) return email;
+      const local = email.slice(0, at);
+      const domain = email.slice(at);
+      if (local.length <= 5) return `${local.slice(0, 2)}****${domain}`;
+      return `${local.slice(0, 3)}****${local.slice(-2)}${domain}`;
     },
     start() {
       if (!this.candidateDate) {
@@ -222,6 +284,8 @@ export default {
 .candidate-info { color: #64666b; }
 
 .required { color: #f56c6c; }
+
+.otter-candidate-select { width: 100%; }
 
 .setup-action {
   position: relative;
