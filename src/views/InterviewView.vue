@@ -354,10 +354,11 @@
              user knows text size can be adjusted (marker class set
              below). -->
         <button
-            class="rail-btn"
-            :disabled="fontScale <= 0.7"
-            @click="decreaseFontSize"
-            title="Decrease transcript text size">A−</button>
+            class="rail-btn rail-btn-font-up"
+            :class="{ 'rail-btn-tried': hasTriedFontUp }"
+            :disabled="fontScale >= 1.8"
+            @click="increaseFontSize"
+            title="Increase transcript text size">A+</button>
         <button
             class="rail-btn rail-btn-label"
             @click="resetFontSize"
@@ -365,11 +366,10 @@
           {{ Math.round(fontScale * 100) }}%
         </button>
         <button
-            class="rail-btn rail-btn-font-up"
-            :class="{ 'rail-btn-tried': hasTriedFontUp }"
-            :disabled="fontScale >= 1.8"
-            @click="increaseFontSize"
-            title="Increase transcript text size">A+</button>
+            class="rail-btn"
+            :disabled="fontScale <= 0.7"
+            @click="decreaseFontSize"
+            title="Decrease transcript text size">A−</button>
 
         <div class="rail-sep"></div>
 
@@ -441,7 +441,7 @@
             </el-button>
           </div>
 
-          <div v-if="!showOnboarding" class="controls">
+          <div v-if="!showOnboarding && isStaffUser" class="controls">
             <el-button
                 circle
                 class="record-btn minimal-control-btn cancel-control-btn"
@@ -610,7 +610,7 @@ import VideoRecorder from '../components/VideoRecorder.vue';
 import InterviewInstructions from './InterviewInstructions.vue';
 import AnswerRecorder from '../components/AnswerRecorder.vue';
 import SummaryView from './SummaryView.vue';
-import { getSetting } from '@/store/settingStore';
+import { getSetting, saveSetting } from '@/store/settingStore';
 import { getInterviewQA, getTranscripts, saveQuestionTimestamps, setInterviewCompleted, getOrCreateInterviewSessionId, getInterviewMeta, saveInterviewMeta } from '@/store/interviewStore';
 import { listAllSessionIds, saveCompletedSession, deleteSession } from '@/store/interviewHistoryStore';
 import interviewApi from '@/services/interviewApi';
@@ -621,6 +621,8 @@ import { speakWithTTS, speakWithTTSToContext, prefetchSpeech, clearSpeechCache }
 import FeedbackSection from '../views/FeedbackSection.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { APP_CONFIG } from '@/constants/appConfig';
+import authService from '@/services/authService';
+import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
 export default {
   name: 'InterviewView',
@@ -749,6 +751,9 @@ export default {
   },
 
   computed: {
+    isStaffUser() {
+      return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
+    },
     nowTime() {
       return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     },
@@ -840,12 +845,19 @@ export default {
       if (last && last.type === 'interviewer' && !this.showQuestionSection) return;
       this.$nextTick(() => this.scrollToLatestTranscriptLine());
     },
+    fontScale(val) {
+      saveSetting('interviewFontScale', val);
+    },
   },
 
   async created() {
     const storedQA = await getInterviewQA();
     this.interviewQA = Array.isArray(storedQA) ? storedQA : [];
     this.difficultyLevel = await getSetting('interviewDifficulty');
+    const savedFontScale = await getSetting('interviewFontScale');
+    if (typeof savedFontScale === 'number' && savedFontScale >= 0.7 && savedFontScale <= 1.8) {
+      this.fontScale = savedFontScale;
+    }
     try {
       const meta = await getInterviewMeta();
       this.candidateName = (meta && meta.candidateName) || '';
@@ -1923,6 +1935,7 @@ export default {
       // mounts itself because its v-if is gated on !showOnboarding.
       this.startTimer();
       if (this._resumeFromTurn) this.turn = this._resumeFromTurn;
+      this.saveSnapshotToHistory();
       this.nextQuestion();
     },
 

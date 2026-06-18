@@ -87,7 +87,7 @@
                 Download<i class="el-icon-arrow-down el-icon--right"></i>
               </el-button>
               <el-dropdown-menu slot="dropdown">
-                <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl">Video / Audio</el-dropdown-item>
+                <el-dropdown-item command="video" icon="el-icon-video-camera" :disabled="!recordedVideoUrl || !completed">Video / Audio</el-dropdown-item>
                 <el-dropdown-item command="transcripts" icon="el-icon-document">Transcripts</el-dropdown-item>
                 <el-dropdown-item v-if="llmAnalysis" command="analysis" icon="el-icon-data-analysis">Analysis</el-dropdown-item>
               </el-dropdown-menu>
@@ -117,7 +117,7 @@
         </div>
 
         <div
-            v-if="analysisFeatureEnabled && analysisMode !== 'none' && completed && hasUnresolvedTranscripts && !transcribeRecovering"
+            v-if="analysisFeatureEnabled && analysisMode !== 'none' && completed && hasUnresolvedTranscripts && hasAnyAudio && !transcribeRecovering"
             class="info-banner action"
         >
           <i class="el-icon-info"></i>
@@ -127,7 +127,7 @@
           </el-button>
         </div>
         <div
-            v-if="isCandidateSession && allAnswered && hasUnresolvedTranscripts && !transcribeRecovering"
+            v-if="isCandidateSession && allAnswered && hasUnresolvedTranscripts && hasAnyAudio && !transcribeRecovering"
             class="info-banner action"
         >
           <i class="el-icon-info"></i>
@@ -418,7 +418,7 @@
           </div>
           <div class="card-body centered-body">
             <div v-if="recordedVideoUrl" class="video-preview-wrapper">
-              <video :src="recordedVideoUrl" controls class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @ended="onVideoEnded"></video>
+              <video :src="recordedVideoUrl" controls :controlsList="completed ? null : 'nodownload'" class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @ended="onVideoEnded" @contextmenu="onMediaContextMenu"></video>
             </div>
             <div v-else-if="isHistoryView" class="video-missing-alert">
               <i class="el-icon-warning-outline"></i>
@@ -940,9 +940,10 @@ import {
   sessionExtraWordsNotInReference
 } from '@/utils/basicAnalysis';
 import { getSetting } from '@/store/settingStore';
-import { getVideoForSession, getRecordingForSession } from '@/store/recordingStore.js';
+import { getVideoForSession, getRecordingForSession, listRecordedAnswerIndices } from '@/store/recordingStore.js';
 import { analyzeInterviewSession } from '@/services/openaiAnalysisService';
 import { saveCompletedSession, updateHistoryEntry, getSessionById, deleteSession } from '@/store/interviewHistoryStore';
+import interviewApi from '@/services/interviewApi';
 import { transcribeAllAnswers, hasPendingTranscriptions } from '@/services/batchTranscribeService';
 import { claimDailyTranscribe, checkDailyTranscribeAllowance } from '@/services/interviewApi';
 import { setActiveEnrollmentId, clearActiveEnrollmentId } from '@/services/activeEnrollment';
@@ -1022,6 +1023,7 @@ export default {
       historyEntryId: '',
       showTranscribeConfirm: false,
       dailyTranscribeUsed: false,
+      recordedIndices: [],
       transcribeAllowanceChecked: false,
       // Session id for the audio currently being viewed. Set in
       // loadFromLiveSession (from interview meta) and loadFromHistory
@@ -1043,6 +1045,9 @@ export default {
     },
     isCandidateSession() {
       return !this.isStaff && !!this.enrollmentId;
+    },
+    hasAnyAudio() {
+      return this.recordedIndices.length > 0;
     },
     allAnswered() {
       const total = (this.localInterviewQA && this.localInterviewQA.length) || this.transcripts.length;
@@ -1364,6 +1369,11 @@ export default {
     } else {
       await this.loadFromLiveSession();
     }
+    try {
+      this.recordedIndices = await listRecordedAnswerIndices(this.activeSessionId);
+    } catch (e) {
+      this.recordedIndices = [];
+    }
     if (this.isCandidateSession && this.allAnswered && this.hasUnresolvedTranscripts) {
       await this.refreshDailyTranscribeAllowance();
     }
@@ -1436,21 +1446,7 @@ export default {
     // after a non-empty MediaRecorder blob lands. This is what gates the
     // "Play Your Answer" button so it works before transcription too.
     hasAudioRecorded(idx) {
-      const t = this.transcripts[idx];
-      if (t === undefined || t === null) return false;
-      if (typeof t === 'string') return t.length > 0; // includes '[Transcription error]'
-      // Skipped slots are explicit markers that nothing was captured.
-      if (t.skipped) return false;
-      // Pending slots have a confirmed audio blob waiting to be sent off
-      // — keep playback enabled so the user can review what they said
-      // before transcription runs.
-      if (t.pending) return true;
-      // Otherwise it's a finished transcript. Only treat as "has audio"
-      // when there's real spoken content; AssemblyAI's "no spoken audio"
-      // path writes an object with empty text/words and the blob behind
-      // it is just silence or noise — playback gives the user nothing.
-      const hasWords = Array.isArray(t.words) && t.words.length > 0;
-      return !!(t.text && t.text.trim()) || hasWords;
+      return this.recordedIndices.includes(idx);
     },
     // Reduces the rich transcript shape to one of a handful of states so
     // the UI can render an accurate label + hint per question card. The
@@ -1843,9 +1839,14 @@ export default {
           }
         }
         if (this.historyEntryId) {
-          const patch = { llmAnalysis: result, transcripts: this.transcripts };
+          const patch = { llmAnalysis: result };
           if (wasUpgrade) patch.analysisMode = 'full';
-          updateHistoryEntry(this.historyEntryId, patch).catch(() => {});
+          try {
+            await interviewApi.updateSession(this.historyEntryId, patch);
+          } catch (e) {
+            this.notify('Analysis generated but could not be saved — please try again.', 'error');
+            return;
+          }
         }
         this.notify(isRegenerate ? 'Detailed analysis regenerated.' : 'Detailed analysis is ready.', 'success');
       } catch (e) {
@@ -2309,6 +2310,9 @@ export default {
     onVideoPaused() { if (this.playback.kind === 'video') this.stopAllPlayback(); },
     onVideoEnded() { if (this.playback.kind === 'video') this.stopAllPlayback(); },
 
+    onMediaContextMenu(e) {
+      if (!this.completed) e.preventDefault();
+    },
     // ─── Downloads ───
     // Returns a filesystem-safe base name derived from the candidate
     // name (with whitespace collapsed to hyphens). Falls back to a
@@ -2328,7 +2332,7 @@ export default {
       }
     },
     handleDownloadVideo() {
-      if (!this.recordedVideoUrl) return;
+      if (!this.recordedVideoUrl || !this.completed) return;
       const link = document.createElement('a');
       link.href = this.recordedVideoUrl;
       link.download = `${this.fileBaseName()}-recording.webm`;

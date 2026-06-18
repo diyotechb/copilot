@@ -56,40 +56,37 @@
             class="interview-card"
             @click="open(s.id)"
         >
-          <div class="card-header">
+          <div class="card-row">
             <div class="card-title-wrap">
               <h3 class="card-title">{{ s.candidateName || 'Interview' }}</h3>
-              <span v-if="averageScore(s) !== null" class="card-score" :class="'score-' + scoreTone(s)" :title="'Average delivery score'">
-                <i class="el-icon-medal"></i> {{ averageScore(s) }} / 10
-              </span>
+              <el-tag v-if="s.status" :type="statusType(s.status)" size="mini" effect="dark">{{ s.status }}</el-tag>
+              <el-tooltip placement="top" :content="'Updated: ' + formatDate(lastUpdated(s))" :disabled="!lastUpdated(s)">
+                <span class="card-ago">{{ timeAgo(lastUpdated(s)) }}</span>
+              </el-tooltip>
             </div>
-            <div class="card-meta">
-              <span v-if="statusLabel(s.status)" class="card-status-badge" :class="'st-' + statusTone(s.status)">{{ statusLabel(s.status) }}</span>
-              <span class="card-date">{{ formatDate(s.endedAt || s.startedAt || s.createdAt) }}</span>
+            <span class="card-top-right">
+              <span v-if="cardRating(s) !== null" class="card-score" :class="'score-' + scoreTone(s)" :title="'Overall rating'">
+                <i class="el-icon-medal"></i> {{ cardRating(s) }} / 10
+              </span>
               <span
                   v-if="hasVideo(s.id)"
                   class="video-availability has-video"
                   title="Video recording available">
                 <i class="el-icon-video-camera"></i>
               </span>
-            </div>
+            </span>
           </div>
-          <div class="card-body">
+          <div class="card-row card-row-body">
             <p class="card-line-1">
               <span class="card-difficulty">{{ s.difficulty || 'Interview' }}</span>
-              <span v-if="s.category && s.category !== 'All'" class="meta-sep">·</span>
               <span v-if="s.category && s.category !== 'All'">{{ s.category }}</span>
-              <span v-if="verdictLabel(s) && averageScore(s) === null" class="meta-sep">·</span>
-              <span v-if="verdictLabel(s) && averageScore(s) === null" class="card-verdict" :class="'verdict-' + verdictTone(s)">{{ verdictLabel(s) }}</span>
-              <span class="meta-sep">·</span>
               <span :class="s.completed ? 'card-complete' : 'card-incomplete'">{{ s.completed ? 'Complete' : 'Incomplete' }}</span>
-              <span class="meta-sep">·</span>
               <span class="card-count">{{ answeredCount(s) }} / {{ (s.qaList || []).length }} answered</span>
               <template v-if="totalDuration(s)">
-                <span class="meta-sep">·</span>
                 <span class="card-duration"><i class="el-icon-time"></i> {{ totalDuration(s) }} total</span>
               </template>
             </p>
+            <span class="card-date">{{ formatDate(s.endedAt || s.startedAt || s.createdAt) }}</span>
           </div>
         </div>
       </div>
@@ -104,7 +101,7 @@ import {
   MAX_ENTRIES
 } from '@/store/interviewHistoryStore';
 import { listSessionsWithVideo, MAX_VIDEO_SESSIONS } from '@/store/recordingStore';
-import { wordCount, aggregateStats, overallVerdict, formatDuration } from '@/utils/summaryStats';
+import { wordCount, aggregateStats, overallVerdict, formatDuration, deliveryRating } from '@/utils/summaryStats';
 import authService from '@/services/authService';
 import { ROLE_GROUPS, hasAnyRole } from '@/constants/roles';
 
@@ -156,16 +153,27 @@ export default {
     goToAll() {
       this.$router.push({ name: 'AllInterviews' });
     },
-    statusLabel(status) {
-      if (status === 'ANALYZED') return 'Analyzed';
-      if (status === 'ENDED') return 'Ended';
-      if (status === 'ACTIVE') return 'Active';
-      return '';
+    statusType(status) {
+      if (status === 'ENDED') return 'warning';
+      if (status === 'ANALYZED') return 'primary';
+      return 'success';
     },
-    statusTone(status) {
-      if (status === 'ANALYZED') return 'analyzed';
-      if (status === 'ENDED') return 'done';
-      return 'active';
+    lastUpdated(s) {
+      return s.updatedAt || s.endedAt || s.startedAt || s.createdAt;
+    },
+    timeAgo(ts) {
+      if (!ts) return '';
+      const diff = Date.now() - new Date(ts).getTime();
+      if (diff < 60000) return 'just now';
+      const m = Math.floor(diff / 60000);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      if (d < 30) return `${d}d ago`;
+      const mo = Math.floor(d / 30);
+      if (mo < 12) return `${mo}mo ago`;
+      return `${Math.floor(mo / 12)}y ago`;
     },
     hasVideo(id) {
       return this.videoSessionIds.includes(id);
@@ -211,8 +219,14 @@ export default {
       const sum = scores.reduce((a, b) => a + b, 0);
       return Math.round((sum / scores.length) * 10) / 10;
     },
+    cardRating(s) {
+      const avg = this.averageScore(s);
+      if (avg !== null) return avg;
+      if (!Array.isArray(s.transcripts) || !s.transcripts.length) return null;
+      return deliveryRating(aggregateStats(s.transcripts));
+    },
     scoreTone(s) {
-      const v = this.averageScore(s);
+      const v = this.cardRating(s);
       if (v === null) return 'neutral';
       if (v >= 7) return 'good';
       if (v >= 5) return 'ok';
@@ -436,11 +450,22 @@ export default {
   border-color: #c6e2ff;
 }
 
-.card-header {
+.card-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  gap: 16px;
+}
+
+.card-row-body {
+  margin-top: 8px;
+}
+
+.card-top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .card-title-wrap {
@@ -460,6 +485,13 @@ export default {
 
 .card-meta {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.card-meta-top {
+  display: flex;
   align-items: center;
   gap: 10px;
 }
@@ -467,20 +499,14 @@ export default {
 .card-date {
   font-size: 0.8em;
   color: #999;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-.card-status-badge {
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  padding: 2px 8px;
-  border-radius: 999px;
+.card-ago {
+  font-size: 12px;
+  color: #909399;
 }
-
-.card-status-badge.st-analyzed { background: #e0edff; color: #2563eb; }
-.card-status-badge.st-done { background: #e3f5e9; color: #16a34a; }
-.card-status-badge.st-active { background: #fdf0dc; color: #b45309; }
 
 .icon-btn {
   background: transparent;
@@ -513,6 +539,8 @@ export default {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .card-difficulty { font-weight: 600; color: #475569; }

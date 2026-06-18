@@ -28,6 +28,10 @@
           </el-badge>
         </div>
 
+        <div v-if="!loadingList && !showFilters" class="results-count">
+          {{ filteredSessions.length }} {{ filteredSessions.length === 1 ? 'result' : 'results' }}
+        </div>
+
         <div v-show="showFilters" class="filters">
           <div class="filter-row">
             <el-select v-model="filters.status" size="small" clearable placeholder="Status">
@@ -58,6 +62,7 @@
             />
           </div>
           <div class="filter-actions">
+            <span class="filter-count">{{ filteredSessions.length }} {{ filteredSessions.length === 1 ? 'result' : 'results' }}</span>
             <el-button type="text" size="mini" @click="clearFilters">Clear filters</el-button>
           </div>
         </div>
@@ -143,7 +148,16 @@
           </div>
 
           <div class="qa">
-            <div class="qa-header">Transcript</div>
+            <div class="qa-header">
+              <span>Transcript</span>
+              <el-button
+                type="text"
+                icon="el-icon-document-copy"
+                class="copy-transcript-btn"
+                :disabled="!detailLines.length"
+                @click="copyTranscript"
+                title="Copy transcript">Copy</el-button>
+            </div>
             <div v-if="!detailLines.length" class="empty">No transcript recorded for this session.</div>
             <div v-for="(l, i) in detailLines" :key="i" class="pair">
               <div class="a"><span class="tag tag-time">{{ l.time }}</span>{{ l.text }}</div>
@@ -420,6 +434,15 @@ export default {
       if (status === 'ENDED') return 'warning';
       return 'success';
     },
+    copyTranscript() {
+      const text = this.detailLines.map(l => l.text).filter(Boolean).join('\n\n');
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        this.$message({ message: 'Transcript copied to clipboard', type: 'success', duration: 2000 });
+      }).catch(() => {
+        this.$message({ message: 'Could not copy — try selecting the text manually', type: 'error', duration: 3000 });
+      });
+    },
     formatDate(ts) {
       if (!ts) return '';
       return new Date(ts).toLocaleString(undefined, {
@@ -500,7 +523,9 @@ export default {
 }
 .filter-row { display: flex; gap: 8px; }
 .filter-row > * { flex: 1; min-width: 0; }
-.filter-actions { display: flex; justify-content: flex-end; }
+.filter-actions { display: flex; justify-content: space-between; align-items: center; }
+.filter-count { font-size: 12px; color: #909399; }
+.results-count { font-size: 12px; color: #909399; margin: 0 2px 10px; padding-top: 2px; }
 
 .session-list {
   list-style: none;
@@ -566,7 +591,8 @@ export default {
 .context-label { font-size: 13px; font-weight: 600; color: #2c3e50; margin-bottom: 6px; }
 .context-text { margin: 0; font-size: 13px; color: #606266; line-height: 1.6; white-space: pre-wrap; }
 
-.qa-header { font-weight: 600; color: #606266; font-size: 14px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e4e7ed; }
+.qa-header { font-weight: 600; color: #606266; font-size: 14px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e4e7ed; display: flex; align-items: center; justify-content: space-between; }
+.copy-transcript-btn { padding: 0; font-weight: 600; }
 .pair { padding: 14px 0; border-bottom: 1px solid #f0f2f5; }
 .a { color: #303133; line-height: 1.6; white-space: pre-wrap; }
 .tag {
