@@ -77,6 +77,19 @@ export async function deleteVideoForSession(sessionId) {
   await deleteItem(STORE_NAME, videoKey(sessionId));
 }
 
+export async function listRecordedAnswerIndices(sessionId) {
+  if (!sessionId) return [];
+  const keys = await getAllKeysFromStore(STORE_NAME);
+  const prefix = `Recording_${sessionId}_`;
+  const out = [];
+  for (const k of keys) {
+    if (typeof k !== 'string' || !k.startsWith(prefix)) continue;
+    const idx = parseInt(k.slice(prefix.length), 10);
+    if (!Number.isNaN(idx)) out.push(idx);
+  }
+  return out;
+}
+
 // Returns the set of sessionIds that currently have a video blob on disk.
 export async function listSessionsWithVideo() {
   const keys = await getAllKeysFromStore(STORE_NAME);
