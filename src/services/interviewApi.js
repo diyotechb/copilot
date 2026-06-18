@@ -6,6 +6,21 @@ async function jsonOrThrow(res, label) {
   return res.json();
 }
 
+function slimTranscript(t) {
+  if (!t || typeof t !== 'object') return t;
+  const out = { text: t.text || '' };
+  if (t.pending) out.pending = true;
+  if (t.skipped) out.skipped = true;
+  if (Array.isArray(t.words) && t.words.length) {
+    out.words = t.words.map(w => ({
+      text: w.text != null ? w.text : (w.word || ''),
+      start: w.start,
+      end: w.end
+    }));
+  }
+  return out;
+}
+
 function sessionBody(payload) {
   return {
     sessionId: payload.id || payload.sessionId || undefined,
@@ -21,7 +36,7 @@ function sessionBody(payload) {
     category: payload.category ?? undefined,
     analysisMode: payload.analysisMode ?? undefined,
     qaList: Array.isArray(payload.qaList) ? payload.qaList : undefined,
-    transcripts: Array.isArray(payload.transcripts) ? payload.transcripts : undefined,
+    transcripts: Array.isArray(payload.transcripts) ? payload.transcripts.map(slimTranscript) : undefined,
     questionTimestamps: Array.isArray(payload.questionTimestamps) ? payload.questionTimestamps : undefined,
     llmAnalysis: payload.llmAnalysis ?? undefined
   };

@@ -1,7 +1,28 @@
 <template>
   <div class="setup-page-view" :class="{ 'embedded-summary-root': embedded }">
     <!-- Loading / Processing States -->
-    <div v-if="isLoading" class="setup-status-view">
+    <div v-if="pageLoading">
+      <div class="setup-view-header">
+        <div v-if="!embedded" class="header-breadcrumb">
+          <button type="button" class="back-link-btn" @click="$router.push({ name: 'MyInterviews' })">
+            <i class="el-icon-arrow-left"></i>
+            <span>My Interviews</span>
+          </button>
+        </div>
+        <div class="header-main-row">
+          <div class="header-main">
+            <div class="title-row">
+              <h2 class="header-title">Interview Summary</h2>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="summary-loading">
+        <i class="el-icon-loading"></i>
+        <span>Loading…</span>
+      </div>
+    </div>
+    <div v-else-if="isLoading" class="setup-status-view">
       <div class="status-content">
         <div class="main-loader"></div>
         <h3>{{ loadingLabel }}</h3>
@@ -411,24 +432,24 @@
              In history, the video may have been pruned past the 3-session
              video cap — in that case we surface that explicitly so the
              user knows it's not missing, just retired. -->
-        <div v-if="enableVideo || isHistoryView" class="setup-card video-card" ref="videoCard">
+        <div v-if="recordedVideoUrl && (enableVideo || isHistoryView)" class="setup-card video-card" ref="videoCard">
           <div class="card-header highlight">
             <i class="el-icon-video-camera"></i>
             <h3>Session Recording</h3>
           </div>
           <div class="card-body centered-body">
-            <div v-if="recordedVideoUrl" class="video-preview-wrapper">
+            <div class="video-preview-wrapper">
               <video :src="recordedVideoUrl" controls :controlsList="completed ? null : 'nodownload'" class="summary-video" ref="summaryVideo" @pause="onVideoPaused" @ended="onVideoEnded" @contextmenu="onMediaContextMenu"></video>
             </div>
-            <div v-else-if="isHistoryView" class="video-missing-alert">
-              <i class="el-icon-warning-outline"></i>
-              <p>Video for this session was removed to free up space. Only the most recent 3 interviews keep their video; transcripts and audio are still available below.</p>
-            </div>
-            <div v-else-if="videoTimeout" class="video-missing-alert">
-              <i class="el-icon-warning-outline"></i>
-              <p>Video recording was not found, but your transcript is available below.</p>
-            </div>
           </div>
+        </div>
+        <div v-else-if="isHistoryView" class="info-banner">
+          <i class="el-icon-info"></i>
+          <span>Video for this session was removed to free up space — only the 3 most recent interviews keep their video. Transcripts and audio are available below.</span>
+        </div>
+        <div v-else-if="videoTimeout" class="info-banner">
+          <i class="el-icon-info"></i>
+          <span>Video recording was not found, but your transcript is available below.</span>
         </div>
 
         <!-- Per-question section header. Downloads live in the page
@@ -964,6 +985,7 @@ export default {
       transcripts: [],
       localInterviewQA: [],
       loadingTranscripts: true,
+      pageLoading: true,
       enableVideo: false,
       recordedVideoUrl: '',
       videoTimeout: false,
@@ -1374,6 +1396,7 @@ export default {
     } catch (e) {
       this.recordedIndices = [];
     }
+    this.pageLoading = false;
     if (this.isCandidateSession && this.allAnswered && this.hasUnresolvedTranscripts) {
       await this.refreshDailyTranscribeAllowance();
     }
@@ -1838,15 +1861,20 @@ export default {
             setAnalysisMode('full').catch(() => {});
           }
         }
-        if (this.historyEntryId) {
-          const patch = { llmAnalysis: result };
+        const targetId = this.historyEntryId || this.activeSessionId;
+        if (targetId) {
+          const patch = { llmAnalysis: result, transcripts: this.transcripts };
           if (wasUpgrade) patch.analysisMode = 'full';
           try {
-            await interviewApi.updateSession(this.historyEntryId, patch);
+            await interviewApi.updateSession(targetId, patch);
+            this.historyEntryId = targetId;
           } catch (e) {
             this.notify('Analysis generated but could not be saved — please try again.', 'error');
             return;
           }
+        } else {
+          this.notify('Analysis generated but could not be saved — no session id found.', 'error');
+          return;
         }
         this.notify(isRegenerate ? 'Detailed analysis regenerated.' : 'Detailed analysis is ready.', 'success');
       } catch (e) {
@@ -3852,6 +3880,18 @@ export default {
   align-items: center;
   justify-content: center;
   height: 80vh;
+}
+.summary-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 60vh;
+  color: #909399;
+  font-size: 1rem;
+}
+.summary-loading i {
+  font-size: 22px;
 }
 .main-loader {
   border: 4px solid #f3f4f6;
