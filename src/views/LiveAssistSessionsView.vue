@@ -250,7 +250,7 @@ export default {
       outcomeOptions: ['OFFERED', 'REJECTED', 'ADVANCED', 'WAITING', 'GHOSTED', 'NA'],
       statusOptions: ['ACTIVE', 'ENDED', 'COMPLETED'],
       categoryOptions: [
-        { value: 'CANDIDATE', label: 'Candidate' },
+        { value: 'INTERVIEW', label: 'Interview' },
         { value: 'NONE', label: 'None' }
       ],
       showFilters: false,

@@ -95,7 +95,7 @@ export default {
         return '';
       }
       this.selectedCandidateId = id;
-      this.category = 'CANDIDATE';
+      this.category = 'INTERVIEW';
       this.candidateMeta = {
         candidateName: c.fullName || '',
         enrollmentId: c.enrollmentId || '',

@@ -889,6 +889,15 @@ export default {
       this.currentMediaTime = 0;
       this.questionTimestamps = [];
       this.answerTranscripts = [];
+
+      try {
+        const [resumeMeta, savedTranscripts] = await Promise.all([getInterviewMeta(), getTranscripts()]);
+        const answered = Array.isArray(savedTranscripts) ? savedTranscripts.filter(Boolean).length : 0;
+        if (!(resumeMeta && resumeMeta.completed) && answered > 0 && answered < this.interviewQA.length) {
+          this._resumeFromTurn = answered;
+          this._restoreTranscript(answered);
+        }
+      } catch (e) { /* best-effort */ }
       // NOTE: startTimer() is intentionally NOT called here. It sets
       // up the persistent mic + the elapsed-time tick, and we want
       // neither to be active during the onboarding read-through.
@@ -970,6 +979,8 @@ export default {
     }
     this.stopTimer();
     this.clearStream();
+    if (this._welcomeStreamTimer) { clearTimeout(this._welcomeStreamTimer); this._welcomeStreamTimer = null; }
+    if (this._clearSampleStreamTimer) this._clearSampleStreamTimer();
     if (this._unwatchFirstQ) { this._unwatchFirstQ(); this._unwatchFirstQ = null; }
     clearSpeechCache();
   },
@@ -1235,6 +1246,7 @@ export default {
 
     clearStream() {
       if (this.streamTimer) { clearTimeout(this.streamTimer); this.streamTimer = null; }
+      if (this._ttsWatchdog) { clearTimeout(this._ttsWatchdog); this._ttsWatchdog = null; }
       this._streamResumeCallback = null;
       this._pausedStreamTimer = false;
     },
@@ -1910,7 +1922,19 @@ export default {
       // shared AudioContext, the elapsed-time tick. VideoRecorder
       // mounts itself because its v-if is gated on !showOnboarding.
       this.startTimer();
+      if (this._resumeFromTurn) this.turn = this._resumeFromTurn;
       this.nextQuestion();
+    },
+
+    _restoreTranscript(count) {
+      const restored = [];
+      for (let i = 0; i < count; i++) {
+        const qa = this.interviewQA[i];
+        if (!qa) continue;
+        restored.push({ type: 'interviewer', text: qa.question, time: '' });
+        if (this.showAIAnswer && qa.answer) restored.push({ type: 'user', text: qa.answer, time: '' });
+      }
+      this.interviewTranscript = restored;
     },
 
     togglePause() {
@@ -2057,18 +2081,26 @@ export default {
       }, APP_CONFIG.INTERVIEW.TIMER_TICK_MS);
     },
     async _setupPersistentMic() {
+      let stream = null;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         // Bail if interview ended while we were awaiting permission
         if (!this.sharedAudioCtx || this.sharedAudioCtx.state === 'closed' || !this.mixDestination) {
           stream.getTracks().forEach(t => t.stop());
           return;
         }
-        this.persistentMicStream = stream;
         this.persistentMicSource = this.sharedAudioCtx.createMediaStreamSource(stream);
         this.persistentMicSource.connect(this.mixDestination);
+        this.persistentMicStream = stream;
       } catch (e) {
         console.error('Could not capture persistent mic for video mix:', e);
+        if (this.persistentMicSource) {
+          try { this.persistentMicSource.disconnect(); } catch (err) { /* noop */ }
+          this.persistentMicSource = null;
+        }
+        if (stream) {
+          try { stream.getTracks().forEach(t => t.stop()); } catch (err) { /* noop */ }
+        }
       }
     },
     stopTimer() {
