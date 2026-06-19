@@ -1112,6 +1112,7 @@ export default {
       if (this.turn >= this.interviewQA.length) {
         // No more questions left — play a brief closing message before
         // ending the session, then navigate to the summary.
+        this._naturalCompletion = true;
         this.playClosingMessage();
         return;
       }
@@ -1328,8 +1329,6 @@ export default {
           llmAnalysis: null
         });
       } catch (e) {
-        // Best-effort. If the snapshot fails the interview keeps
-        // running — the Summary page's final save still has a chance.
         console.warn('[InterviewView] snapshot to history failed:', e);
       }
     },

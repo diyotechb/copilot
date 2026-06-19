@@ -132,11 +132,13 @@ export default {
           listRecentSessions(this.MAX_VISIBLE),
           listSessionsWithVideo()
         ]);
-        // hide abandoned, never-answered interviews; keep completed ones
+        const now = Date.now();
         this.sessions = recent.filter(s => {
           if (s.completed) return true;
-          if (!Array.isArray(s.transcripts) || !s.transcripts.length) return false;
-          return s.transcripts.some(t => t != null);
+          if (Array.isArray(s.transcripts) && s.transcripts.some(t => t != null)) return true;
+          const ts = s.updatedAt || s.startedAt || s.createdAt;
+          const fresh = ts && (now - new Date(ts).getTime()) < 15 * 60 * 1000;
+          return s.status === 'ACTIVE' && fresh;
         });
         this.videoSessionIds = withVideo;
       } catch (e) {
