@@ -2,7 +2,7 @@
   <div class="transcriptions_container">
     <transcript-dashboard
       v-if="viewMode === 'dashboard'"
-      :cloud-recent="recentCloud"
+      :cloud-recent="cloudSessions"
       :loading-cloud="loadingCloud"
       :mic-permission="micPermissionState"
       :continue-target="continueTarget"
@@ -54,6 +54,8 @@ import TranscriptDetail from '@/components/transcription/TranscriptDetail.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { APP_CONFIG } from '@/constants/appConfig';
 
+const RECENT_PAGE_SIZE = 20;
+
 export default {
   name: "TranscriptionsView",
   components: { TranscriptDashboard, TranscriptDetail, ConfirmDialog },
@@ -97,9 +99,6 @@ export default {
   },
 
   computed: {
-    recentCloud() {
-      return this.cloudSessions.slice(0, 20);
-    },
     isActiveCloudRecording() {
       return this.viewMode === 'detail' && this.isCloud && !!this.sessionId && !this.isReadOnly;
     }
@@ -200,8 +199,8 @@ export default {
     async loadCloud() {
       this.loadingCloud = true;
       try {
-        const list = await transcriptionApi.list();
-        this.cloudSessions = Array.isArray(list) ? list : [];
+        const res = await transcriptionApi.list({ scope: 'mine', page: 1, size: RECENT_PAGE_SIZE });
+        this.cloudSessions = (res && Array.isArray(res.items)) ? res.items : [];
       } catch (e) {
         this.cloudSessions = [];
       } finally {

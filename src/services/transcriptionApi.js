@@ -82,8 +82,13 @@ export default {
     return jsonOrThrow(res, 'Rename transcription');
   },
 
-  async list() {
-    const res = await fetch(backendUrl('/api/transcriptions/sessions'), { headers: authHeaders() });
+  async list(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.append(key, value);
+    });
+    const qs = query.toString();
+    const res = await fetch(backendUrl(`/api/transcriptions/sessions${qs ? `?${qs}` : ''}`), { headers: authHeaders() });
     return jsonOrThrow(res, 'Load transcriptions');
   },
 

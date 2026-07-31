@@ -24,9 +24,10 @@
       <div v-if="loadingCloud" class="list-loading"><i class="el-icon-loading"></i><span>Loading…</span></div>
       <div v-else-if="cloudRecent.length" class="ts-list">
         <transcription-session-card
-          v-for="s in cloudRecent"
+          v-for="(s, i) in cloudRecent"
           :key="s.sessionId"
           :item="s"
+          :continuable="i === 0"
           @open="$emit('open-cloud', $event)"
           @continue="$emit('continue-cloud', $event)"
         />

@@ -28,8 +28,18 @@
           </el-badge>
         </div>
 
-        <div v-if="!loadingList && !showFilters" class="results-count">
-          {{ filteredSessions.length }} {{ filteredSessions.length === 1 ? 'result' : 'results' }}
+        <div class="results-row">
+          <span class="results-count">
+            <template v-if="loadingList">Loading…</template>
+            <template v-else>{{ total }} {{ total === 1 ? 'result' : 'results' }}</template>
+          </span>
+          <el-button
+            v-if="canViewAll"
+            type="text"
+            size="mini"
+            class="scope-toggle"
+            @click="toggleScope"
+          >{{ scope === 'all' ? 'View only mine' : 'View all' }}</el-button>
         </div>
 
         <div v-show="showFilters" class="filters">
@@ -43,15 +53,15 @@
           </div>
           <div class="filter-row">
             <el-select v-model="filters.client" size="small" clearable filterable placeholder="Client">
-              <el-option v-for="o in clientOptions" :key="o" :label="o" :value="o" />
+              <el-option v-for="o in filterOptions.clients" :key="o" :label="o" :value="o" />
             </el-select>
             <el-select v-model="filters.task" size="small" clearable placeholder="Task">
-              <el-option v-for="o in taskOptions" :key="o" :label="o" :value="o" />
+              <el-option v-for="o in filterOptions.tasks" :key="o" :label="o" :value="o" />
             </el-select>
           </div>
           <div class="filter-row">
             <el-select v-model="filters.callTaker" size="small" clearable filterable placeholder="Call taker">
-              <el-option v-for="o in callTakerOptions" :key="o" :label="o" :value="o" />
+              <el-option v-for="o in filterOptions.callTakers" :key="o" :label="o" :value="o" />
             </el-select>
             <el-date-picker
               v-model="filters.date"
@@ -62,22 +72,21 @@
             />
           </div>
           <div class="filter-actions">
-            <span class="filter-count">{{ filteredSessions.length }} {{ filteredSessions.length === 1 ? 'result' : 'results' }}</span>
             <el-button type="text" size="mini" @click="clearFilters">Clear filters</el-button>
           </div>
         </div>
 
-        <div v-if="loadingList && !sessions.length" class="list-loading"><i class="el-icon-loading"></i><span>Loading…</span></div>
-        <div v-else-if="!sessions.length" class="empty">No transcriptions yet.</div>
-        <div v-else-if="!filteredSessions.length" class="empty">No transcriptions match the filters.</div>
+        <div v-if="loadingList" class="list-loading"><i class="el-icon-loading"></i><span>Loading…</span></div>
+        <div v-else-if="!sessions.length" class="empty">{{ emptyText }}</div>
         <ul v-else class="session-list">
           <li
-            v-for="s in filteredSessions"
+            v-for="s in sessions"
             :key="s.sessionId"
             :class="['session-item', { active: selectedId === s.sessionId }]"
             @click="select(s.sessionId)"
           >
             <div class="item-title">{{ sessionName(s) }}</div>
+            <div v-if="scope === 'all' && !s.isOwner && ownerOf(s)" class="item-owner">{{ ownerOf(s) }}</div>
             <div class="item-meta">
               <span class="item-date">{{ formatDate(s.createdAt) }}</span>
               <span class="item-tags">
@@ -86,6 +95,18 @@
             </div>
           </li>
         </ul>
+
+        <el-pagination
+          v-if="!loadingList && total > pageSize"
+          class="list-pager"
+          layout="prev, pager, next"
+          small
+          :pager-count="5"
+          :page-size="pageSize"
+          :current-page="page"
+          :total="total"
+          @current-change="onPageChange"
+        />
       </div>
 
       <el-card class="detail-panel" shadow="never">
@@ -188,6 +209,9 @@ import authService from '@/services/authService';
 import { hasAnyRole, ROLE_GROUPS } from '@/constants/roles';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 
+const PAGE_SIZE = 20;
+const FILTER_DEBOUNCE_MS = 350;
+
 export default {
   name: 'TranscriptionSessionsView',
   components: { ConfirmDialog },
@@ -209,6 +233,12 @@ export default {
       ],
       showFilters: false,
       filters: { text: '', status: '', category: '', client: '', task: '', callTaker: '', date: '' },
+      filterOptions: { clients: [], tasks: [], callTakers: [] },
+      scope: 'mine',
+      canViewAll: false,
+      total: 0,
+      page: 1,
+      pageSize: PAGE_SIZE,
       confirmVisible: false,
       confirmConfig: { title: '', message: '', type: 'warning', confirmText: 'Confirm', cancelText: 'Cancel', icon: 'el-icon-warning-outline' },
       confirmResolver: null
@@ -245,31 +275,9 @@ export default {
       const f = this.filters;
       return ['status', 'category', 'client', 'task', 'callTaker', 'date'].filter(k => f[k]).length;
     },
-    clientOptions() {
-      return [...new Set(this.sessions.map(s => s.client).filter(Boolean))].sort();
-    },
-    taskOptions() {
-      return [...new Set(this.sessions.map(s => s.task).filter(Boolean))].sort();
-    },
-    callTakerOptions() {
-      return [...new Set(this.sessions.map(s => s.callTaker).filter(Boolean))].sort();
-    },
-    filteredSessions() {
-      const f = this.filters;
-      const text = (f.text || '').trim().toLowerCase();
-      return this.sessions.filter(s => {
-        if (f.status && s.status !== f.status) return false;
-        if (f.category && s.category !== f.category) return false;
-        if (f.client && s.client !== f.client) return false;
-        if (f.task && s.task !== f.task) return false;
-        if (f.callTaker && s.callTaker !== f.callTaker) return false;
-        if (f.date && (s.interviewDateTime || '').slice(0, 10) !== f.date) return false;
-        if (text) {
-          const hay = [s.label, s.candidateName, s.client].filter(Boolean).join(' ').toLowerCase();
-          if (!hay.includes(text)) return false;
-        }
-        return true;
-      });
+    emptyText() {
+      if (this.activeFilterCount || (this.filters.text || '').trim()) return 'No transcriptions match the filters.';
+      return this.scope === 'all' ? 'No transcriptions yet.' : 'You have no transcriptions yet.';
     },
     detailSublineParts() {
       const d = this.detail;
@@ -286,11 +294,19 @@ export default {
     }
   },
   async mounted() {
+    if (this.$route.query.scope === 'all') this.scope = 'all';
     await this.loadList();
     const id = this.$route.query.sessionId;
     if (id) this.select(id);
   },
+  beforeDestroy() {
+    if (this._filterTimer) clearTimeout(this._filterTimer);
+  },
   watch: {
+    filters: {
+      deep: true,
+      handler() { this.queueReload(); }
+    },
     '$route.query.sessionId'(id) {
       if (id && id !== this.selectedId) this.select(id);
       else if (!id) { this.selectedId = ''; this.detail = null; }
@@ -318,15 +334,72 @@ export default {
       if (this.confirmResolver) { this.confirmResolver(false); this.confirmResolver = null; }
     },
     async loadList() {
+      const token = (this._listToken || 0) + 1;
+      this._listToken = token;
       this.loadingList = true;
       try {
-        const list = await transcriptionApi.list();
-        this.sessions = Array.isArray(list) ? list : [];
+        const res = await transcriptionApi.list({
+          scope: this.scope,
+          page: this.page,
+          size: this.pageSize,
+          text: this.filters.text,
+          status: this.filters.status,
+          category: this.filters.category,
+          client: this.filters.client,
+          task: this.filters.task,
+          callTaker: this.filters.callTaker,
+          date: this.filters.date
+        });
+        if (token !== this._listToken) return;
+        this.sessions = Array.isArray(res.items) ? res.items : [];
+        this.total = res.total || 0;
+        this.page = res.page || 1;
+        this.canViewAll = !!res.canViewAll;
+        this.scope = res.scope || 'mine';
+        const options = res.filterOptions || {};
+        this.filterOptions = {
+          clients: options.clients || [],
+          tasks: options.tasks || [],
+          callTakers: options.callTakers || []
+        };
       } catch (e) {
+        if (token !== this._listToken) return;
+        this.sessions = [];
+        this.total = 0;
         this.$message.error(e.message || 'Could not load transcriptions');
       } finally {
-        this.loadingList = false;
+        if (token === this._listToken) this.loadingList = false;
       }
+    },
+    queueReload() {
+      if (this._filterTimer) clearTimeout(this._filterTimer);
+      this._filterTimer = setTimeout(() => {
+        this._filterTimer = null;
+        this.page = 1;
+        this.loadList();
+      }, FILTER_DEBOUNCE_MS);
+    },
+    onPageChange(page) {
+      this.page = page;
+      this.loadList();
+    },
+    toggleScope() {
+      this.scope = this.scope === 'all' ? 'mine' : 'all';
+      this.page = 1;
+      this.clearSelection();
+      const query = { ...this.$route.query };
+      if (this.scope === 'all') query.scope = 'all'; else delete query.scope;
+      delete query.sessionId;
+      this.$router.replace({ query }).catch(() => {});
+      this.loadList();
+    },
+    clearSelection() {
+      this.selectedId = '';
+      this.detail = null;
+      this.detailLines = [];
+    },
+    ownerOf(s) {
+      return (s && (s.createdByEmail || s.createdBy)) || '';
     },
     async select(id) {
       this.selectedId = id;
@@ -393,8 +466,8 @@ export default {
       try {
         const res = await transcriptionApi.remove(this.selectedId);
         if (!res || !res.ok) { this.$message.error((res && res.error) || 'Delete failed'); return; }
-        this.selectedId = '';
-        this.detail = null;
+        this.clearSelection();
+        if (this.sessions.length === 1 && this.page > 1) this.page -= 1;
         await this.loadList();
         this.$message.success('Deleted');
       } catch (e) {
@@ -523,9 +596,13 @@ export default {
 }
 .filter-row { display: flex; gap: 8px; }
 .filter-row > * { flex: 1; min-width: 0; }
-.filter-actions { display: flex; justify-content: space-between; align-items: center; }
-.filter-count { font-size: 12px; color: #909399; }
-.results-count { font-size: 12px; color: #909399; margin: 0 2px 10px; padding-top: 2px; }
+.filter-actions { display: flex; justify-content: flex-end; align-items: center; }
+.results-row {
+  display: flex; justify-content: space-between; align-items: center;
+  min-height: 22px; margin: 0 2px 10px; flex-shrink: 0;
+}
+.results-count { font-size: 12px; color: #909399; }
+.scope-toggle { padding: 0; font-weight: 600; font-size: 12px; }
 
 .session-list {
   list-style: none;
@@ -548,6 +625,10 @@ export default {
 .session-item.active { border-color: #2563eb; box-shadow: 0 2px 10px rgba(37,99,235,0.15); }
 
 .item-title { font-weight: 600; color: #2c3e50; font-size: 14px; line-height: 1.4; }
+.item-owner {
+  font-size: 11px; color: #909399; margin-top: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .item-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .item-date { color: #909399; font-size: 11px; }
 .item-tags { margin-left: auto; display: flex; gap: 6px; }
@@ -605,6 +686,7 @@ export default {
 .empty { color: #c0c4cc; font-style: italic; text-align: center; padding: 32px 0; }
 .list-loading { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 200px; color: #909399; }
 .list-loading i { font-size: 20px; }
+.list-pager { flex-shrink: 0; padding: 10px 0 0; text-align: center; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
