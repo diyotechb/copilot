@@ -38,11 +38,12 @@
 export default {
   name: 'TranscriptionSessionCard',
   props: {
-    item: { type: Object, required: true }
+    item: { type: Object, required: true },
+    continuable: { type: Boolean, default: false }
   },
   computed: {
     canContinue() {
-      return !!this.item.isOwner;
+      return this.continuable && !!this.item.isOwner;
     },
     statusType() {
       return this.item.status === 'ENDED' ? 'warning' : 'success';
