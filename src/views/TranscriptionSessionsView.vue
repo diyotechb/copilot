@@ -2,8 +2,8 @@
   <div class="transcription-sessions-view">
    <div class="dashboard-view">
     <div class="dashboard-header">
-      <h2>Transcription Sessions</h2>
-      <div class="header-actions">
+      <h2>{{ isArchive ? 'Archive' : 'Transcription Sessions' }}</h2>
+      <div v-if="!isArchive" class="header-actions">
         <el-button type="primary" class="start-session-btn" @click="$router.push({ name: 'TranscriptionsView' })">Start New Session <i class="el-icon-right"></i></el-button>
       </div>
     </div>
@@ -33,13 +33,6 @@
             <template v-if="loadingList">Loading…</template>
             <template v-else>{{ total }} {{ total === 1 ? 'result' : 'results' }}</template>
           </span>
-          <el-button
-            v-if="canViewAll"
-            type="text"
-            size="mini"
-            class="scope-toggle"
-            @click="toggleScope"
-          >{{ scope === 'all' ? 'View only mine' : 'View all' }}</el-button>
         </div>
 
         <div v-show="showFilters" class="filters">
@@ -90,6 +83,7 @@
             <div class="item-meta">
               <span class="item-date">{{ formatDate(s.createdAt) }}</span>
               <span class="item-tags">
+                <el-tag v-if="s.deleted" type="info" size="mini" effect="dark">DELETED</el-tag>
                 <el-tag :type="statusType(s.status)" size="mini" effect="dark">{{ s.status }}</el-tag>
               </span>
             </div>
@@ -145,6 +139,8 @@
               <el-button v-if="canModify" type="text" icon="el-icon-edit" class="edit-name-btn" @click="startEditName"></el-button>
             </div>
             <div class="detail-head-right">
+              <el-tag v-if="isArchive && expiresIn(detail)" :type="expiryType(detail)" size="small">{{ expiresIn(detail) }}</el-tag>
+              <el-tag v-if="detail.deleted" type="info" size="small" effect="dark">DELETED</el-tag>
               <el-tag :type="statusType(detail.status)" size="small" effect="dark">{{ detail.status }}</el-tag>
               <el-dropdown v-if="canModify" trigger="click" @command="onItemCommand">
                 <i class="el-icon-more detail-menu"></i>
@@ -234,8 +230,6 @@ export default {
       showFilters: false,
       filters: { text: '', status: '', category: '', client: '', task: '', callTaker: '', date: '' },
       filterOptions: { clients: [], tasks: [], callTakers: [] },
-      scope: 'mine',
-      canViewAll: false,
       total: 0,
       page: 1,
       pageSize: PAGE_SIZE,
@@ -248,6 +242,12 @@ export default {
     isStaff() {
       return hasAnyRole(authService.getUserRoles(), ROLE_GROUPS.STAFF);
     },
+    isArchive() {
+      return !!this.$route.meta.archive;
+    },
+    scope() {
+      return this.isArchive ? 'all' : 'mine';
+    },
     canManage() {
       return !!this.detail && (this.isStaff || !!this.detail.isOwner);
     },
@@ -255,6 +255,7 @@ export default {
       return !!this.detail && this.detail.status === 'ACTIVE';
     },
     canModify() {
+      if (this.isArchive || (this.detail && this.detail.deleted)) return false;
       return this.canManage && !this.isActive;
     },
     createdByTooltip() {
@@ -277,7 +278,7 @@ export default {
     },
     emptyText() {
       if (this.activeFilterCount || (this.filters.text || '').trim()) return 'No transcriptions match the filters.';
-      return this.scope === 'all' ? 'No transcriptions yet.' : 'You have no transcriptions yet.';
+      return this.isArchive ? 'No transcriptions yet.' : 'You have no transcriptions yet.';
     },
     detailSublineParts() {
       const d = this.detail;
@@ -294,7 +295,6 @@ export default {
     }
   },
   async mounted() {
-    if (this.$route.query.scope === 'all') this.scope = 'all';
     await this.loadList();
     const id = this.$route.query.sessionId;
     if (id) this.select(id);
@@ -340,6 +340,7 @@ export default {
       try {
         const res = await transcriptionApi.list({
           scope: this.scope,
+          deleted: this.isArchive ? 'include' : '',
           page: this.page,
           size: this.pageSize,
           text: this.filters.text,
@@ -354,8 +355,6 @@ export default {
         this.sessions = Array.isArray(res.items) ? res.items : [];
         this.total = res.total || 0;
         this.page = res.page || 1;
-        this.canViewAll = !!res.canViewAll;
-        this.scope = res.scope || 'mine';
         const options = res.filterOptions || {};
         this.filterOptions = {
           clients: options.clients || [],
@@ -383,16 +382,6 @@ export default {
       this.page = page;
       this.loadList();
     },
-    toggleScope() {
-      this.scope = this.scope === 'all' ? 'mine' : 'all';
-      this.page = 1;
-      this.clearSelection();
-      const query = { ...this.$route.query };
-      if (this.scope === 'all') query.scope = 'all'; else delete query.scope;
-      delete query.sessionId;
-      this.$router.replace({ query }).catch(() => {});
-      this.loadList();
-    },
     clearSelection() {
       this.selectedId = '';
       this.detail = null;
@@ -410,7 +399,7 @@ export default {
         this.$router.push({ query: { ...this.$route.query, sessionId: id } }).catch(() => {});
       }
       try {
-        const data = await transcriptionApi.get(id);
+        const data = await transcriptionApi.get(id, this.isArchive);
         if (data && data.ok) {
           this.detail = data;
           this.detailLines = (data.lines || []).map(l => ({ time: l.time, text: l.text }));
@@ -418,10 +407,17 @@ export default {
           this.$message.error((data && data.error) || 'Could not load transcription');
         }
       } catch (e) {
-        this.$message.error(e.message || 'Could not load transcription');
+        if (e.status === 404) this.dropSelection();
+        else this.$message.error(e.message || 'Could not load transcription');
       } finally {
         this.loadingDetail = false;
       }
+    },
+    dropSelection() {
+      this.clearSelection();
+      const query = { ...this.$route.query };
+      delete query.sessionId;
+      this.$router.replace({ query }).catch(() => {});
     },
     startEditName() {
       if (!this.canManage) return;
@@ -506,6 +502,23 @@ export default {
     statusType(status) {
       if (status === 'ENDED') return 'warning';
       return 'success';
+    },
+    expiryDaysLeft(s) {
+      const ttl = s && s.ttl;
+      if (!ttl) return null;
+      return (ttl * 1000 - Date.now()) / 86400000;
+    },
+    expiresIn(s) {
+      const days = this.expiryDaysLeft(s);
+      if (days === null) return '';
+      if (days <= 0) return 'Expired';
+      if (days < 1) return `Expires in ${Math.max(1, Math.round(days * 24))}h`;
+      if (days < 45) return `Expires in ${Math.round(days)} days`;
+      return `Expires in ${Math.round(days / 30)} months`;
+    },
+    expiryType(s) {
+      const days = this.expiryDaysLeft(s);
+      return days !== null && days <= 7 ? 'danger' : 'info';
     },
     copyTranscript() {
       const text = this.detailLines.map(l => l.text).filter(Boolean).join('\n\n');
@@ -602,7 +615,6 @@ export default {
   min-height: 22px; margin: 0 2px 10px; flex-shrink: 0;
 }
 .results-count { font-size: 12px; color: #909399; }
-.scope-toggle { padding: 0; font-weight: 600; font-size: 12px; }
 
 .session-list {
   list-style: none;
