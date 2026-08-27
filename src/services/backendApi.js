@@ -48,7 +48,9 @@ export async function assertOk(response, label) {
       detail = body.error || body.message || '';
     } catch (e) { /* not json or empty */ }
     console.warn(`[api] ${label} failed (${response.status})${detail ? ': ' + detail : ''}`);
-    throw new Error(SYSTEM_UNAVAILABLE_MSG);
+    const error = new Error(SYSTEM_UNAVAILABLE_MSG);
+    error.status = response.status;
+    throw error;
   }
   return response;
 }

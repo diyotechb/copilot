@@ -92,13 +92,16 @@ export default {
     return jsonOrThrow(res, 'Load transcriptions');
   },
 
-  async get(id) {
-    const res = await fetch(backendUrl(`/api/transcriptions/session/${encodeURIComponent(id)}`), { headers: authHeaders() });
+  async get(id, includeDeleted = false) {
+    const qs = includeDeleted ? '?deleted=include' : '';
+    const res = await fetch(backendUrl(`/api/transcriptions/session/${encodeURIComponent(id)}${qs}`), { headers: authHeaders() });
     return jsonOrThrow(res, 'Load transcription');
   },
 
   async remove(id) {
-    const res = await fetch(backendUrl(`/api/transcriptions/session/${encodeURIComponent(id)}`), {
+    const email = authService.getUserEmail() || '';
+    const qs = email ? `?updatedByEmail=${encodeURIComponent(email)}` : '';
+    const res = await fetch(backendUrl(`/api/transcriptions/session/${encodeURIComponent(id)}${qs}`), {
       method: 'DELETE',
       headers: authHeaders()
     });

@@ -153,6 +153,16 @@ const routes = [
     }
   },
   {
+    path: '/transcriptions/archive',
+    name: 'TranscriptionArchive',
+    component: TranscriptionSessionsView,
+    meta: {
+      requiresAuth: true,
+      allowedRoles: ROLE_GROUPS.STAFF,
+      archive: true
+    }
+  },
+  {
     path: '/profile',
     name: 'ProfileSettings',
     component: ProfileSettings,
